@@ -53,8 +53,12 @@ export default function App() {
     const a = document.createElement("a");
     a.href = url;
     a.download = s.project.name.replace(/\.dxf$/i, "") + "-排版.svg";
+    // Attach the temporary anchor for browser download compatibility.
+    document.body.appendChild(a);
     a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    a.remove();
+    // Retain the blob URL long enough for browsers that begin transfers lazily.
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
   return (
     <main>
