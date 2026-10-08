@@ -26,6 +26,7 @@ export function StockCanvas({
   const [zoom, setZoom] = useState(1),
     [pan, setPan] = useState({ x: 0, y: 0 }),
     [ghost, setGhost] = useState<Placement | null>(null),
+    [ghostValid, setGhostValid] = useState(true),
     [guides, setGuides] = useState<Guide[]>([]);
   const [viewport, setViewport] = useState({
     width: 1,
@@ -256,6 +257,7 @@ export function StockCanvas({
             magnet && !e.altKey,
           );
           setGhost(snapped.placement);
+          setGhostValid(snapped.valid);
           setGuides(snapped.guides);
         }}
         onPointerUp={(e) => {
@@ -341,7 +343,7 @@ export function StockCanvas({
               return (
                 <g
                   key={`${p.partId}-${index}`}
-                  className={`part ${selected ? "selected" : ""}`}
+                  className={`part ${selected ? "selected" : ""} ${isGhost && !ghostValid ? "invalid-placement" : ""}`}
                   opacity={isGhost ? 0.6 : ghost?.partId === part.id ? 0.35 : 1}
                   pointerEvents={isGhost ? "none" : undefined}
                   onPointerDown={(e) => {
@@ -365,8 +367,20 @@ export function StockCanvas({
                   <title>{`${part.name} · ${part.width.toFixed(1)} × ${part.height.toFixed(1)} mm`}</title>
                   <polygon
                     points={poly(part.outline)}
-                    fill={part.thickness > 5 ? "#cdb68e" : "#a8b59b"}
-                    stroke={selected ? "#26392e" : "#877c67"}
+                    fill={
+                      isGhost && !ghostValid
+                        ? "#eccbbf"
+                        : part.thickness > 5
+                          ? "#cdb68e"
+                          : "#a8b59b"
+                    }
+                    stroke={
+                      isGhost && !ghostValid
+                        ? "#bd6244"
+                        : selected
+                          ? "#26392e"
+                          : "#877c67"
+                    }
                     strokeWidth={selected ? 6 : 1.7}
                   />
                   {part.pockets.map((v, j) => (
@@ -422,6 +436,15 @@ export function StockCanvas({
           </g>
         ))}
       </svg>
+      {ghost && (
+        <div
+          className={`drag-feedback floating ${ghostValid ? "" : "invalid"}`}
+          role="status"
+        >
+          {ghostValid ? "可放置" : "位置不可用"} · 零件间距至少 {s.settings.gap}{" "}
+          mm
+        </div>
+      )}
       <div className="zoom-controls floating">
         <button
           title="缩小"

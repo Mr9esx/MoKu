@@ -169,10 +169,49 @@ export function snapPlacement(
   s: NestSettings,
   threshold: number,
   enabled: boolean,
-): { placement: Placement; guides: Guide[] } {
+): { placement: Placement; guides: Guide[]; valid: boolean } {
   const part = project.parts.find((v) => v.id === p.partId),
     sheet = layout.sheets.find((v) => v.id === p.sheetId);
-  if (!enabled || !part || !sheet) return { placement: p, guides: [] };
+  if (!part || !sheet) return { placement: p, guides: [], valid: false };
+  const neighbors = layout.placements
+    .filter((v) => v.partId !== p.partId && v.sheetId === p.sheetId)
+    .flatMap((placement) => {
+      const part = project.parts.find((v) => v.id === placement.partId);
+      return part
+        ? [
+            {
+              placement,
+              part,
+              box: bounds(transformPoints(part.outline, part, placement)),
+            },
+          ]
+        : [];
+    });
+  const valid = (placement: Placement) => {
+    const box = bounds(transformPoints(part.outline, part, placement));
+    const near = neighbors.filter(({ box: other }) => {
+      const dx = Math.max(0, box.minX - other.maxX, other.minX - box.maxX);
+      const dy = Math.max(0, box.minY - other.maxY, other.minY - box.maxY);
+      return Math.hypot(dx, dy) <= s.gap + 1e-7;
+    });
+    const issues = validateLayout(
+      {
+        ...project,
+        parts: [part, ...near.map((v) => v.part)],
+        original: layout,
+      },
+      {
+        sheets: layout.sheets,
+        placements: [placement, ...near.map((v) => v.placement)],
+      },
+      s,
+      { requireAll: false },
+    );
+    return !issues.some(
+      (v) => v.partIds.length === 0 || v.partIds.includes(part.id),
+    );
+  };
+  if (!enabled) return { placement: p, guides: [], valid: valid(p) };
   const b = bounds(transformPoints(part.outline, part, p));
   const gapTargets: {
     x: { anchor: number; target: number }[];
@@ -182,11 +221,7 @@ export function snapPlacement(
     x: [s.margin, sheet.width - s.margin, sheet.width / 2],
     y: [s.margin, sheet.height - s.margin, sheet.height / 2],
   };
-  for (const other of layout.placements.filter(
-    (v) => v.partId !== p.partId && v.sheetId === p.sheetId,
-  )) {
-    const q = project.parts.find((v) => v.id === other.partId)!;
-    const n = bounds(transformPoints(q.outline, q, other));
+  for (const { box: n } of neighbors) {
     targets.x.push(n.minX, n.maxX, (n.minX + n.maxX) / 2);
     gapTargets.x.push(
       { anchor: b.maxX, target: n.minX - s.gap },
@@ -198,34 +233,52 @@ export function snapPlacement(
       { anchor: b.minY, target: n.maxY + s.gap },
     );
   }
-  const placement = { ...p },
-    guides: Guide[] = [];
-  for (const axis of ["x", "y"] as const) {
+  type Choice = { delta: number; guide?: Guide };
+  const choices = (axis: "x" | "y"): Choice[] => {
     const anchors =
       axis === "x"
         ? [b.minX, b.maxX, (b.minX + b.maxX) / 2]
         : [b.minY, b.maxY, (b.minY + b.maxY) / 2];
-    let best = threshold + 1,
-      target = 0;
-    for (const t of targets[axis])
-      for (const a of anchors) {
-        const d = t - a;
-        if (Math.abs(d) <= threshold && Math.abs(d) < Math.abs(best)) {
-          best = d;
-          target = t;
-        }
-      }
-    for (const pair of gapTargets[axis]) {
-      const d = pair.target - pair.anchor;
-      if (Math.abs(d) <= threshold && Math.abs(d) < Math.abs(best)) {
-        best = d;
-        target = pair.target;
-      }
-    }
-    if (Math.abs(best) <= threshold) {
-      placement[axis] += best;
-      guides.push({ axis, value: target });
-    }
+    const candidates: Choice[] = [];
+    const add = (delta: number, value: number) => {
+      if (
+        Math.abs(delta) <= threshold &&
+        !candidates.some((v) => Math.abs(v.delta - delta) < 1e-7)
+      )
+        candidates.push({ delta, guide: { axis, value } });
+    };
+    for (const target of targets[axis])
+      for (const anchor of anchors) add(target - anchor, target);
+    for (const pair of gapTargets[axis])
+      add(pair.target - pair.anchor, pair.target);
+    // Bound pointer work; preserve an unsnapped fallback even in dense layouts.
+    return [
+      ...candidates
+        .sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta))
+        .slice(0, 8),
+      { delta: 0 },
+    ];
+  };
+  const xs = choices("x"),
+    ys = choices("y");
+  const pairs = xs.flatMap((x) => ys.map((y) => ({ x, y })));
+  pairs.sort(
+    (a, b) =>
+      Number(!!b.x.guide) +
+        Number(!!b.y.guide) -
+        Number(!!a.x.guide) -
+        Number(!!a.y.guide) ||
+      a.x.delta ** 2 + a.y.delta ** 2 - b.x.delta ** 2 - b.y.delta ** 2,
+  );
+  // Validate the joint position: independent X/Y edge alignment can destroy the gap.
+  for (const { x, y } of pairs) {
+    const placement = { ...p, x: p.x + x.delta, y: p.y + y.delta };
+    if (valid(placement))
+      return {
+        placement,
+        guides: [x.guide, y.guide].filter((v): v is Guide => !!v),
+        valid: true,
+      };
   }
-  return { placement, guides };
+  return { placement: p, guides: [], valid: false };
 }
