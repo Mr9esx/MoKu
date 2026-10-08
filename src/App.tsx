@@ -21,6 +21,7 @@ export const formatPercent = (n: number) => `${(n * 100).toFixed(1)}%`;
 export default function App() {
   const s = useWorkbench(),
     [dialog, setDialog] = useState<Dialog>(null),
+    [stockId, setStockId] = useState<string | undefined>(),
     [tool, setTool] = useState<"select" | "hand">("select"),
     [magnet, setMagnet] = useState(true),
     [more, setMore] = useState(false),
@@ -127,7 +128,11 @@ export default function App() {
           <button
             className="primary"
             aria-label={s.status === "searching" ? "取消搜索" : "自动排版"}
-            title={s.status === "searching" ? "取消搜索，保留完整合法候选" : "自动排版设置"}
+            title={
+              s.status === "searching"
+                ? "取消搜索，保留完整合法候选"
+                : "自动排版设置"
+            }
             disabled={!s.project?.parts.length}
             onClick={() =>
               s.status === "searching" ? s.cancel() : setDialog("settings")
@@ -207,7 +212,10 @@ export default function App() {
         <ResourcePanel
           project={project}
           layout={layout}
-          open={setDialog}
+          open={(dialog, stockId) => {
+            setStockId(stockId);
+            setDialog(dialog);
+          }}
           onSelect={() => {
             setTool("select");
             setMobile("info");
@@ -357,7 +365,11 @@ export default function App() {
               : "轮廓与间距检查通过"}
         </button>
       </footer>
-      <WorkspaceDialogs dialog={dialog} close={() => setDialog(null)} />
+      <WorkspaceDialogs
+        dialog={dialog}
+        stockId={stockId}
+        close={() => setDialog(null)}
+      />
     </main>
   );
 }

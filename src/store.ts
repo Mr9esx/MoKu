@@ -35,6 +35,10 @@ type State = {
   project: Project | null;
   source: Project | null;
   addStock: (input: StockInput) => boolean;
+  updateStock: (
+    id: string,
+    input: { thickness: number; material: string },
+  ) => boolean;
   removeStock: (id: string) => boolean;
   addPart: (input: PartInput) => boolean;
   movePart: (p: Placement) => boolean;
@@ -275,6 +279,53 @@ export function createWorkbenchStore() {
           },
           current: { ...current, sheets: [...current.sheets, stock] },
           message: "已新增板材",
+        });
+        return true;
+      },
+      updateStock: (id, input) => {
+        const s = get(),
+          material = input.material.trim();
+        const stock = s.project?.sheets.find((v) => v.id === id);
+        if (
+          !stock ||
+          !s.project ||
+          !s.current ||
+          s.view !== "current" ||
+          !Number.isFinite(input.thickness) ||
+          input.thickness < 1 ||
+          input.thickness > 100 ||
+          !material
+        )
+          return false;
+        if (stock.thickness === input.thickness && stock.material === material)
+          return true;
+        const update = (sheets: Layout["sheets"]) =>
+          sheets.map((v) =>
+            v.id === id ? { ...v, thickness: input.thickness, material } : v,
+          );
+        const placed = new Set(
+          s.current.placements
+            .filter((v) => v.sheetId === id)
+            .map((v) => v.partId),
+        );
+        set({
+          ...invalidate(),
+          history: [...s.history, snapshot()],
+          project: {
+            ...s.project,
+            sheets: update(s.project.sheets),
+            parts: s.project.parts.map((p) =>
+              placed.has(p.id)
+                ? { ...p, thickness: input.thickness, material, stockId: id }
+                : p,
+            ),
+            original: {
+              ...s.project.original,
+              sheets: update(s.project.original.sheets),
+            },
+          },
+          current: { ...s.current, sheets: update(s.current.sheets) },
+          message: "已保存板材设置，可撤销恢复",
         });
         return true;
       },

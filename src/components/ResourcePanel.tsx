@@ -12,7 +12,7 @@ export function ResourcePanel({
 }: {
   project: Project | null;
   layout?: Layout | null;
-  open: (d: Dialog) => void;
+  open: (d: Dialog, stockId?: string) => void;
   onSelect: () => void;
 }) {
   const s = useWorkbench(),
@@ -131,7 +131,7 @@ export function ResourcePanel({
                   <div>
                     <button
                       disabled={s.view !== "current"}
-                      onClick={() => open("stock")}
+                      onClick={() => open("stock-edit", v.id)}
                     >
                       设置
                     </button>

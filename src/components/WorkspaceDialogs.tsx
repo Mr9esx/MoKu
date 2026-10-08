@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { X, Trash2, Undo2 } from "lucide-react";
+import { X } from "lucide-react";
+import { StockForm } from "./StockForm";
 import { useWorkbench, startSearch } from "../store";
 import { NestPanel } from "./NestPanel";
 import { ImportPreview } from "./ImportPreview";
@@ -12,15 +13,18 @@ export type Dialog =
   | "restore"
   | "part"
   | "stock"
+  | "stock-edit"
   | "export"
   | "help"
   | "check"
   | null;
 export function WorkspaceDialogs({
   dialog,
+  stockId,
   close,
 }: {
   dialog: Dialog;
+  stockId?: string;
   close: () => void;
 }) {
   const s = useWorkbench(),
@@ -43,13 +47,17 @@ export function WorkspaceDialogs({
     setPlace(false);
     setMaterial(s.project?.sheets[0]?.material ?? "木材");
     if (dialog === "import") workbench.setState({ importMessage: "" });
-    setName(dialog === "stock" ? "新板材" : "新零件");
-    setWidth(dialog === "stock" ? 1220 : 200);
-    setHeight(dialog === "stock" ? 2440 : 100);
+    setName("新零件");
+    setWidth(200);
+    setHeight(100);
     const previous = document.activeElement as HTMLElement;
-    requestAnimationFrame(() =>
-      ref.current?.querySelector<HTMLElement>("button,input,select")?.focus(),
-    );
+    const focusFrame = requestAnimationFrame(() => {
+      const target =
+        ref.current?.querySelector<HTMLElement>("[data-autofocus]") ??
+        ref.current?.querySelector<HTMLElement>("button,input,select");
+      target?.focus();
+      if (target instanceof HTMLInputElement) target.select();
+    });
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -59,7 +67,7 @@ export function WorkspaceDialogs({
       if (e.key === "Tab") {
         const nodes = Array.from(
           ref.current?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled),input,select,[tabindex="0"]',
+            'button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]',
           ) ?? [],
         );
         const first = nodes[0],
@@ -75,6 +83,7 @@ export function WorkspaceDialogs({
     };
     document.addEventListener("keydown", key);
     return () => {
+      cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", key);
       previous?.focus();
     };
@@ -86,7 +95,9 @@ export function WorkspaceDialogs({
     sample: "预览示例图纸",
     restore: "恢复原图位置",
     part: "新增零件",
-    stock: "板材设置",
+    stock: "新增板材",
+    "stock-edit":
+      s.project?.sheets.find((v) => v.id === stockId)?.name ?? "编辑板材",
     export: "导出排版",
     help: "操作帮助",
     check: "排版检查",
@@ -265,76 +276,22 @@ export function WorkspaceDialogs({
         </button>
       </>
     );
-  } else
+  } else if (dialog === "stock" || dialog === "stock-edit")
+    content = (
+      <StockForm
+        key={dialog === "stock" ? "new" : stockId}
+        editing={dialog === "stock-edit"}
+        stock={
+          dialog === "stock-edit"
+            ? s.project?.sheets.find((v) => v.id === stockId)
+            : undefined
+        }
+        close={close}
+      />
+    );
+  else
     content = (
       <>
-        {dialog === "stock" && (
-          <div className="stock-list">
-            <div className="stock-list-heading">
-              <span>当前库存 · {s.project?.sheets.length ?? 0} 张</span>
-              <button disabled={!s.history.length} onClick={s.undo}>
-                <Undo2 size={14} />
-                撤销
-              </button>
-            </div>
-            {s.project?.sheets.map((v, i) => {
-              const count =
-                s.current?.placements.filter((p) => p.sheetId === v.id)
-                  .length ?? 0;
-              return (
-                <div className="stock-item" key={v.id}>
-                  <label>
-                    <span>
-                      板材 {i + 1} · {v.name}
-                      <small>
-                        {v.width} × {v.height} mm · {v.material} · 当前 {count}{" "}
-                        个零件
-                      </small>
-                    </span>
-                    <input
-                      aria-label={`板材 ${i + 1} 厚度`}
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={v.thickness}
-                      onChange={(e) =>
-                        s.setThickness(v.id, e.target.valueAsNumber)
-                      }
-                    />
-                    <span>mm</span>
-                  </label>
-                  <label>
-                    材质
-                    <StockMaterialInput
-                      label={`板材 ${i + 1} 材质`}
-                      value={v.material}
-                      onCommit={(value) => s.setMaterial(v.id, value)}
-                    />
-                  </label>
-                  <div className="stock-delete-row">
-                    <span>{count ? "先移走零件" : "空板材可删除，可撤销"}</span>
-                    <button
-                      disabled={count > 0}
-                      title={count ? "先移走零件" : "删除空板材"}
-                      aria-label={`删除板材 ${i + 1} ${v.name}`}
-                      onClick={() => s.removeStock(v.id)}
-                    >
-                      <Trash2 size={14} />
-                      删除
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-            {!s.project?.sheets.length && (
-              <p className="hint">暂无板材，请新增板材开始编辑。</p>
-            )}
-            <p className="hint" role="status">
-              {s.message}
-            </p>
-            <h3>新增板材</h3>
-          </div>
-        )}
         <label>
           名称
           <input value={name} onChange={(e) => setName(e.target.value)} />
@@ -353,20 +310,14 @@ export function WorkspaceDialogs({
         )}
         <div className="form-grid">
           {numeric(
-            dialog === "part" && shape === "circle" ? "直径" : "宽度",
+            shape === "circle" ? "直径" : "宽度",
             width,
             setWidth,
-            dialog === "stock" ? 100 : 1,
+            1,
             10000,
           )}
-          {(dialog === "stock" || shape === "rectangle") &&
-            numeric(
-              "高度",
-              height,
-              setHeight,
-              dialog === "stock" ? 100 : 1,
-              10000,
-            )}
+          {shape === "rectangle" &&
+            numeric("高度", height, setHeight, 1, 10000)}
           {numeric("板厚", thickness, setThickness, 1, 100)}
         </div>
         <label>
@@ -429,24 +380,21 @@ export function WorkspaceDialogs({
         <button
           className="primary wide"
           onClick={() => {
-            const ok =
-              dialog === "part"
-                ? s.addPart({
-                    name,
-                    shape,
-                    width,
-                    height,
-                    thickness,
-                    material,
-                    quantity,
-                    place,
-                  })
-                : s.addStock({ name, width, height, thickness, material });
+            const ok = s.addPart({
+              name,
+              shape,
+              width,
+              height,
+              thickness,
+              material,
+              quantity,
+              place,
+            });
             if (ok) close();
             else setError(latestMessage());
           }}
         >
-          确认新增{dialog === "part" ? "零件" : "板材"}
+          确认新增零件
         </button>
       </>
     );
@@ -459,7 +407,7 @@ export function WorkspaceDialogs({
     >
       <div
         ref={ref}
-        className={`modal ${dialog === "export" ? "export-drawer" : ""}`}
+        className={`modal ${dialog === "export" ? "export-drawer" : dialog === "stock" || dialog === "stock-edit" ? "stock-modal" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={titles[dialog]}
@@ -483,31 +431,4 @@ export function WorkspaceDialogs({
 import { workbench } from "../store";
 function latestMessage() {
   return workbench.getState().message;
-}
-
-/** Keep uncommitted typing local, but follow externally committed values on undo. */
-function StockMaterialInput({
-  value,
-  label,
-  onCommit,
-}: {
-  value: string;
-  label: string;
-  onCommit: (value: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  return (
-    <input
-      className="stock-material"
-      aria-label={label}
-      value={draft}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={() => {
-        const material = draft.trim();
-        if (material && material !== value) onCommit(material);
-        else setDraft(value);
-      }}
-    />
-  );
 }
