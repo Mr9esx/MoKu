@@ -1,4 +1,6 @@
 :root {
+  --text-body: 14px;
+  --text-caption: 12px;
   font-family:
     Inter,
     -apple-system,
@@ -7,7 +9,8 @@
     sans-serif;
   color: #292b29;
   background: #f2f3f2;
-  font-size: 12px;
+  font-size: var(--text-body);
+  line-height: 1.5;
   font-synthesis: none;
 }
 * {
@@ -20,6 +23,7 @@ button,
 input,
 select {
   font: inherit;
+  font-size: var(--text-body);
 }
 button {
   border: 0;
@@ -72,6 +76,7 @@ input[type="checkbox"] {
 }
 small,
 .hint {
+  font-size: var(--text-caption);
   color: #858a82;
 }
 .hint {
@@ -171,7 +176,7 @@ small,
   border: 0;
   background: transparent;
   padding: 9px 0;
-  font-size: 11px;
+  font-size: var(--text-body);
   outline-offset: 0;
 }
 .parts-list {
@@ -218,21 +223,21 @@ small,
   min-width: 0;
 }
 .part-row strong {
-  font-size: 11px;
+  font-size: var(--text-body);
   font-weight: 600;
 }
 .part-row-copy > span {
-  font-size: 10px;
+  font-size: var(--text-body);
   color: #777e71;
 }
 .part-row-copy small {
-  font-size: 9px;
+  font-size: var(--text-caption);
   color: #969b90;
 }
 .panel-foot {
   border-top: 1px solid #e9ede4;
   padding: 12px;
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #8d9385;
 }
 .canvas-region {
@@ -293,7 +298,7 @@ small,
   gap: 2px;
 }
 .view-switch button {
-  font-size: 11px;
+  font-size: var(--text-body);
   min-height: 28px;
   padding: 6px 13px;
 }
@@ -338,7 +343,7 @@ small,
   padding-top: 12px;
 }
 .part-dimensions small {
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 dl {
   padding: 10px 0;
@@ -363,7 +368,7 @@ dd {
 .inspector-actions button {
   background: #f0f3eb;
   flex: 1;
-  font-size: 11px;
+  font-size: var(--text-body);
 }
 .toolbar-divider {
   height: 23px;
@@ -388,7 +393,7 @@ dd {
 .zoom-controls span {
   min-width: 37px;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--text-body);
 }
 .zoom-controls .active,
 .zoom-controls button.active:hover {
@@ -403,12 +408,12 @@ dd {
   padding: 0 16px;
   border-top: 1px solid #dce0d7;
   color: #8a9281;
-  font-size: 10px;
+  font-size: var(--text-caption);
   background: #f8f9f6;
   flex-shrink: 0;
 }
 .statusbar button {
-  font-size: 10px;
+  font-size: var(--text-caption);
   min-height: 0;
   padding: 0;
   color: #a0804d;
@@ -428,11 +433,11 @@ dd {
   align-items: center;
   gap: 10px;
   padding: 9px 13px;
-  font-size: 11px;
+  font-size: var(--text-body);
   flex-wrap: wrap;
 }
 .progress-strip small {
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .empty-canvas {
   display: grid;
@@ -475,6 +480,7 @@ dd {
   margin: 0;
 }
 .modal p {
+  font-size: var(--text-caption);
   line-height: 1.85;
   color: #7e8874;
 }
@@ -483,7 +489,7 @@ dd {
   flex-direction: column;
   gap: 8px;
   margin-bottom: 17px;
-  font-size: 11px;
+  font-size: var(--text-body);
   color: #6e7963;
 }
 .modal select {
@@ -536,7 +542,7 @@ dd {
   height: 80px;
 }
 .shape-preview span {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #89947c;
 }
 .stock-list {
@@ -559,7 +565,7 @@ dd {
   width: 66px;
 }
 .stock-list h3 {
-  font-size: 12px;
+  font-size: var(--text-body);
   font-weight: 500;
   padding-top: 10px;
 }
@@ -600,7 +606,7 @@ dd {
 }
 .mode-select button {
   flex: 1;
-  font-size: 11px;
+  font-size: var(--text-body);
   padding: 7px;
 }
 .nest-panel .section-title {
@@ -621,7 +627,7 @@ dd {
 }
 .search-status {
   margin-top: 15px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #7c8970;
   line-height: 1.7;
 }
@@ -646,7 +652,7 @@ dd {
   flex-shrink: 0;
 }
 .brand-sub {
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .floating-tools {
   position: absolute;
@@ -680,7 +686,7 @@ dd {
   min-height: 32px;
   padding: 6px;
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--text-body);
 }
 .floating-toolbar button svg {
   width: 16px;
@@ -730,7 +736,7 @@ dd {
   flex-shrink: 0;
 }
 .analysis-panel .panel-heading strong span {
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #858d7f;
   font-weight: 400;
   margin-left: 6px;
@@ -752,7 +758,7 @@ dd {
 }
 .utilization-summary span {
   color: #7d8774;
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .utilization-summary strong {
   font-size: 26px;
@@ -760,13 +766,13 @@ dd {
   letter-spacing: -1px;
 }
 .analysis-note {
-  font-size: 10px;
+  font-size: var(--text-caption);
   margin: 10px 0 0;
 }
 .analysis-stats {
   margin: 14px 0 0;
   padding: 9px 0;
-  font-size: 10px;
+  font-size: var(--text-body);
 }
 .analysis-stats div {
   gap: 7px;
@@ -776,7 +782,7 @@ dd {
   text-align: right;
 }
 .analysis-body h3 {
-  font-size: 11px;
+  font-size: var(--text-body);
   font-weight: 600;
   margin: 20px 0 12px;
 }
@@ -785,7 +791,7 @@ dd {
   color: #a36b37;
   white-space: normal;
   width: 100%;
-  font-size: 10px;
+  font-size: var(--text-body);
 }
 .sheet-analysis-list {
   display: flex;
@@ -800,7 +806,7 @@ dd {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  font-size: 10px;
+  font-size: var(--text-body);
 }
 .sheet-analysis strong {
   overflow: hidden;
@@ -813,13 +819,13 @@ dd {
 }
 .sheet-analysis > small {
   display: block;
-  font-size: 9px;
+  font-size: var(--text-caption);
   margin-top: 5px;
 }
 .sheet-rates {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: var(--text-body);
   margin-top: 10px;
 }
 .utilization-track {
@@ -840,7 +846,7 @@ dd {
 .comparison-table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 9px;
+  font-size: var(--text-body);
   white-space: nowrap;
 }
 .comparison-table th,
@@ -858,7 +864,7 @@ dd {
 }
 .comparison-table td small {
   display: block;
-  font-size: 8px;
+  font-size: var(--text-caption);
   margin-top: 3px;
 }
 .comparison-table .active-row {
@@ -872,7 +878,7 @@ dd {
 }
 .stock-list-heading {
   color: #7c8771;
-  font-size: 11px;
+  font-size: var(--text-body);
   margin-bottom: 8px;
 }
 .stock-item {
@@ -886,11 +892,11 @@ dd {
   min-width: 0;
 }
 .stock-delete-row {
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: #8a937e;
 }
 .stock-delete-row button {
-  font-size: 10px;
+  font-size: var(--text-body);
   color: #997148;
 }
 .empty-canvas {
@@ -930,7 +936,7 @@ dd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--text-body);
 }
 .edit-tools,
 .top-actions {
@@ -1024,7 +1030,7 @@ dd {
 }
 .panel-foot span {
   display: block;
-  font-size: 9px;
+  font-size: var(--text-caption);
 }
 .pending-dot {
   width: 6px;
@@ -1035,7 +1041,7 @@ dd {
   flex-shrink: 0;
 }
 .part-row-copy small {
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .resource-stock {
   padding: 12px 8px;
@@ -1046,14 +1052,14 @@ dd {
 }
 .resource-stock > span {
   color: #818977;
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .resource-stock > div {
   display: flex;
   justify-content: space-between;
 }
 .resource-stock > div button {
-  font-size: 10px;
+  font-size: var(--text-body);
   background: #f3f5f0;
 }
 .resource-empty {
@@ -1098,27 +1104,27 @@ dd {
   padding: 4px 8px;
   max-width: calc(100% - 12px);
   flex-wrap: wrap;
-  font-size: 10px;
+  font-size: var(--text-body);
 }
 .candidate-bar button {
-  font-size: 10px;
+  font-size: var(--text-body);
 }
 .overview-secondary {
   display: flex;
   justify-content: space-between;
   color: #7e8875;
-  font-size: 10px;
+  font-size: var(--text-caption);
   padding: 15px 0;
 }
 .utilization-summary strong small {
-  font-size: 12px;
+  font-size: var(--text-caption);
   letter-spacing: 0;
 }
 .metric-details {
   margin-top: 18px;
   padding-top: 12px;
   border-top: 1px solid #edf0e9;
-  font-size: 11px;
+  font-size: var(--text-body);
   color: #77826b;
 }
 .metric-details summary {
@@ -1129,7 +1135,7 @@ dd {
   padding: 12px;
   background: #f1f5eb;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: var(--text-body);
 }
 .candidate-comparison p {
   margin: 7px 0;
@@ -1145,7 +1151,7 @@ dd {
 }
 .pending-placement label {
   display: block;
-  font-size: 10px;
+  font-size: var(--text-body);
   color: #848a7c;
 }
 .pending-placement select {
@@ -1153,7 +1159,7 @@ dd {
 }
 .pending-placement > button {
   width: 100%;
-  font-size: 11px;
+  font-size: var(--text-body);
 }
 .duplicate-controls {
   display: flex;
@@ -1162,7 +1168,7 @@ dd {
 }
 .duplicate-controls label {
   width: 70px;
-  font-size: 10px;
+  font-size: var(--text-body);
   color: #8b9381;
 }
 .duplicate-controls input {
@@ -1171,7 +1177,7 @@ dd {
 }
 .duplicate-controls button {
   background: #f0f3eb;
-  font-size: 10px;
+  font-size: var(--text-body);
   padding: 6px;
 }
 .source-name {
@@ -1181,7 +1187,7 @@ dd {
   text-overflow: ellipsis;
 }
 .inspector dl {
-  font-size: 11px;
+  font-size: var(--text-body);
 }
 .inspector dl dd {
   text-align: right;
@@ -1207,7 +1213,7 @@ dd {
   border-color: #b7c8a6;
 }
 .import-modes small {
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 .import-preview > label {
   margin-top: 16px;
@@ -1216,7 +1222,7 @@ dd {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 10px;
+  font-size: var(--text-body);
   color: #7b876e;
   max-height: 100px;
   overflow: auto;
@@ -1230,7 +1236,7 @@ dd {
 .import-stock > strong {
   display: block;
   margin-bottom: 12px;
-  font-size: 11px;
+  font-size: var(--text-body);
 }
 .import-stock .form-grid label {
   flex-direction: column;
@@ -1343,7 +1349,7 @@ dd {
     padding: 14px 10px;
   }
   .part-row-copy small {
-    font-size: 11px;
+    font-size: var(--text-caption);
   }
   .inspector-preview {
     height: 140px;
@@ -1381,4 +1387,18 @@ dd {
 .import-modes button.active:focus-visible {
   background: #e3ebdb;
   color: #2f4127;
+}
+
+/* Primary content and supporting copy share the same sizes across panels. */
+.sheet-analysis > div:first-child span,
+.comparison-table thead,
+.inspector dt,
+.empty-canvas p,
+.pending-placement p,
+.candidate-comparison p {
+  font-size: var(--text-caption);
+}
+.resource-stock > span:first-of-type,
+.import-result > p:first-of-type {
+  font-size: var(--text-body);
 }
