@@ -494,3 +494,20 @@ it("rejects final layouts that invent stock or enlarge real stock", () => {
     ).allowed,
   ).toBe(false);
 });
+it("restores stock material on undo and ignores a later unchanged material commit", () => {
+  const st = createWorkbenchStore();
+  st.getState().importProject(board());
+  st.getState().setMaterial("s", "橡木");
+  expect(st.getState().project!.sheets[0].material).toBe("橡木");
+  st.getState().undo();
+  const restored = st.getState();
+  expect(restored.project!.sheets[0].material).toBe("桦木");
+  expect(restored.current!.sheets[0].material).toBe("桦木");
+  expect(restored.project!.parts[0].material).toBe("桦木");
+  restored.setMaterial("s", "桦木");
+  expect(st.getState().history).toBe(restored.history);
+  expect(st.getState().project).toBe(restored.project);
+  expect(st.getState().current).toBe(restored.current);
+  expect(st.getState().source).toBe(restored.source);
+  expect(st.getState().run).toBe(restored.run);
+});

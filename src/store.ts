@@ -477,6 +477,8 @@ export function createWorkbenchStore() {
       setMaterial: (id, material) => {
         const s = get();
         if (!s.project || !s.current || !material.trim()) return;
+        const stock = s.project.sheets.find((v) => v.id === id);
+        if (!stock || stock.material === material.trim()) return;
         const sheets = (ss: Layout["sheets"]) =>
           ss.map((v) =>
             v.id === id ? { ...v, material: material.trim() } : v,

@@ -305,17 +305,10 @@ export function WorkspaceDialogs({
                   </label>
                   <label>
                     材质
-                    <input
-                      className="stock-material"
-                      aria-label={`板材 ${i + 1} 材质`}
-                      defaultValue={v.material}
-                      onBlur={(e) => {
-                        if (
-                          e.target.value.trim() &&
-                          e.target.value !== v.material
-                        )
-                          s.setMaterial(v.id, e.target.value);
-                      }}
+                    <StockMaterialInput
+                      label={`板材 ${i + 1} 材质`}
+                      value={v.material}
+                      onCommit={(value) => s.setMaterial(v.id, value)}
                     />
                   </label>
                   <div className="stock-delete-row">
@@ -490,4 +483,31 @@ export function WorkspaceDialogs({
 import { workbench } from "../store";
 function latestMessage() {
   return workbench.getState().message;
+}
+
+/** Keep uncommitted typing local, but follow externally committed values on undo. */
+function StockMaterialInput({
+  value,
+  label,
+  onCommit,
+}: {
+  value: string;
+  label: string;
+  onCommit: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <input
+      className="stock-material"
+      aria-label={label}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        const material = draft.trim();
+        if (material && material !== value) onCommit(material);
+        else setDraft(value);
+      }}
+    />
+  );
 }
