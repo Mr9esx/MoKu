@@ -10,6 +10,8 @@ import type {
 } from "./core/types";
 import {
   findInitialPlacement,
+  editingLayout,
+  includeStock,
   makePart,
   type PartInput,
   type StockInput,
@@ -220,7 +222,7 @@ export function createWorkbenchStore() {
       addPart: (input) => {
         const s = get();
         if (!s.project || !s.current) return false;
-        const stock = s.current.sheets.find(
+        const stock = s.project.sheets.find(
           (v) => v.thickness === input.thickness,
         );
         if (!stock) {
@@ -231,7 +233,7 @@ export function createWorkbenchStore() {
           const part = makePart(input, crypto.randomUUID(), stock.id),
             placement = findInitialPlacement(
               s.project,
-              s.current,
+              editingLayout(s.project, s.current),
               part,
               s.settings,
             );
@@ -258,7 +260,7 @@ export function createWorkbenchStore() {
               },
             },
             current: {
-              ...s.current,
+              ...includeStock(s.project, s.current, placement.sheetId),
               placements: [...s.current.placements, placement],
             },
             selected: part.id,
@@ -281,7 +283,7 @@ export function createWorkbenchStore() {
           return false;
         }
         const next = {
-          ...s.current,
+          ...includeStock(s.project, s.current, p.sheetId),
           placements: s.current.placements.map((v) =>
             v.partId === p.partId ? { ...p, locked: previous.locked } : v,
           ),

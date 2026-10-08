@@ -336,3 +336,89 @@ it("keeps import feedback separate from edit errors and failed import preserves 
   expect(st.getState().importMessage).toBe("");
   expect(st.getState().history).toHaveLength(0);
 });
+function compactAppliedStore() {
+  const st = setup();
+  st.getState().addPart({
+    name: "厚板组件",
+    shape: "rectangle",
+    width: 50,
+    height: 50,
+    thickness: 12,
+  });
+  st.getState().addStock({
+    name: "未使用薄板",
+    width: 500,
+    height: 500,
+    thickness: 5,
+  });
+  st.getState().addStock({
+    name: "未使用厚板",
+    width: 500,
+    height: 500,
+    thickness: 12,
+  });
+  const state = st.getState(),
+    compact = { ...state.current!, sheets: [state.project!.sheets[0]] };
+  const run = state.beginSearch();
+  st.getState().progress(run, 1, compact);
+  st.getState().cancel();
+  st.getState().apply();
+  return st;
+}
+it("creates on existing inventory omitted by an applied compact candidate and undoes exactly", () => {
+  const st = compactAppliedStore(),
+    before = structuredClone(st.getState().current);
+  expect(before!.sheets).toHaveLength(1);
+  expect(st.getState().project!.sheets).toHaveLength(3);
+  expect(
+    st
+      .getState()
+      .addPart({
+        name: "薄板组件",
+        shape: "rectangle",
+        width: 100,
+        height: 100,
+        thickness: 5,
+      }),
+  ).toBe(true);
+  expect(st.getState().current!.placements.at(-1)!.sheetId).toBe(
+    st.getState().project!.sheets[1].id,
+  );
+  expect(st.getState().current!.sheets).toHaveLength(2);
+  st.getState().undo();
+  expect(st.getState().current).toEqual(before);
+  expect(st.getState().project!.parts).toHaveLength(1);
+});
+it("allows dragging to existing unused inventory after compaction and undoes exactly", () => {
+  const st = compactAppliedStore(),
+    before = structuredClone(st.getState().current),
+    p = before!.placements[0],
+    target = st.getState().project!.sheets[2];
+  expect(
+    st.getState().movePart({ ...p, sheetId: target.id, x: 100, y: 100 }),
+  ).toBe(true);
+  expect(st.getState().current!.sheets.some((v) => v.id === target.id)).toBe(
+    true,
+  );
+  expect(st.getState().current!.placements[0].sheetId).toBe(target.id);
+  st.getState().undo();
+  expect(st.getState().current).toEqual(before);
+  expect(st.getState().project!.sheets).toHaveLength(3);
+});
+it("expands only the editing projection while retaining compact metric and export sheets", async () => {
+  const { editingLayout } = await import("../src/core/editing");
+  const { measureLayout } = await import("../src/core/geometry");
+  const { exportCurrentSvg } = await import("../src/core/export");
+  const st = compactAppliedStore(),
+    s = st.getState();
+  const rendered = editingLayout(s.project!, s.current!);
+  expect(rendered.sheets).toEqual(s.project!.sheets);
+  expect(rendered.placements).toEqual(s.current!.placements);
+  expect(s.current!.sheets).toHaveLength(1);
+  expect(measureLayout(s.project!, s.current!, s.settings).stockArea).toBe(
+    250000,
+  );
+  expect(exportCurrentSvg(s.project!, s.current!, s.settings)).not.toContain(
+    `data-sheet="${s.project!.sheets[1].id}"`,
+  );
+});

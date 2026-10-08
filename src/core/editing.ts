@@ -5,6 +5,27 @@ import {
   validateLayout,
 } from "./geometry";
 import type { Layout, NestSettings, Part, Placement, Project } from "./types";
+/** Editing shows all stock inventory; compact layout sheets still govern metrics/export. */
+export function editingLayout(project: Project, layout: Layout): Layout {
+  return { ...layout, sheets: project.sheets };
+}
+
+/** Reintroduce only a newly used stock to the stored compact layout. */
+export function includeStock(
+  project: Project,
+  layout: Layout,
+  sheetId: string,
+): Layout {
+  return {
+    ...layout,
+    sheets: project.sheets.filter(
+      (stock) =>
+        stock.id === sheetId ||
+        layout.sheets.some((existing) => existing.id === stock.id),
+    ),
+  };
+}
+
 export type PartInput = {
   name: string;
   shape: "rectangle" | "circle";

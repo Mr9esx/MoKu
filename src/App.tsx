@@ -23,6 +23,7 @@ import { useWorkbench } from "./store";
 import { importDrawing } from "./import";
 import { StockCanvas } from "./components/StockCanvas";
 import { WorkspaceDialogs, type Dialog } from "./components/WorkspaceDialogs";
+import { editingLayout } from "./core/editing";
 import { measureLayout, validateLayout } from "./core/geometry";
 import { points, displayPoints } from "./core/export";
 import type { Part, Rotation } from "./core/types";
@@ -92,6 +93,13 @@ export default function App() {
       : s.view === "candidate"
         ? s.candidate?.layout
         : s.current;
+  const canvasLayout = useMemo(
+    () =>
+      project && layout && s.view === "current"
+        ? editingLayout(project, layout)
+        : layout,
+    [project, layout, s.view],
+  );
   const metrics = useMemo(
     () =>
       project && layout ? measureLayout(project, layout, s.settings) : null,
@@ -266,7 +274,7 @@ export default function App() {
           {project && layout && metrics ? (
             <StockCanvas
               project={project}
-              layout={layout}
+              layout={canvasLayout!}
               metrics={metrics}
               tool={tool}
               magnet={magnet}
