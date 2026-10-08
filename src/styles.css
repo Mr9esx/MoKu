@@ -115,7 +115,7 @@ small,
 }
 .workspace-surface {
   --right-rail-width: 300px;
-  --information-top: 126px;
+  --information-top: 80px;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -134,7 +134,7 @@ small,
 .parts-panel {
   position: absolute;
   left: 14px;
-  top: 14px;
+  top: var(--information-top);
   bottom: 14px;
   width: 258px;
   display: flex;
@@ -240,7 +240,7 @@ small,
 }
 .canvas-region {
   position: absolute;
-  inset: 0 330px 0 282px;
+  inset: var(--information-top) 330px 0 282px;
 }
 .drawing {
   width: 100%;
@@ -252,7 +252,7 @@ small,
   display: block;
   width: 100%;
   height: 100%;
-  padding: 65px 20px 65px;
+  padding: 24px 20px 76px;
   touch-action: none;
   user-select: none;
 }
@@ -287,7 +287,7 @@ small,
 }
 .view-switch {
   position: absolute;
-  top: 15px;
+  bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -422,7 +422,7 @@ dd {
 }
 .progress-strip {
   position: absolute;
-  top: 61px;
+  top: 14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 3;
@@ -651,20 +651,21 @@ dd {
 .brand-sub { font-size: 10px; }
 .floating-tools {
   position: absolute;
-  right: 15px;
+  left: 14px;
+  right: 14px;
   top: 14px;
-  width: var(--right-rail-width);
   z-index: 5;
   padding: 7px;
 }
-.floating-toolbar { display: flex; flex-direction: column; gap: 5px; }
-.toolbar-group { display: flex; align-items: center; gap: 3px; }
+.floating-toolbar { display: flex; align-items: center; justify-content: center; gap: 8px; overflow-x: auto; scrollbar-width: thin; overscroll-behavior: contain; }
+.toolbar-group { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
 .floating-toolbar button { width: 36px; height: 36px; min-height: 36px; padding: 7px; flex-shrink: 0; font-size: 11px; }
-.floating-toolbar .tool-label { display: none; }
-.floating-toolbar .pack-action { width: auto; flex: 1; }
+.floating-toolbar .tool-label { display: inline; }
+.floating-toolbar button:has(.tool-label) { width: auto; padding: 7px 10px; }
+.floating-toolbar .pack-action { width: auto; padding: 7px 12px; }
 .floating-toolbar .toolbar-divider { height: 20px; margin: 0 3px; flex-shrink: 0; }
-.secondary-tools { border-top: 1px solid #edf0e9; padding-top: 5px; }
-.secondary-tools button[aria-label="数据分析"] { width: auto; margin-left: auto; padding: 7px 10px; }
+.secondary-tools { border-left: 1px solid #e4e8de; padding-left: 8px; }
+.secondary-tools button[aria-label="数据分析"] { width: auto; padding: 7px 10px; }
 .floating-toolbar button:not(.primary).active { background: #e9eee4; color: #3f5135; }
 .canvas-region.list-collapsed { left: 0; }
 .workspace-surface.analysis-closed .canvas-region { right: 0; }
@@ -722,23 +723,25 @@ dd {
   .parts-panel { width: 220px; }
   .canvas-region { left: 244px; right: 306px; }
   .floating-toolbar button { width: 33px; }
+  .zoom-controls { bottom: 68px; }
   .analysis-body { padding: 14px; }
   .stock-svg { padding-left: 10px; padding-right: 10px; }
 }
 @media (max-width: 700px) {
   .workspace-surface { --right-rail-width: min(280px, calc(100vw - 20px)); }
-  .floating-tools { right: 10px; }
+  .floating-tools { left: 10px; right: 10px; }
+  .floating-toolbar { justify-content: flex-start; }
   .parts-panel > .brand { padding: 12px; }
-  .parts-panel { width: 180px; left: 10px; top: 160px; bottom: 52px; }
+  .parts-panel { width: 180px; left: 10px; top: var(--information-top); bottom: 52px; }
   .part-row { padding: 7px 3px; gap: 4px; }
   .thumbnail { width: 28px; }
   .part-row-copy small { font-size: 8px; }
   .canvas-region { left: 0; right: 0; }
-  .stock-svg { padding: 90px 10px 60px 200px; }
+  .stock-svg { padding: 24px 10px 100px 200px; }
   .canvas-region.list-collapsed .stock-svg { padding-left: 15px; }
-  .view-switch { top: var(--information-top); left: auto; right: 10px; transform: none; }
+  .view-switch { bottom: 18px; left: 50%; right: auto; transform: translateX(-50%); }
   .view-switch button { padding: 6px 8px; font-size: 10px; }
-  .analysis-panel, .inspector { top: max(160px, calc(100% - 52px - 43vh)); bottom: 52px; right: 10px; left: 10px; width: auto; max-height: calc(100% - 212px); }
+  .analysis-panel, .inspector { top: max(var(--information-top), calc(100% - 100px - 43vh)); bottom: 100px; right: 10px; left: 10px; width: auto; max-height: calc(100% - 180px); }
   .analysis-panel { height: auto; }
   .inspector-preview { display: none; }
   .inspector dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; margin-top: 10px; }
@@ -747,7 +750,7 @@ dd {
   .part-dimensions { padding-top: 0; }
   .progress-strip { top: auto; bottom: 52px; left: auto; right: 10px; transform: none; width: calc(100% - 210px); font-size: 9px; padding: 8px; gap: 6px; }
   .progress-strip small { font-size: 8px; }
-  .zoom-controls { bottom: 8px; right: 10px; }
+  .zoom-controls { bottom: 64px; right: 10px; }
   .statusbar { height: 30px; padding: 0 10px; font-size: 8px; }
   .statusbar > span:first-child { display: none; }
   .modal-backdrop { padding: 12px; }

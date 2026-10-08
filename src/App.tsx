@@ -309,7 +309,7 @@ export default function App() {
           ) : (
             <div className="empty-canvas">
               <div>
-                <p>{s.importing ? "正在识别 DXF 图纸…" : project ? "暂无板材，新增板材后开始编辑" : "请从右上角工具栏导入 DXF"}</p>
+                <p>{s.importing ? "正在识别 DXF 图纸…" : project ? "暂无板材，新增板材后开始编辑" : "请从顶部工具栏导入 DXF"}</p>
                 <button className="primary" onClick={() => setDialog(project ? "stock" : "import")}>
                   <Plus size={16} />{project ? "新增板材" : "DXF 导入"}
                 </button>
