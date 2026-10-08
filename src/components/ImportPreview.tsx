@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MaterialSelect } from "./MaterialSelect";
 import { useWorkbench } from "../store";
 import { cancelImportDrawing, importDrawing } from "../import";
 import { confirmMetadata, type ImportTarget } from "../core/importTransaction";
@@ -179,11 +180,10 @@ export function ImportPreview({
               </div>
               <label>
                 材质
-                <input
+                <MaterialSelect
                   aria-label="零件材质"
                   value={material}
-                  placeholder="例如：桦木多层板"
-                  onChange={(e) => setMaterial(e.target.value)}
+                  onChange={setMaterial}
                 />
               </label>
               <p className="hint">
@@ -219,16 +219,15 @@ export function ImportPreview({
                     </label>
                     <label>
                       材质
-                      <input
+                      <MaterialSelect
                         aria-label={`${v.name} 导入材质`}
                         value={stocks[v.id]?.material ?? ""}
-                        placeholder="必填"
-                        onChange={(e) =>
+                        onChange={(material) =>
                           setStocks({
                             ...stocks,
                             [v.id]: {
                               ...stocks[v.id],
-                              material: e.target.value,
+                              material,
                             },
                           })
                         }

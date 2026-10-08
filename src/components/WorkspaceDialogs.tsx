@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { MaterialSelect } from "./MaterialSelect";
 import { StockForm } from "./StockForm";
 import { useWorkbench, startSearch } from "../store";
 import { NestPanel } from "./NestPanel";
@@ -322,10 +323,10 @@ export function WorkspaceDialogs({
         </div>
         <label>
           材质
-          <input
+          <MaterialSelect
             aria-label="材质"
             value={material}
-            onChange={(e) => setMaterial(e.target.value)}
+            onChange={setMaterial}
           />
         </label>
         {dialog === "part" && (

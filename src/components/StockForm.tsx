@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from "react";
+import { MaterialSelect } from "./MaterialSelect";
 import type { Stock } from "../core/types";
 import { parseMillimetres } from "../core/stockInput";
 import { useWorkbench } from "../store";
@@ -36,7 +37,7 @@ export function StockForm({
   if (width === undefined) errors.width = "宽度需为 100–10000 mm";
   if (height === undefined) errors.height = "高度需为 100–10000 mm";
   if (thickness === undefined) errors.thickness = "板厚需为 1–100 mm";
-  if (!draft.material.trim()) errors.material = "请填写材质";
+  if (!draft.material.trim()) errors.material = "请选择材质";
   const count =
     s.current?.placements.filter((v) => v.sheetId === stock?.id).length ?? 0;
   const changed =
@@ -60,40 +61,52 @@ export function StockForm({
       <label className="stock-field" htmlFor={`${id}-${key}`}>
         <span>{label}</span>
         <div className={numeric ? "input-unit" : undefined}>
-          <input
-            id={`${id}-${key}`}
-            name={key}
-            type="text"
-            data-autofocus={autofocus || undefined}
-            inputMode={numeric ? "decimal" : "text"}
-            autoComplete="off"
-            maxLength={numeric ? 20 : 80}
-            list={key === "material" ? `${id}-materials` : undefined}
-            value={draft[key]}
-            aria-label={label}
-            aria-invalid={!!error}
-            aria-describedby={error ? `${id}-${key}-error` : undefined}
-            placeholder={
-              numeric
-                ? key === "thickness"
-                  ? "1–100"
-                  : "100–10000"
-                : undefined
-            }
-            onChange={(e) => change(key, e.target.value)}
-            onFocus={numeric ? (e) => e.currentTarget.select() : undefined}
-            onBlur={() => {
-              setTouched((t) => ({ ...t, [key]: true }));
-              if (numeric) {
-                const value = parseMillimetres(
-                  draft[key],
-                  key === "thickness" ? 1 : 100,
-                  key === "thickness" ? 100 : 10000,
-                );
-                if (value !== undefined) change(key, String(value));
-              } else change(key, draft[key].trim());
-            }}
-          />
+          {key === "material" ? (
+            <MaterialSelect
+              id={`${id}-${key}`}
+              name={key}
+              aria-label={label}
+              value={draft.material}
+              onChange={(value) => change("material", value)}
+              onBlur={() => setTouched((t) => ({ ...t, material: true }))}
+              aria-invalid={!!error}
+              aria-describedby={error ? `${id}-${key}-error` : undefined}
+            />
+          ) : (
+            <input
+              id={`${id}-${key}`}
+              name={key}
+              type="text"
+              data-autofocus={autofocus || undefined}
+              inputMode={numeric ? "decimal" : "text"}
+              autoComplete="off"
+              maxLength={numeric ? 20 : 80}
+              value={draft[key]}
+              aria-label={label}
+              aria-invalid={!!error}
+              aria-describedby={error ? `${id}-${key}-error` : undefined}
+              placeholder={
+                numeric
+                  ? key === "thickness"
+                    ? "1–100"
+                    : "100–10000"
+                  : undefined
+              }
+              onChange={(e) => change(key, e.target.value)}
+              onFocus={numeric ? (e) => e.currentTarget.select() : undefined}
+              onBlur={() => {
+                setTouched((t) => ({ ...t, [key]: true }));
+                if (numeric) {
+                  const value = parseMillimetres(
+                    draft[key],
+                    key === "thickness" ? 1 : 100,
+                    key === "thickness" ? 100 : 10000,
+                  );
+                  if (value !== undefined) change(key, String(value));
+                } else change(key, draft[key].trim());
+              }}
+            />
+          )}
           {numeric && <span>mm</span>}
         </div>
         {error && (
@@ -173,13 +186,6 @@ export function StockForm({
           {field("thickness", "板厚", true, editing)}
           {field("material", "材质")}
         </div>
-        <datalist id={`${id}-materials`}>
-          {[...new Set(s.project?.sheets.map((v) => v.material) ?? [])].map(
-            (material) => (
-              <option key={material} value={material} />
-            ),
-          )}
-        </datalist>
         {editing &&
           changed &&
           thickness !== undefined &&
