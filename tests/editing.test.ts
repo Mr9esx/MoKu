@@ -422,3 +422,78 @@ it("expands only the editing projection while retaining compact metric and expor
     `data-sheet="${s.project!.sheets[1].id}"`,
   );
 });
+
+describe("stock removal", () => {
+  it("deletes empty stock and undo restores the full working model", () => {
+    const st = setup();
+    st.getState().addStock({ name: "empty", width: 500, height: 500, thickness: 5 });
+    const before = structuredClone({ project: st.getState().project, current: st.getState().current });
+    const source = structuredClone(st.getState().source);
+    const id = st.getState().project!.sheets[1].id;
+    expect(st.getState().removeStock(id)).toBe(true);
+    expect(st.getState().project!.sheets.map(s => s.id)).toEqual(["s"]);
+    expect(st.getState().current!.sheets.map(s => s.id)).toEqual(["s"]);
+    expect(st.getState().project!.original.sheets.map(s => s.id)).toEqual(["s"]);
+    expect(st.getState().source).toEqual(source);
+    st.getState().undo();
+    expect(st.getState().project).toEqual(before.project);
+    expect(st.getState().current).toEqual(before.current);
+  });
+  it("rejects occupied or unknown stock without changing history or a valid candidate", () => {
+    const st = setup();
+    st.getState().addPart({ name: "part", shape: "rectangle", width: 50, height: 50, thickness: 12 });
+    const run = st.getState().beginSearch();
+    st.getState().progress(run, 1, st.getState().current!);
+    const before = structuredClone(st.getState().current), candidate = st.getState().candidate, history = st.getState().history;
+    expect(st.getState().removeStock("s")).toBe(false);
+    expect(st.getState().removeStock("missing")).toBe(false);
+    expect(st.getState().current).toEqual(before);
+    expect(st.getState().candidate).toBe(candidate);
+    expect(st.getState().history).toBe(history);
+    expect(st.getState().run).toBe(run);
+  });
+  it("deletes unused inventory omitted by compact apply and invalidates stale results", () => {
+    const st = compactAppliedStore();
+    const id = st.getState().project!.sheets[1].id;
+    const run = st.getState().beginSearch();
+    st.getState().progress(run, 1, st.getState().current!);
+    expect(st.getState().removeStock(id)).toBe(true);
+    expect(st.getState().current!.sheets.map(s => s.id)).toEqual(["s"]);
+    expect(st.getState().project!.sheets).toHaveLength(2);
+    expect(st.getState().candidate).toBeNull();
+    expect(st.getState().status).toBe("idle");
+    expect(st.getState().run).toBeGreaterThan(run);
+    st.getState().progress(run, 2, { ...st.getState().current!, sheets: [stock] });
+    expect(st.getState().candidate).toBeNull();
+  });
+  it("reassociates an imported moved part when its emptied original board is removed and reset keeps the destination", async () => {
+    const { makePart } = await import("../src/core/editing");
+    const { validateLayout } = await import("../src/core/geometry");
+    const second = { ...stock, id: "target", name: "target" };
+    const project: Project = { ...fixture(), sheets: [stock, second], parts: [makePart({ name: "part", shape: "rectangle", width: 50, height: 50, thickness: 12 }, "p", "s")], original: { sheets: [stock, second], placements: [{ partId: "p", sheetId: "s", x: 10, y: 10, rotation: 0 }] } };
+    const st = createWorkbenchStore();
+    st.getState().importProject(project);
+    expect(st.getState().movePart({ partId: "p", sheetId: "target", x: 100, y: 100, rotation: 90 })).toBe(true);
+    expect(st.getState().removeStock("s")).toBe(true);
+    expect(st.getState().project!.parts[0].stockId).toBe("target");
+    expect(st.getState().project!.original.placements[0]).toEqual({ partId: "p", sheetId: "target", x: 100, y: 100, rotation: 90, locked: undefined });
+    expect(validateLayout(st.getState().project!, st.getState().current!, st.getState().settings)).toEqual([]);
+    st.getState().reset();
+    expect(st.getState().current!.placements[0].sheetId).toBe("target");
+    expect(st.getState().current!.placements[0].x).toBe(100);
+    expect(st.getState().message).toContain("已删除");
+    expect(st.getState().source).toEqual(project);
+    st.getState().undo();
+    st.getState().undo();
+    expect(st.getState().project!.parts[0].stockId).toBe("s");
+    expect(st.getState().project!.sheets.map(s => s.id)).toEqual(["s", "target"]);
+  });
+  it("allows the last empty board to be removed and recreated", () => {
+    const st = setup();
+    expect(st.getState().removeStock("s")).toBe(true);
+    expect(st.getState().project!.sheets).toEqual([]);
+    expect(st.getState().current).toEqual({ sheets: [], placements: [] });
+    expect(st.getState().addStock({ name: "replacement", width: 500, height: 500, thickness: 12 })).toBe(true);
+    expect(st.getState().project!.sheets).toHaveLength(1);
+  });
+});

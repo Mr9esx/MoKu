@@ -6,7 +6,7 @@ import {
   Hand,
   Plus,
   Layers,
-  Settings2,
+  BarChart3,
   HelpCircle,
   Play,
   Square,
@@ -23,6 +23,7 @@ import { useWorkbench } from "./store";
 import { importDrawing } from "./import";
 import { StockCanvas } from "./components/StockCanvas";
 import { WorkspaceDialogs, type Dialog } from "./components/WorkspaceDialogs";
+import { LayoutAnalysis } from "./components/LayoutAnalysis";
 import { editingLayout } from "./core/editing";
 import { measureLayout, validateLayout } from "./core/geometry";
 import { points, displayPoints } from "./core/export";
@@ -63,7 +64,8 @@ export default function App() {
     [tool, setTool] = useState<"select" | "hand">("select"),
     [magnet, setMagnet] = useState(true),
     [query, setQuery] = useState(""),
-    [collapsed, setCollapsed] = useState(false);
+    [collapsed, setCollapsed] = useState(false),
+    [analysisOpen, setAnalysisOpen] = useState(true);
   useEffect(() => {
     void importDrawing();
   }, []);
@@ -128,53 +130,79 @@ export default function App() {
           <strong>木作</strong>
           <span className="brand-sub">板材工作台</span>
         </div>
-        <span className="file-info">
-          {s.project?.sheets[0]?.width ?? 1220} ×{" "}
-          {s.project?.sheets[0]?.height ?? 2440} mm{" "}
-          <span> / {s.project?.name ?? "等待图纸"}</span>
-        </span>
-        <div className="topbar-right">
-          <span className="local-indicator">本地处理</span>
-          <button disabled={s.importing} onClick={() => void importDrawing()}>
-            载入示例 ↗
-          </button>
-        </div>
-      </header>
-      <div className="workspace-surface">
-        <div className="main-actions">
+        <nav className="top-toolbar" aria-label="工作区工具栏">
           <button
-            className="primary nest-trigger"
+            title="选择 · V"
+            aria-label="选择工具"
+            className={tool === "select" ? "active" : ""}
+            onClick={() => setTool("select")}
+          >
+            <MousePointer2 size={18} />
+          </button>
+          <button
+            title="平移 · H"
+            aria-label="平移工具"
+            className={tool === "hand" ? "active" : ""}
+            onClick={() => setTool("hand")}
+          >
+            <Hand size={18} />
+          </button>
+          <span className="toolbar-divider" />
+          <button title="导入本地 DXF 图纸" onClick={() => setDialog("import")}>
+            <Upload size={17} />
+            <span>DXF 导入</span>
+          </button>
+          <button
+            title="新增矩形或圆形组件"
+            aria-label="新增组件"
+            onClick={() => setDialog("part")}
+          >
+            <Plus size={18} />
+            <span>组件</span>
+          </button>
+          <button
+            title="新增板材 / 板材设置"
+            aria-label="板材设置"
+            onClick={() => setDialog("stock")}
+          >
+            <Layers size={18} />
+            <span>板材</span>
+          </button>
+          <button
+            className="primary"
             disabled={!s.project || s.importing}
-            onClick={() =>
-              s.status === "searching" ? s.cancel() : setDialog("settings")
-            }
+            title="排版设置 / 取消搜索"
+            onClick={() => s.status === "searching" ? s.cancel() : setDialog("settings")}
           >
-            {s.status === "searching" ? (
-              <Square size={16} />
-            ) : (
-              <Play size={16} />
-            )}{" "}
-            {s.status === "searching" ? "取消搜索" : "排版"}
+            {s.status === "searching" ? <Square size={16} /> : <Play size={16} />}
+            <span>{s.status === "searching" ? "取消搜索" : "排版"}</span>
           </button>
-          <button
-            className="floating"
-            disabled={!s.history.length}
-            title="撤销 · Ctrl/⌘ Z"
-            aria-label="撤销"
-            onClick={s.undo}
-          >
+          <button disabled={!s.history.length} title="撤销 · Ctrl/⌘ Z" aria-label="撤销" onClick={s.undo}>
             <Undo2 size={17} />
           </button>
-          <button
-            className="floating"
-            disabled={!s.project}
-            title="恢复导入组件原始位置，保留新增库存，可撤销"
-            aria-label="恢复原图"
-            onClick={s.reset}
-          >
+          <button disabled={!s.project} title="恢复可用原板位置，保留新增组件，可撤销" aria-label="恢复原图" onClick={s.reset}>
             <RotateCcw size={17} />
           </button>
-        </div>
+          <button
+            title="导出 SVG"
+            aria-label="导出"
+            onClick={() => setDialog("export")}
+          >
+            <Download size={18} />
+          </button>
+          <button title="数据分析" aria-label="数据分析" aria-pressed={analysisOpen} className={analysisOpen ? "active" : ""} onClick={() => { setAnalysisOpen(!analysisOpen); s.select(null); }}>
+            <BarChart3 size={18} /><span>数据</span>
+          </button>
+          <button
+            title="操作帮助"
+            aria-label="操作帮助"
+            onClick={() => setDialog("help")}
+          >
+            <HelpCircle size={18} />
+          </button>
+        </nav>
+      </header>
+      <div className="workspace-surface">
         <aside
           className={`parts-panel floating ${collapsed ? "collapsed" : ""}`}
         >
@@ -186,13 +214,6 @@ export default function App() {
               <ChevronDown size={14} />
               <strong>组件</strong>
               <span>{s.project?.parts.length ?? 0}</span>
-            </button>
-            <button
-              title="新增组件"
-              aria-label="新增组件"
-              onClick={() => setDialog("part")}
-            >
-              <Plus size={16} />
             </button>
           </div>
           {!collapsed && (
@@ -271,7 +292,7 @@ export default function App() {
               </button>
             ))}
           </div>
-          {project && layout && metrics ? (
+          {project && layout && metrics && canvasLayout!.sheets.length ? (
             <StockCanvas
               project={project}
               layout={canvasLayout!}
@@ -282,7 +303,12 @@ export default function App() {
             />
           ) : (
             <div className="empty-canvas">
-              {s.importing ? "正在识别 DXF 图纸…" : "请从底部工具栏导入 DXF"}
+              <div>
+                <p>{s.importing ? "正在识别 DXF 图纸…" : project ? "暂无板材，新增板材后开始编辑" : "请从顶部工具栏导入 DXF"}</p>
+                <button className="primary" onClick={() => setDialog(project ? "stock" : "import")}>
+                  <Plus size={16} />{project ? "新增板材" : "DXF 导入"}
+                </button>
+              </div>
             </div>
           )}
           {(s.message || s.candidate || s.status === "searching") && (
@@ -311,6 +337,12 @@ export default function App() {
             </div>
           )}
         </div>
+        {!part && analysisOpen && project && layout && metrics && (
+          <LayoutAnalysis project={project} layout={layout} metrics={metrics}
+            source={s.source} currentProject={s.project} current={s.current}
+            candidate={s.candidate?.layout ?? null} settings={s.settings} view={s.view}
+            issues={issues} onCheck={() => setDialog("check")} onClose={() => setAnalysisOpen(false)} />
+        )}
         {part && (
           <aside className="inspector floating">
             <div className="panel-heading">
@@ -399,70 +431,10 @@ export default function App() {
             </p>
           </aside>
         )}
-        <nav className="bottom-toolbar floating" aria-label="工作区工具栏">
-          <button
-            title="选择 · V"
-            aria-label="选择工具"
-            className={tool === "select" ? "active" : ""}
-            onClick={() => setTool("select")}
-          >
-            <MousePointer2 size={18} />
-          </button>
-          <button
-            title="平移 · H"
-            aria-label="平移工具"
-            className={tool === "hand" ? "active" : ""}
-            onClick={() => setTool("hand")}
-          >
-            <Hand size={18} />
-          </button>
-          <span className="toolbar-divider" />
-          <button title="导入本地 DXF 图纸" onClick={() => setDialog("import")}>
-            <Upload size={17} />
-            <span>DXF 导入</span>
-          </button>
-          <button
-            title="新增矩形或圆形组件"
-            aria-label="新增组件"
-            onClick={() => setDialog("part")}
-          >
-            <Plus size={18} />
-            <span>组件</span>
-          </button>
-          <button
-            title="新增板材 / 板材设置"
-            aria-label="板材设置"
-            onClick={() => setDialog("stock")}
-          >
-            <Layers size={18} />
-            <span>板材</span>
-          </button>
-          <button
-            title="排版设置"
-            aria-label="排版设置"
-            onClick={() => setDialog("settings")}
-          >
-            <Settings2 size={18} />
-          </button>
-          <button
-            title="导出 SVG"
-            aria-label="导出"
-            onClick={() => setDialog("export")}
-          >
-            <Download size={18} />
-          </button>
-          <button
-            title="操作帮助"
-            aria-label="操作帮助"
-            onClick={() => setDialog("help")}
-          >
-            <HelpCircle size={18} />
-          </button>
-        </nav>
       </div>
       <footer className="statusbar">
         <span>
-          {tool === "select" ? "↖ 选择 · V" : "✋ 平移 · H"}{" "}
+          <span className="file-info">{s.project?.name ?? "等待图纸"}</span> · {tool === "select" ? "↖ 选择 · V" : "✋ 平移 · H"}{" "}
           <span className="status-help">拖动组件调整 · Alt 关闭磁吸</span>
         </span>
         <span>

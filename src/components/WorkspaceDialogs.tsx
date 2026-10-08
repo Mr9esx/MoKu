@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { X } from "lucide-react";
+import { X, Trash2, Undo2 } from "lucide-react";
 import { useWorkbench, startSearch } from "../store";
 import { NestPanel } from "./NestPanel";
 import { importDrawing } from "../import";
@@ -171,7 +171,7 @@ export function WorkspaceDialogs({
           关闭弹窗或取消拖动。
         </p>
         <p>
-          恢复原图只恢复导入组件的位置，保留新增板材和组件，可撤销。发生冲突的移动会保留原位置。
+          恢复原图恢复仍在库存中的原板位置；已删除原板上的组件保留当前位置。新增板材和组件保留，可撤销。
         </p>
       </div>
     );
@@ -204,6 +204,9 @@ export function WorkspaceDialogs({
           onClick={() => file.current?.click()}
         >
           {s.importing ? "正在解析…" : "选择本地 DXF 文件"}
+        </button>
+        <button className="wide" disabled={s.importing} onClick={() => void importDrawing()}>
+          载入随附示例图纸
         </button>
         {s.source && (
           <div className="import-result">
@@ -281,25 +284,26 @@ export function WorkspaceDialogs({
       <>
         {dialog === "stock" && (
           <div className="stock-list">
-            {s.project?.sheets.map((v, i) => (
-              <label key={v.id}>
-                <span>
-                  板材 {i + 1} · {v.name}
-                  <small>
-                    {v.width} × {v.height} mm · {v.material}
-                  </small>
-                </span>
-                <input
-                  aria-label={`板材 ${i + 1} 厚度`}
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={v.thickness}
-                  onChange={(e) => s.setThickness(v.id, e.target.valueAsNumber)}
-                />
-                <span>mm</span>
-              </label>
-            ))}
+            <div className="stock-list-heading">
+              <span>当前库存 · {s.project?.sheets.length ?? 0} 张</span>
+              <button disabled={!s.history.length} onClick={s.undo}><Undo2 size={14} />撤销</button>
+            </div>
+            {s.project?.sheets.map((v, i) => {
+              const count = s.current?.placements.filter(p => p.sheetId === v.id).length ?? 0;
+              return <div className="stock-item" key={v.id}>
+                <label>
+                  <span>板材 {i + 1} · {v.name}<small>{v.width} × {v.height} mm · {v.material} · 当前 {count} 个组件</small></span>
+                  <input aria-label={`板材 ${i + 1} 厚度`} type="number" min={1} max={100} value={v.thickness} onChange={e => s.setThickness(v.id, e.target.valueAsNumber)} />
+                  <span>mm</span>
+                </label>
+                <div className="stock-delete-row">
+                  <span>{count ? "先移走组件" : "空板材可删除，可撤销"}</span>
+                  <button disabled={count > 0} title={count ? "先移走组件" : "删除空板材"} aria-label={`删除板材 ${i + 1} ${v.name}`} onClick={() => s.removeStock(v.id)}><Trash2 size={14} />删除</button>
+                </div>
+              </div>;
+            })}
+            {!s.project?.sheets.length && <p className="hint">暂无板材，请新增板材开始编辑。</p>}
+            <p className="hint" role="status">{s.message}</p>
             <h3>新增板材</h3>
           </div>
         )}

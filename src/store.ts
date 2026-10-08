@@ -29,6 +29,7 @@ type State = {
   project: Project | null;
   source: Project | null;
   addStock: (input: StockInput) => boolean;
+  removeStock: (id: string) => boolean;
   addPart: (input: PartInput) => boolean;
   movePart: (p: Placement) => boolean;
   current: Layout | null;
@@ -216,6 +217,41 @@ export function createWorkbenchStore() {
           },
           current: { ...s.current, sheets: [...s.current.sheets, stock] },
           message: "已新增板材",
+        });
+        return true;
+      },
+      removeStock: (id) => {
+        const s = get();
+        if (!s.project || !s.current || !s.project.sheets.some(v => v.id === id))
+          return false;
+        if (s.current.placements.some(v => v.sheetId === id)) {
+          set({ message: "板材仍有组件，请先移走组件" });
+          return false;
+        }
+        const placements = new Map(s.current.placements.map(v => [v.partId, v]));
+        set({
+          ...invalidate(),
+          history: [...s.history, {
+            project: structuredClone(s.project),
+            current: structuredClone(s.current),
+          }],
+          project: {
+            ...s.project,
+            sheets: s.project.sheets.filter(v => v.id !== id),
+            parts: s.project.parts.map(part => {
+              const current = placements.get(part.id);
+              return part.stockId === id && current
+                ? { ...part, stockId: current.sheetId }
+                : part;
+            }),
+            original: {
+              sheets: s.project.original.sheets.filter(v => v.id !== id),
+              placements: s.project.original.placements.map(v =>
+                v.sheetId === id ? placements.get(v.partId)! : v),
+            },
+          },
+          current: { ...s.current, sheets: s.current.sheets.filter(v => v.id !== id) },
+          message: "已删除空板材，可撤销恢复",
         });
         return true;
       },
@@ -435,7 +471,9 @@ export function createWorkbenchStore() {
       },
       reset: () => {
         const s = get();
-        if (s.project && s.current)
+        if (s.project && s.current) {
+          const available = new Set(s.project.sheets.map(v => v.id));
+          const retained = s.source?.original.placements.filter(v => !available.has(v.sheetId)).length ?? 0;
           set({
             ...invalidate(),
             history: [
@@ -452,10 +490,15 @@ export function createWorkbenchStore() {
                 const original = s.source?.original.placements.find(
                   (v) => v.partId === p.partId,
                 );
-                return original ? { ...original, locked: p.locked } : p;
+                return original && available.has(original.sheetId)
+                  ? { ...original, locked: p.locked } : p;
               }),
             },
+            message: retained
+              ? `已恢复可用原板位置；${retained} 个组件的原板已删除，保留当前位置`
+              : "已恢复导入组件原始位置，保留新增组件",
           });
+        }
       },
     };
   });
