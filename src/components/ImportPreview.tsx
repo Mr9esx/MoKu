@@ -42,9 +42,9 @@ export function ImportPreview({
     setError("");
   }, [s.draft]);
   const parse = (
-    chosen: File | undefined = file,
-    nextMode = mode,
-    nextUnit = unit,
+    chosen: File | undefined,
+    nextMode: "board" | "parts",
+    nextUnit: ImportOptions["unit"],
   ) => {
     setError("");
     void importDrawing(chosen, { mode: nextMode, unit: nextUnit });
@@ -59,7 +59,7 @@ export function ImportPreview({
             onClick={() => {
               setMode("board");
               cancelImportDrawing();
-              if (file) parse(file, "board");
+              if (file) parse(file, "board", unit);
             }}
           >
             <strong>整板图纸</strong>
@@ -70,7 +70,7 @@ export function ImportPreview({
             onClick={() => {
               setMode("parts");
               cancelImportDrawing();
-              if (file) parse(file, "parts");
+              if (file) parse(file, "parts", unit);
             }}
           >
             <strong>零件轮廓</strong>
@@ -87,7 +87,7 @@ export function ImportPreview({
           const f = e.target.files?.[0];
           if (f) {
             setFile(f);
-            parse(f);
+            parse(f, mode, unit);
           }
           e.target.value = "";
         }}
