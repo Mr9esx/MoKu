@@ -7,3 +7,7 @@ At narrower widths preserve reachable actions, bounded panel scrolling, and spac
 ## User diagram correction
 
 The user corrected the two-row/right-aligned interpretation with a diagram: one floating toolbar across the top, centered controls, left and right panels beneath it, and a small bottom-center view switch. Use 14 px outer margins, 52 px toolbar height, and panels/canvas beginning at 80 px. Keep every action in one row with horizontal scrolling at narrow widths. This supersedes the earlier position and two-row design.
+
+## RiSu density refinement
+
+User requests a shorter toolbar referencing RiSu. Its app/src/features/viewport/components/Viewport.tsx uses 32 px (h-8) controls, 4 px (py-1) container padding, bg-background/80 and backdrop blur. Apply these dimensions to the current one-row centered toolbar: 42 px total with border, 16 px icons, 12 px text, outer inset 12 px and information panels starting at 66 px. Retain all current actions and horizontal scrolling.

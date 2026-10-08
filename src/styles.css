@@ -115,7 +115,7 @@ small,
 }
 .workspace-surface {
   --right-rail-width: 300px;
-  --information-top: 80px;
+  --information-top: 66px;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -651,21 +651,25 @@ dd {
 .brand-sub { font-size: 10px; }
 .floating-tools {
   position: absolute;
-  left: 14px;
-  right: 14px;
-  top: 14px;
+  left: 12px;
+  right: 12px;
+  top: 12px;
   z-index: 5;
-  padding: 7px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1px 4px #17271306;
 }
 .floating-toolbar { display: flex; align-items: center; justify-content: center; gap: 8px; overflow-x: auto; scrollbar-width: thin; overscroll-behavior: contain; }
-.toolbar-group { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
-.floating-toolbar button { width: 36px; height: 36px; min-height: 36px; padding: 7px; flex-shrink: 0; font-size: 11px; }
+.toolbar-group { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.floating-toolbar button { width: 32px; height: 32px; min-height: 32px; padding: 6px; flex-shrink: 0; font-size: 12px; }
+.floating-toolbar button svg { width: 16px; height: 16px; flex-shrink: 0; }
 .floating-toolbar .tool-label { display: inline; }
-.floating-toolbar button:has(.tool-label) { width: auto; padding: 7px 10px; }
-.floating-toolbar .pack-action { width: auto; padding: 7px 12px; }
+.floating-toolbar button:has(.tool-label) { width: auto; padding: 6px 10px; }
+.floating-toolbar .pack-action { width: auto; padding: 6px 10px; }
 .floating-toolbar .toolbar-divider { height: 20px; margin: 0 3px; flex-shrink: 0; }
 .secondary-tools { border-left: 1px solid #e4e8de; padding-left: 8px; }
-.secondary-tools button[aria-label="数据分析"] { width: auto; padding: 7px 10px; }
+.secondary-tools button[aria-label="数据分析"] { width: auto; padding: 6px 10px; }
 .floating-toolbar button:not(.primary).active { background: #e9eee4; color: #3f5135; }
 .canvas-region.list-collapsed { left: 0; }
 .workspace-surface.analysis-closed .canvas-region { right: 0; }
@@ -722,7 +726,6 @@ dd {
   .workspace-surface { --right-rail-width: 280px; }
   .parts-panel { width: 220px; }
   .canvas-region { left: 244px; right: 306px; }
-  .floating-toolbar button { width: 33px; }
   .zoom-controls { bottom: 68px; }
   .analysis-body { padding: 14px; }
   .stock-svg { padding-left: 10px; padding-right: 10px; }
