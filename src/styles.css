@@ -344,7 +344,8 @@ small,
   min-height: 28px;
   padding: 6px 13px;
 }
-.view-switch .active {
+.view-switch .active,
+.view-switch button.active:hover {
   background: #eef1e9;
   color: #293525;
 }
@@ -452,7 +453,8 @@ dd {
   text-align: center;
   font-size: 11px;
 }
-.zoom-controls .active {
+.zoom-controls .active,
+.zoom-controls button.active:hover {
   background: #e9eee3;
   color: #4c5d41;
 }
