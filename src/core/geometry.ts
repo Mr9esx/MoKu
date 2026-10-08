@@ -215,6 +215,19 @@ export function validateLayout(
       stock.thickness !== part.thickness
     )
       add("thickness", `${part.name} 板厚未知或不匹配`, [part.id]);
+    if (
+      part.pockets.some(
+        (pocket) =>
+          pocket.depth === null ||
+          !Number.isFinite(pocket.depth) ||
+          pocket.depth <= 0 ||
+          pocket.depth >= part.thickness,
+      )
+    )
+      add("invalid", `${part.name} 槽深未知或超出板厚`, [part.id]);
+    const sourceStock = project.sheets.find((s) => s.id === part.stockId);
+    if (sourceStock && sourceStock.material !== stock.material)
+      add("invalid", `${part.name} 材料不匹配`, [part.id]);
     const original = project.original.placements.find(
       (v) => v.partId === part.id,
     );

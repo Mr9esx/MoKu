@@ -209,3 +209,42 @@ it("erodes remnants to retain the requested clearance", () => {
       r.x + r.width <= 24 || r.x >= 76 || r.y + r.height <= 24 || r.y >= 76,
     ).toBe(true);
 });
+it("rejects transferring equal-thickness parts to a different material", () => {
+  const source = { ...p.sheets[0], material: "wood" };
+  const target = { ...source, id: "target", material: "metal" };
+  const project = { ...p, sheets: [source, target] };
+  const layout = {
+    sheets: [target],
+    placements: [
+      { partId: "a", sheetId: "target", x: 0, y: 0, rotation: 0 as const },
+    ],
+  };
+  expect(
+    validateLayout(project, layout, settings).some((i) =>
+      i.message.includes("材料"),
+    ),
+  ).toBe(true);
+});
+it.each([null, NaN, Infinity, 6])(
+  "rejects unknown or excessive pocket depth %s after thickness changes",
+  (depth) => {
+    const project = {
+      ...p,
+      parts: [
+        { ...part, thickness: 5, pockets: [{ outline: part.outline, depth }] },
+      ],
+      sheets: p.sheets.map((s) => ({ ...s, thickness: 5 })),
+    };
+    const layout = {
+      sheets: project.sheets,
+      placements: [
+        { partId: "a", sheetId: "s", x: 0, y: 0, rotation: 0 as const },
+      ],
+    };
+    expect(
+      validateLayout(project, layout, settings).some((i) =>
+        i.message.includes("槽深"),
+      ),
+    ).toBe(true);
+  },
+);
