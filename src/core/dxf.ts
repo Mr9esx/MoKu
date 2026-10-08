@@ -29,9 +29,23 @@ const rounded = (p: Point): Point => ({
   x: Math.round(p.x * 1e6) / 1e6,
   y: Math.round(p.y * 1e6) / 1e6,
 });
+const MAX_ENTITY_POINTS = 4096;
+const MAX_TOTAL_POINTS = 50000;
+let sampledPoints = 0;
+const complexityError = () =>
+  fail(
+    "图纸轮廓过于复杂：每个实体最多 4096 个采样顶点，总计最多 50000 个；请拆分图纸后导入",
+  );
 function arc(center: Point, r: number, start: number, sweep: number) {
   const step = 2 * Math.acos(Math.max(-1, 1 - 0.025 / r)),
     n = Math.max(2, Math.ceil(Math.abs(sweep) / step));
+  if (
+    !Number.isFinite(n) ||
+    n + 1 > MAX_ENTITY_POINTS ||
+    sampledPoints + n + 1 > MAX_TOTAL_POINTS
+  )
+    complexityError();
+  sampledPoints += n + 1;
   return Array.from({ length: n + 1 }, (_, i) =>
     rounded({
       x: center.x + r * Math.cos(start + (sweep * i) / n),
@@ -57,6 +71,7 @@ function contour(e: Entity): Point[] {
     if (sweep <= 0) sweep += Math.PI * 2;
     return arc(e.center!, e.radius!, e.startAngle!, sweep);
   }
+  if ((e.vertices?.length ?? 0) > MAX_ENTITY_POINTS) complexityError();
   const vertices = (e.vertices ?? []).slice();
   if (
     e.type !== "LINE" &&
@@ -83,14 +98,14 @@ function contour(e: Entity): Point[] {
           x: (a.x + b.x) / 2 - ((b.y - a.y) / chord) * offset,
           y: (a.y + b.y) / 2 + ((b.x - a.x) / chord) * offset,
         };
-      out.push(
-        ...arc(
-          center,
-          r,
-          Math.atan2(a.y - center.y, a.x - center.x),
-          4 * Math.atan(bulge),
-        ).slice(1, -1),
-      );
+      const sampled = arc(
+        center,
+        r,
+        Math.atan2(a.y - center.y, a.x - center.x),
+        4 * Math.atan(bulge),
+      ).slice(1, -1);
+      if (out.length + sampled.length > MAX_ENTITY_POINTS) complexityError();
+      out.push(...sampled);
     }
   }
   return out.filter(
@@ -239,12 +254,23 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
   const pairs = text.split(/\r?\n/);
   let inEntities = false;
   let entityType = "";
+  let rawVertices = 0,
+    entityVertices = 0;
   for (let i = 0; i < pairs.length - 1; i += 2) {
     const code = pairs[i].trim(),
       value = pairs[i + 1].trim();
     if (code === "2" && value === "ENTITIES") inEntities = true;
     if (inEntities && code === "0" && value === "ENDSEC") inEntities = false;
-    if (inEntities && code === "0") entityType = value;
+    if (inEntities && code === "0") {
+      entityType = value;
+      if (value !== "VERTEX" && value !== "SEQEND") entityVertices = 0;
+    }
+    if (inEntities && code === "10") {
+      rawVertices++;
+      entityVertices++;
+      if (rawVertices > MAX_TOTAL_POINTS || entityVertices > MAX_ENTITY_POINTS)
+        complexityError();
+    }
     if (inEntities) validatePlanarGroup(entityType, code, value);
     if (
       inEntities &&
@@ -264,6 +290,16 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
     )
       fail(`不支持实体 ${value}，请转换为闭合多段线后导入`);
   }
+  sampledPoints = rawVertices;
+  const contourCache = new Map<Entity, Point[]>();
+  const getContour = (e: Entity) => {
+    let points = contourCache.get(e);
+    if (!points) {
+      points = contour(e);
+      contourCache.set(e, points);
+    }
+    return points.slice();
+  };
   let parsed;
   try {
     parsed = new DxfParser().parseSync(text);
@@ -285,11 +321,11 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
       const list = chains.get(e.layer!) ?? [];
       list.push(e);
       chains.set(e.layer!, list);
-    } else shapes.push({ e, points: contour(e) });
+    } else shapes.push({ e, points: getContour(e) });
   }
   for (const [layer, list] of chains) {
     const endpoints = list.flatMap((e) => {
-      const path = contour(e);
+      const path = getContour(e);
       return [path[0], path.at(-1)!];
     });
     for (const point of endpoints) {
@@ -303,7 +339,7 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
     }
     while (list.length) {
       const first = list.shift()!,
-        points = contour(first),
+        points = getContour(first),
         handles = [first.handle];
       while (
         Math.hypot(
@@ -315,7 +351,7 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
         let found = -1,
           reverse = false;
         for (let i = 0; i < list.length; i++) {
-          const path = contour(list[i]);
+          const path = getContour(list[i]);
           if (Math.hypot(end.x - path[0].x, end.y - path[0].y) < 0.001) {
             found = i;
             break;
@@ -330,8 +366,10 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
         }
         if (found < 0) fail(`图层 ${layer} 的 LINE/ARC 链未闭合`);
         const e = list.splice(found, 1)[0],
-          path = contour(e);
+          path = getContour(e);
         if (reverse) path.reverse();
+        if (points.length + path.length - 1 > MAX_ENTITY_POINTS)
+          complexityError();
         points.push(...path.slice(1));
         handles.push(e.handle);
       }
@@ -339,6 +377,8 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
       shapes.push({ e: { ...first, handle: handles.join("+") }, points });
     }
   }
+  if (shapes.reduce((n, s) => n + s.points.length, 0) > MAX_TOTAL_POINTS)
+    complexityError();
   for (const shape of shapes)
     if (!validContour(shape.points))
       fail(`实体 ${shape.e.handle} 轮廓自交或无效`);

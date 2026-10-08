@@ -258,3 +258,23 @@ it("restricts feature ownership tolerance to a 0.05mm boundary strip", () => {
   ).toHaveLength(1);
   expect(() => parseDxf(dxf(stock + cut + feature(0.06)))).toThrow(/孔槽|归属/);
 });
+it("rejects enormous circle sampling before allocation", () => {
+  expect(() =>
+    parseDxf(
+      dxf("0\nCIRCLE\n5\nhuge\n8\nHOLE_12MM\n10\n0\n20\n0\n40\n1e300\n"),
+    ),
+  ).toThrow(/复杂|采样|上限/);
+});
+it("rejects excessive raw vertices before geometry validation", () => {
+  expect(() =>
+    parseDxf(
+      dxf(
+        poly(
+          "huge",
+          "CUT_12MM",
+          Array.from({ length: 4097 }, (_, i) => [i, 0]),
+        ),
+      ),
+    ),
+  ).toThrow(/复杂|顶点|上限/);
+});
