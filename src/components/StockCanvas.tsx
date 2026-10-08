@@ -15,6 +15,16 @@ export function StockCanvas({ layout }: { layout: Layout }) {
     () => measureLayout(project, layout, s.settings),
     [project, layout, s.settings],
   );
+  const thicknessLegend = (thick: boolean) =>
+    [
+      ...new Set(
+        layout.sheets
+          .filter((sheet) => sheet.thickness > 5 === thick)
+          .map((sheet) => sheet.thickness),
+      ),
+    ]
+      .sort((a, b) => a - b)
+      .join(" / ") + " mm 板材";
   const gap = 160,
     total = layout.sheets.reduce((n, v) => n + v.width + gap, 0) - gap,
     height = Math.max(...layout.sheets.map((v) => v.height));
@@ -218,14 +228,18 @@ export function StockCanvas({ layout }: { layout: Layout }) {
         ))}
       </svg>
       <div className="legend">
-        <span>
-          <i className="tan" />
-          12 mm 板材
-        </span>
-        <span>
-          <i className="sage" />
-          薄板
-        </span>
+        {layout.sheets.some((sheet) => sheet.thickness > 5) && (
+          <span>
+            <i className="tan" />
+            {thicknessLegend(true)}
+          </span>
+        )}
+        {layout.sheets.some((sheet) => sheet.thickness <= 5) && (
+          <span>
+            <i className="sage" />
+            {thicknessLegend(false)}
+          </span>
+        )}
         <span>
           <i className="blue" />
           通孔

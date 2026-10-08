@@ -7,7 +7,7 @@ import { NestPanel } from "./components/NestPanel";
 import { PartInspector } from "./components/PartInspector";
 import { PartsTable } from "./components/PartsTable";
 import { measureLayout, validateLayout } from "./core/geometry";
-import { exportSvg } from "./core/export";
+import { exportCurrentSvg, exportEligibility } from "./core/export";
 export const formatPercent = (n: number) => `${(n * 100).toFixed(1)}%`;
 export default function App() {
   const s = useWorkbench(),
@@ -44,11 +44,27 @@ export default function App() {
         : [],
     [s.project, layout, s.current, s.settings],
   );
+  const exportStatus = useMemo(
+    () =>
+      s.project && s.current
+        ? exportEligibility(s.project, s.current, s.settings)
+        : { allowed: false, reason: "请先导入图纸" },
+    [s.project, s.current, s.settings],
+  );
   function download() {
-    if (!s.project || !s.current) return;
-    const blob = new Blob([exportSvg(s.project, s.current)], {
-      type: "image/svg+xml;charset=utf-8",
-    });
+    if (
+      !s.project ||
+      !s.current ||
+      s.importing ||
+      !exportEligibility(s.project, s.current, s.settings).allowed
+    )
+      return;
+    const blob = new Blob(
+      [exportCurrentSvg(s.project, s.current, s.settings)],
+      {
+        type: "image/svg+xml;charset=utf-8",
+      },
+    );
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -145,11 +161,19 @@ export default function App() {
             </small>
           </div>
           <div className="metric-export">
-            <button onClick={download} disabled={s.importing}>
+            <button
+              onClick={download}
+              disabled={s.importing || !exportStatus.allowed}
+              title={exportStatus.reason}
+            >
               <Download size={17} />
               导出当前 SVG
             </button>
-            <small>毫米单位 · 排版参考图</small>
+            <small
+              className={!exportStatus.allowed ? "export-blocked" : undefined}
+            >
+              {exportStatus.reason}
+            </small>
           </div>
         </section>
       )}

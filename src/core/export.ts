@@ -1,5 +1,5 @@
-import type { Project, Layout, Point } from "./types";
-import { transformPoints } from "./geometry";
+import type { Project, Layout, Point, NestSettings } from "./types";
+import { transformPoints, validateLayout } from "./geometry";
 const esc = (s: string) =>
   s.replace(
     /[&<>"']/g,
@@ -58,4 +58,52 @@ export function exportSvg(project: Project, layout: Layout) {
         .join("")}</g>`;
     })
     .join("")}</svg>`;
+}
+
+/** Source placement is an inspection exception, not a claim of cutter legality. */
+export function exportEligibility(
+  project: Project,
+  current: Layout,
+  settings: NestSettings,
+) {
+  const originals = new Map(
+    project.original.placements.map((p) => [p.partId, p]),
+  );
+  const source =
+    current.placements.length === originals.size &&
+    new Set(current.placements.map((p) => p.partId)).size === originals.size &&
+    current.placements.every((p) => {
+      const original = originals.get(p.partId);
+      return (
+        original &&
+        p.sheetId === original.sheetId &&
+        p.x === original.x &&
+        p.y === original.y &&
+        p.rotation === original.rotation
+      );
+    });
+  const issues = validateLayout(
+    { ...project, original: current },
+    current,
+    settings,
+  );
+  const allowed = source || issues.length === 0;
+  return {
+    allowed,
+    source,
+    reason: !allowed
+      ? `当前排版有 ${issues.length} 项冲突，请调整参数或恢复原图后导出。`
+      : source && issues.length
+        ? "原图排版可导出供核对"
+        : "毫米单位 · 排版参考图",
+  };
+}
+export function exportCurrentSvg(
+  project: Project,
+  current: Layout,
+  settings: NestSettings,
+) {
+  const eligibility = exportEligibility(project, current, settings);
+  if (!eligibility.allowed) throw new Error(eligibility.reason);
+  return exportSvg(project, current);
 }

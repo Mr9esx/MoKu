@@ -838,3 +838,14 @@ footer {
     display: inline-flex;
   }
 }
+.metrics small.export-blocked {
+  color: #a15f43;
+  max-width: 180px;
+  line-height: 1.6;
+  text-align: right;
+}
+@media (max-width: 800px) {
+  .metrics small.export-blocked {
+    text-align: left;
+  }
+}

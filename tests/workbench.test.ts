@@ -1,8 +1,13 @@
 import { it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { parseDxf } from "../src/core/dxf";
+import { optimizeLayout } from "../src/core/nesting";
 import { createWorkbenchStore } from "../src/store";
-import { exportSvg } from "../src/core/export";
+import {
+  exportSvg,
+  exportCurrentSvg,
+  exportEligibility,
+} from "../src/core/export";
 const project = () => parseDxf(readFileSync("public/sample.dxf", "utf8"));
 it("invalidates candidates on settings and rejects stale results", () => {
   const s = createWorkbenchStore();
@@ -62,6 +67,17 @@ it("exports millimetres and transforms holes and pockets with rotation", () => {
   expect(svg).toContain('data-feature="hole"');
   expect(svg).toContain('data-feature="pocket"');
   expect(svg).toContain(part.name);
+  const sheet = p.sheets.find((s) => s.id === part.stockId)!;
+  for (const [feature, contour] of [
+    ["outline", part.outline],
+    ["hole", part.holes[0]],
+    ["pocket", part.pockets[0].outline],
+  ] as const) {
+    const first = contour[0];
+    const x = 11 + part.height - first.y;
+    const y = sheet.height - (22 + first.x);
+    expect(svg).toContain(`data-feature="${feature}" points="${x},${y}`);
+  }
 });
 it("escapes user supplied SVG metadata and refuses nonfinite coordinates", () => {
   const p = project();
@@ -101,4 +117,48 @@ it("presents CAD positive Y upward in SVG while leaving text upright and coordin
   );
   expect(svg).not.toContain("scale(1 -1)");
   expect(p.original).toEqual(source);
+});
+
+it("denies an applied moved arrangement made illegal by settings or thickness but allows exact source placement", () => {
+  const store = createWorkbenchStore();
+  store.getState().importProject(project());
+  const imported = store.getState().project!;
+  const result = optimizeLayout(imported, {
+    ...store.getState().settings,
+    mode: "machining",
+    iterations: 1,
+  });
+  expect(result.layout).not.toBeNull();
+  expect(result.layout!.placements).not.toEqual(imported.original.placements);
+  const run = store.getState().beginSearch();
+  store.getState().receiveResult(run, result);
+  store.getState().apply();
+  const check = () =>
+    exportEligibility(
+      store.getState().project!,
+      store.getState().current!,
+      store.getState().settings,
+    );
+  const output = () =>
+    exportCurrentSvg(
+      store.getState().project!,
+      store.getState().current!,
+      store.getState().settings,
+    );
+  expect(check().allowed).toBe(true);
+  expect(output()).toContain("<svg");
+  store.getState().setSettings({ gap: 50 });
+  expect(check().allowed).toBe(false);
+  expect(output).toThrow(/冲突|恢复原图/);
+  store.getState().setSettings({ gap: 3, margin: 100 });
+  expect(check().allowed).toBe(false);
+  expect(output).toThrow(/冲突|恢复原图/);
+  store.getState().setSettings({ margin: 6 });
+  store.getState().setThickness(imported.sheets[0].id, 5);
+  expect(check().allowed).toBe(false);
+  expect(output).toThrow(/冲突|恢复原图/);
+  store.getState().reset();
+  expect(check().allowed).toBe(true);
+  expect(check().source).toBe(true);
+  expect(output()).toContain("<svg");
 });
