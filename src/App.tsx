@@ -1,260 +1,479 @@
-import { useEffect, useMemo, useRef } from "react";
-import { Upload, Download, ArrowUpRight, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Upload,
+  Download,
+  MousePointer2,
+  Hand,
+  Plus,
+  Layers,
+  Settings2,
+  HelpCircle,
+  Play,
+  Square,
+  Undo2,
+  RotateCcw,
+  ChevronDown,
+  Search,
+  X,
+  Lock,
+  Unlock,
+  RotateCw,
+} from "lucide-react";
 import { useWorkbench } from "./store";
 import { importDrawing } from "./import";
 import { StockCanvas } from "./components/StockCanvas";
-import { NestPanel } from "./components/NestPanel";
-import { PartInspector } from "./components/PartInspector";
-import { PartsTable } from "./components/PartsTable";
+import { WorkspaceDialogs, type Dialog } from "./components/WorkspaceDialogs";
 import { measureLayout, validateLayout } from "./core/geometry";
-import { exportCurrentSvg, exportEligibility } from "./core/export";
+import { points, displayPoints } from "./core/export";
+import type { Part, Rotation } from "./core/types";
 export const formatPercent = (n: number) => `${(n * 100).toFixed(1)}%`;
+function Thumbnail({ part }: { part: Part }) {
+  return (
+    <svg
+      viewBox={`-8 -8 ${part.width + 16} ${part.height + 16}`}
+      aria-hidden="true"
+    >
+      <polygon
+        points={points(displayPoints(part.outline, part.height))}
+        fill={part.thickness > 5 ? "#cdb68e" : "#a8b59b"}
+        stroke="#877c67"
+        strokeWidth="2"
+      />
+      {part.pockets.map((p, i) => (
+        <polygon
+          key={`p${i}`}
+          points={points(displayPoints(p.outline, part.height))}
+          fill="#e9e8d8"
+        />
+      ))}
+      {part.holes.map((p, i) => (
+        <polygon
+          key={`h${i}`}
+          points={points(displayPoints(p, part.height))}
+          fill="#aac7d7"
+        />
+      ))}
+    </svg>
+  );
+}
 export default function App() {
   const s = useWorkbench(),
-    input = useRef<HTMLInputElement>(null);
+    [dialog, setDialog] = useState<Dialog>(null),
+    [tool, setTool] = useState<"select" | "hand">("select"),
+    [magnet, setMagnet] = useState(true),
+    [query, setQuery] = useState(""),
+    [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
     void importDrawing();
   }, []);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (
+        dialog ||
+        (e.target as HTMLElement).closest(
+          "input,textarea,select,[contenteditable=true]",
+        )
+      )
+        return;
+      if (e.key.toLowerCase() === "v") setTool("select");
+      if (e.key.toLowerCase() === "h") setTool("hand");
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        s.undo();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [dialog, s.undo]);
+  const project = s.view === "original" ? (s.source ?? s.project) : s.project;
   const layout =
     s.view === "original"
-      ? s.project?.original
+      ? project?.original
       : s.view === "candidate"
         ? s.candidate?.layout
         : s.current;
   const metrics = useMemo(
     () =>
-      s.project && layout ? measureLayout(s.project, layout, s.settings) : null,
-    [s.project, layout, s.settings],
-  );
-  const baseline = useMemo(
-    () =>
-      s.project
-        ? measureLayout(s.project, s.project.original, s.settings)
-        : null,
-    [s.project, s.settings],
+      project && layout ? measureLayout(project, layout, s.settings) : null,
+    [project, layout, s.settings],
   );
   const issues = useMemo(
     () =>
-      s.project && layout && s.current
-        ? validateLayout(
-            { ...s.project, original: s.current },
-            layout,
-            s.settings,
-          )
+      project && layout
+        ? validateLayout({ ...project, original: layout }, layout, s.settings)
         : [],
-    [s.project, layout, s.current, s.settings],
+    [project, layout, s.settings],
   );
-  const exportStatus = useMemo(
-    () =>
-      s.project && s.current
-        ? exportEligibility(s.project, s.current, s.settings)
-        : { allowed: false, reason: "请先导入图纸" },
-    [s.project, s.current, s.settings],
-  );
-  function download() {
-    if (
-      !s.project ||
-      !s.current ||
-      s.importing ||
-      !exportEligibility(s.project, s.current, s.settings).allowed
-    )
-      return;
-    const blob = new Blob(
-      [exportCurrentSvg(s.project, s.current, s.settings)],
-      {
-        type: "image/svg+xml;charset=utf-8",
-      },
-    );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = s.project.name.replace(/\.dxf$/i, "") + "-排版.svg";
-    // Attach the temporary anchor for browser download compatibility.
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    // Retain the blob URL long enough for browsers that begin transfers lazily.
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-  }
+  const part = project?.parts.find((v) => v.id === s.selected),
+    placement = layout?.placements.find((v) => v.partId === s.selected);
+  const items =
+    s.project?.parts.filter((v) =>
+      `${v.name} ${v.id} ${v.thickness}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+    ) ?? [];
   return (
-    <main>
-      <header>
-        <a className="brand" href="#">
+    <main className="workspace">
+      <header className="topbar">
+        <div className="brand">
           <span className="brand-mark">木</span>
-          <span>
-            木作 <i>/</i> 板材工作台<small>WOODWORK · MATERIAL STUDY</small>
-          </span>
-        </a>
-        <div className="header-actions">
-          <button onClick={() => void importDrawing()} disabled={s.importing}>
-            载入示例
-            <ArrowUpRight size={15} />
+          <strong>木作</strong>
+          <span className="brand-sub">板材工作台</span>
+        </div>
+        <span className="file-info">
+          {s.project?.sheets[0]?.width ?? 1220} ×{" "}
+          {s.project?.sheets[0]?.height ?? 2440} mm{" "}
+          <span> / {s.project?.name ?? "等待图纸"}</span>
+        </span>
+        <div className="topbar-right">
+          <span className="local-indicator">本地处理</span>
+          <button disabled={s.importing} onClick={() => void importDrawing()}>
+            载入示例 ↗
           </button>
-          <button className="primary" onClick={() => input.current?.click()}>
-            <Upload size={16} />
-            导入 DXF
-          </button>
-          <input
-            ref={input}
-            hidden
-            type="file"
-            accept=".dxf"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void importDrawing(f);
-              e.target.value = "";
-            }}
-          />
         </div>
       </header>
-      <section className="intro">
-        <div>
-          <p className="eyebrow">从图纸，到更从容的下料。</p>
-          <h1>
-            每一块板，
-            <br className="mobile-break" />
-            都值得好好安排。
-          </h1>
-          <p className="source-name">
-            {s.importing
-              ? "正在读取图纸…"
-              : (s.project?.name ?? "导入毫米单位二维 DXF")}{" "}
-            <span>
-              {s.project
-                ? `${s.project.sheets.length} 张板材 / ${s.project.parts.length} 个零件`
-                : ""}
-            </span>
-          </p>
-        </div>
-        <div className="intro-note">
-          保留真实轮廓与孔槽
-          <br />
-          检查间距，寻找可用余料<span>二维板材排版 · 01</span>
-        </div>
-      </section>
-      {metrics && (
-        <section className="metrics">
-          <div>
-            <span>轮廓利用率</span>
-            <strong>{formatPercent(metrics.utilization)}</strong>
-            <small>按当前排版板材总面积</small>
-          </div>
-          <div>
-            <span>近似加工行程</span>
-            <strong>
-              {(metrics.travel / 1000).toFixed(2)}
-              <em>m</em>
-            </strong>
-            <small>
-              原图 {(baseline!.travel / 1000).toFixed(2)} m · 零件中心间空移
-            </small>
-          </div>
-          <div>
-            <span>可复用矩形余料</span>
-            <strong>
-              {(metrics.reusableArea / 1e6).toFixed(2)}
-              <em>m²</em>
-            </strong>
-            <small>
-              原图 {(baseline!.reusableArea / 1e6).toFixed(2)} m² ·
-              每板保守最大矩形
-            </small>
-          </div>
-          <div className="metric-export">
-            <button
-              onClick={download}
-              disabled={s.importing || !exportStatus.allowed}
-              title={exportStatus.reason}
-            >
-              <Download size={17} />
-              导出当前 SVG
-            </button>
-            <small
-              className={!exportStatus.allowed ? "export-blocked" : undefined}
-            >
-              {exportStatus.reason}
-            </small>
-          </div>
-        </section>
-      )}
-      <div className="workbench">
-        <div className="main-drawing">
-          <div className="view-switch">
-            <div>
-              {(
-                [
-                  ["original", "原始图纸"],
-                  ["current", "当前排版"],
-                  ["candidate", "候选方案"],
-                ] as const
-              ).map(([v, label]) => (
-                <button
-                  className={s.view === v ? "active" : ""}
-                  key={v}
-                  disabled={v === "candidate" && !s.candidate?.layout}
-                  onClick={() => s.setView(v)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <button onClick={s.reset} disabled={!s.project || s.importing}>
-              <RotateCcw size={14} />
-              恢复原图
-            </button>
-          </div>
-          {layout && s.project ? (
-            <StockCanvas layout={layout} metrics={metrics!} />
-          ) : (
-            <div className="loading-paper">
-              {s.importing ? "正在解析真实 DXF 轮廓…" : "等待图纸"}
-            </div>
-          )}
-          <div className="validation">
-            <div className="section-title">
-              <span>排版检查</span>
-              <small>
-                {issues.length
-                  ? `${issues.length} 项需要核对`
-                  : "当前参数下未发现冲突"}
-              </small>
-            </div>
-            {issues.length ? (
-              <div className="issue-list">
-                {issues.map((issue, i) => (
-                  <button
-                    key={i}
-                    onClick={() =>
-                      issue.partIds[0] && s.select(issue.partIds[0])
-                    }
-                  >
-                    {issue.message}
-                    <ArrowUpRight size={13} />
-                  </button>
-                ))}
-              </div>
+      <div className="workspace-surface">
+        <div className="main-actions">
+          <button
+            className="primary nest-trigger"
+            disabled={!s.project || s.importing}
+            onClick={() =>
+              s.status === "searching" ? s.cancel() : setDialog("settings")
+            }
+          >
+            {s.status === "searching" ? (
+              <Square size={16} />
             ) : (
-              <p className="hint">
-                轮廓、板边、间距和板厚均已检查。请在加工前核对刀具、槽深与原始图纸。
-              </p>
-            )}
-            {s.project?.warnings.map((w, i) => (
-              <p className="warning" key={i}>
-                {w}
-              </p>
+              <Play size={16} />
+            )}{" "}
+            {s.status === "searching" ? "取消搜索" : "排版"}
+          </button>
+          <button
+            className="floating"
+            disabled={!s.history.length}
+            title="撤销 · Ctrl/⌘ Z"
+            aria-label="撤销"
+            onClick={s.undo}
+          >
+            <Undo2 size={17} />
+          </button>
+          <button
+            className="floating"
+            disabled={!s.project}
+            title="恢复导入组件原始位置，保留新增库存，可撤销"
+            aria-label="恢复原图"
+            onClick={s.reset}
+          >
+            <RotateCcw size={17} />
+          </button>
+        </div>
+        <aside
+          className={`parts-panel floating ${collapsed ? "collapsed" : ""}`}
+        >
+          <div className="panel-heading">
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              aria-expanded={!collapsed}
+            >
+              <ChevronDown size={14} />
+              <strong>组件</strong>
+              <span>{s.project?.parts.length ?? 0}</span>
+            </button>
+            <button
+              title="新增组件"
+              aria-label="新增组件"
+              onClick={() => setDialog("part")}
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+          {!collapsed && (
+            <>
+              <label className="component-search">
+                <Search size={14} />
+                <input
+                  placeholder="搜索组件"
+                  aria-label="搜索组件"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </label>
+              <div className="parts-list">
+                {items.map((p) => {
+                  const current = s.current?.placements.find(
+                      (v) => v.partId === p.id,
+                    ),
+                    source = s.source?.original.placements.find(
+                      (v) => v.partId === p.id,
+                    );
+                  return (
+                    <button
+                      key={p.id}
+                      className={`part-row ${s.selected === p.id ? "selected" : ""}`}
+                      onClick={() => {
+                        s.select(p.id);
+                        setTool("select");
+                      }}
+                    >
+                      <span className="thumbnail">
+                        <Thumbnail part={p} />
+                      </span>
+                      <span className="part-row-copy">
+                        <strong>{p.name}</strong>
+                        <span>
+                          {Math.round(p.width)} × {Math.round(p.height)} mm
+                        </span>
+                        <small>
+                          {p.thickness} mm · 当前板{" "}
+                          {s.project!.sheets.findIndex(
+                            (v) => v.id === current?.sheetId,
+                          ) + 1}
+                          {source
+                            ? ` / 原板 ${s.source!.sheets.findIndex((v) => v.id === source.sheetId) + 1}`
+                            : " / 新建"}
+                        </small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="panel-foot">
+                {s.project?.sheets.length ?? 0} 张板材 · 间距 {s.settings.gap}{" "}
+                mm · 板边 {s.settings.margin} mm
+              </div>
+            </>
+          )}
+        </aside>
+        <div className={`canvas-region ${collapsed ? "list-collapsed" : ""}`}>
+          <div className="view-switch floating">
+            {(
+              [
+                ["original", "原始图纸"],
+                ["current", "当前排版"],
+                ["candidate", "候选方案"],
+              ] as const
+            ).map(([view, label]) => (
+              <button
+                key={view}
+                className={s.view === view ? "active" : ""}
+                disabled={view === "candidate" && !s.candidate?.layout}
+                onClick={() => s.setView(view)}
+              >
+                {label}
+              </button>
             ))}
           </div>
+          {project && layout && metrics ? (
+            <StockCanvas
+              project={project}
+              layout={layout}
+              metrics={metrics}
+              tool={tool}
+              magnet={magnet}
+              onMagnet={() => setMagnet(!magnet)}
+            />
+          ) : (
+            <div className="empty-canvas">
+              {s.importing ? "正在识别 DXF 图纸…" : "请从底部工具栏导入 DXF"}
+            </div>
+          )}
+          {(s.message || s.candidate || s.status === "searching") && (
+            <div className="progress-strip floating" role="status">
+              <span>
+                {s.status === "searching"
+                  ? `搜索中 · ${s.attempt} / ${s.settings.iterations} 次`
+                  : s.message}
+              </span>
+              {s.candidate?.metrics && (
+                <small>
+                  利用率 {formatPercent(s.candidate.metrics.utilization)} · 行程{" "}
+                  {(s.candidate.metrics.travel / 1000).toFixed(2)} m · 余料{" "}
+                  {(s.candidate.metrics.reusableArea / 1e6).toFixed(2)} m²
+                </small>
+              )}
+              {s.candidate && (
+                <button
+                  className="primary"
+                  disabled={s.status === "searching"}
+                  onClick={s.apply}
+                >
+                  应用候选
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        <aside>
-          <PartInspector />
-          <NestPanel />
-        </aside>
+        {part && (
+          <aside className="inspector floating">
+            <div className="panel-heading">
+              <strong>组件属性</strong>
+              <button
+                aria-label="关闭组件属性"
+                title="关闭"
+                onClick={() => s.select(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <h2>{part.name}</h2>
+            <div className="inspector-preview">
+              <Thumbnail part={part} />
+            </div>
+            <div className="part-dimensions">
+              {part.width.toFixed(1)} × {part.height.toFixed(1)}{" "}
+              <small>mm</small>
+            </div>
+            <dl>
+              <div>
+                <dt>板厚</dt>
+                <dd>{part.thickness} mm</dd>
+              </div>
+              <div>
+                <dt>所在板材</dt>
+                <dd>
+                  板{" "}
+                  {project!.sheets.findIndex(
+                    (v) => v.id === placement?.sheetId,
+                  ) + 1}
+                </dd>
+              </div>
+              <div>
+                <dt>通孔</dt>
+                <dd>{part.holes.length} 处</dd>
+              </div>
+              <div>
+                <dt>铣槽</dt>
+                <dd>{part.pockets.length} 处</dd>
+              </div>
+              {part.pockets.length > 0 && (
+                <div>
+                  <dt>槽深</dt>
+                  <dd>
+                    {[
+                      ...new Set(part.pockets.map((v) => v.depth ?? "未知")),
+                    ].join(" / ")}{" "}
+                    mm
+                  </dd>
+                </div>
+              )}
+              <div>
+                <dt>旋转</dt>
+                <dd>{placement?.rotation ?? 0}°</dd>
+              </div>
+            </dl>
+            <div className="inspector-actions">
+              <button onClick={() => s.toggleLock(part.id)}>
+                {placement?.locked ? <Lock size={14} /> : <Unlock size={14} />}{" "}
+                {placement?.locked ? "解锁" : "锁定"}
+              </button>
+              <button
+                disabled={
+                  !s.settings.allowRotation ||
+                  placement?.locked ||
+                  s.view !== "current"
+                }
+                onClick={() =>
+                  placement &&
+                  s.movePart({
+                    ...placement,
+                    rotation: ((placement.rotation + 90) % 360) as Rotation,
+                  })
+                }
+              >
+                <RotateCw size={14} />
+                旋转 90°
+              </button>
+            </div>
+            <p className="hint">
+              {s.view === "original"
+                ? "正在查看不可变原图；切换当前排版后拖动编辑。"
+                : "拖动组件调整位置，蓝线表示对齐参考。"}
+            </p>
+          </aside>
+        )}
+        <nav className="bottom-toolbar floating" aria-label="工作区工具栏">
+          <button
+            title="选择 · V"
+            aria-label="选择工具"
+            className={tool === "select" ? "active" : ""}
+            onClick={() => setTool("select")}
+          >
+            <MousePointer2 size={18} />
+          </button>
+          <button
+            title="平移 · H"
+            aria-label="平移工具"
+            className={tool === "hand" ? "active" : ""}
+            onClick={() => setTool("hand")}
+          >
+            <Hand size={18} />
+          </button>
+          <span className="toolbar-divider" />
+          <button title="导入本地 DXF 图纸" onClick={() => setDialog("import")}>
+            <Upload size={17} />
+            <span>DXF 导入</span>
+          </button>
+          <button
+            title="新增矩形或圆形组件"
+            aria-label="新增组件"
+            onClick={() => setDialog("part")}
+          >
+            <Plus size={18} />
+            <span>组件</span>
+          </button>
+          <button
+            title="新增板材 / 板材设置"
+            aria-label="板材设置"
+            onClick={() => setDialog("stock")}
+          >
+            <Layers size={18} />
+            <span>板材</span>
+          </button>
+          <button
+            title="排版设置"
+            aria-label="排版设置"
+            onClick={() => setDialog("settings")}
+          >
+            <Settings2 size={18} />
+          </button>
+          <button
+            title="导出 SVG"
+            aria-label="导出"
+            onClick={() => setDialog("export")}
+          >
+            <Download size={18} />
+          </button>
+          <button
+            title="操作帮助"
+            aria-label="操作帮助"
+            onClick={() => setDialog("help")}
+          >
+            <HelpCircle size={18} />
+          </button>
+        </nav>
       </div>
-      <PartsTable />
-      <footer>
-        <span>木作 / 板材工作台</span>
-        <span>浏览器内处理 · 图纸不上传 · SVG 非 CNC 刀路</span>
+      <footer className="statusbar">
+        <span>
+          {tool === "select" ? "↖ 选择 · V" : "✋ 平移 · H"}{" "}
+          <span className="status-help">拖动组件调整 · Alt 关闭磁吸</span>
+        </span>
+        <span>
+          {issues.length ? (
+            <button
+              className="status-warning"
+              onClick={() => setDialog("check")}
+            >
+              {issues.length} 项待核对
+            </button>
+          ) : (
+            "轮廓与间距检查通过"
+          )}{" "}
+          · 已放 {layout?.placements.length ?? 0}/{project?.parts.length ?? 0} ·
+          用板 {new Set(layout?.placements.map((v) => v.sheetId)).size} 张 ·
+          利用率 {formatPercent(metrics?.utilization ?? 0)}
+        </span>
       </footer>
+      <WorkspaceDialogs dialog={dialog} close={() => setDialog(null)} />
     </main>
   );
 }

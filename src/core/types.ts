@@ -34,6 +34,7 @@ export type Placement = {
 };
 export type Layout = { sheets: Stock[]; placements: Placement[] };
 export type Project = {
+  importedSource?: Project;
   name: string;
   units: "mm";
   sheets: Stock[];

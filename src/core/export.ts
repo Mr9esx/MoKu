@@ -53,7 +53,7 @@ export function exportSvg(project: Project, layout: Layout) {
             transformPoints([part.label], part, p),
             s.height,
           )[0];
-          return `<g id="part-${esc(part.id)}"><title>${esc(part.name)}</title>${path(part.outline, "outline", part.thickness > 5 ? "#ccb58e" : "#a4b69c")}${part.pockets.map((pocket) => path(pocket.outline, "pocket", "#e6e8da")).join("")}${part.holes.map((h) => path(h, "hole", "#a4c2d3")).join("")}<text x="${label.x}" y="${label.y}" text-anchor="middle" font-size="18">${esc(part.name)}</text></g>`;
+          return `<g id="part-${esc(part.id)}" data-thickness-mm="${part.thickness}"><title>${esc(part.name)}</title>${path(part.outline, "outline", part.thickness > 5 ? "#ccb58e" : "#a4b69c")}${part.pockets.map((pocket) => `<g data-pocket-depth-mm="${pocket.depth ?? "unknown"}">${path(pocket.outline, "pocket", "#e6e8da")}</g>`).join("")}${part.holes.map((h) => path(h, "hole", "#a4c2d3")).join("")}<text x="${label.x}" y="${label.y}" text-anchor="middle" font-size="18">${esc(part.name)}</text></g>`;
         })
         .join("")}</g>`;
     })
@@ -67,9 +67,31 @@ export function exportEligibility(
   settings: NestSettings,
 ) {
   const originals = new Map(
-    project.original.placements.map((p) => [p.partId, p]),
+    (project.importedSource ?? project).original.placements.map((p) => [
+      p.partId,
+      p,
+    ]),
   );
   const source =
+    (!project.importedSource ||
+      (JSON.stringify(
+        project.parts.map(
+          ({ thickness: _t, stockId: _s, ...geometry }) => geometry,
+        ),
+      ) ===
+        JSON.stringify(
+          project.importedSource.parts.map(
+            ({ thickness: _t, stockId: _s, ...geometry }) => geometry,
+          ),
+        ) &&
+        JSON.stringify(
+          project.sheets.map(({ thickness: _t, ...stock }) => stock),
+        ) ===
+          JSON.stringify(
+            project.importedSource.sheets.map(
+              ({ thickness: _t, ...stock }) => stock,
+            ),
+          ))) &&
     current.placements.length === originals.size &&
     new Set(current.placements.map((p) => p.partId)).size === originals.size &&
     current.placements.every((p) => {

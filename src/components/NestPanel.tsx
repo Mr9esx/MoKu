@@ -1,6 +1,6 @@
 import { Play, Square, Check, Undo2 } from "lucide-react";
 import { useWorkbench, startSearch } from "../store";
-export function NestPanel() {
+export function NestPanel({ onStart = startSearch }: { onStart?: () => void }) {
   const s = useWorkbench();
   const fields = [
     ["gap", "零件间距", 0, 50],
@@ -79,14 +79,17 @@ export function NestPanel() {
         ) : (
           <button
             className="primary"
-            onClick={startSearch}
+            onClick={onStart}
             disabled={!s.project || s.importing || !s.project.parts.length}
           >
             <Play size={16} />
             开始排版
           </button>
         )}
-        <button disabled={!s.candidate?.layout || s.status === "searching"} onClick={s.apply}>
+        <button
+          disabled={!s.candidate?.layout || s.status === "searching"}
+          onClick={s.apply}
+        >
           <Check size={16} />
           应用
         </button>
