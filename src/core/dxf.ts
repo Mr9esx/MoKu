@@ -36,12 +36,18 @@ const complexityError = () =>
   fail(
     "图纸轮廓过于复杂：每个实体最多 4096 个采样顶点，总计最多 50000 个；请拆分图纸后导入",
   );
-function arc(center: Point, r: number, start: number, sweep: number) {
+function arc(
+  center: Point,
+  r: number,
+  start: number,
+  sweep: number,
+  availablePoints = MAX_ENTITY_POINTS,
+) {
   const step = 2 * Math.acos(Math.max(-1, 1 - 0.025 / r)),
     n = Math.max(2, Math.ceil(Math.abs(sweep) / step));
   if (
     !Number.isFinite(n) ||
-    n + 1 > MAX_ENTITY_POINTS ||
+    n + 1 > availablePoints ||
     sampledPoints + n + 1 > MAX_TOTAL_POINTS
   )
     complexityError();
@@ -103,6 +109,7 @@ function contour(e: Entity): Point[] {
         r,
         Math.atan2(a.y - center.y, a.x - center.x),
         4 * Math.atan(bulge),
+        MAX_ENTITY_POINTS - out.length - (vertices.length - i - 1) + 2,
       ).slice(1, -1);
       if (out.length + sampled.length > MAX_ENTITY_POINTS) complexityError();
       out.push(...sampled);

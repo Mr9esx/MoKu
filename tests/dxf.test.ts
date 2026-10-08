@@ -278,3 +278,10 @@ it("rejects excessive raw vertices before geometry validation", () => {
     ),
   ).toThrow(/复杂|顶点|上限/);
 });
+it("rejects aggregate arc sampling beyond the total resource budget", () => {
+  const circles = Array.from(
+    { length: 30 },
+    (_, i) => `0\nCIRCLE\n5\nc${i}\n8\nHOLE_12MM\n10\n${i}\n20\n0\n40\n20000\n`,
+  ).join("");
+  expect(() => parseDxf(dxf(circles))).toThrow(/复杂|上限/);
+});

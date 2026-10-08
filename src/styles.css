@@ -822,3 +822,19 @@ footer {
     width: 14px;
   }
 }
+@media (max-width: 520px) {
+  header {
+    height: auto;
+    min-height: 112px;
+    padding: 18px 0 13px;
+    flex-wrap: wrap;
+    gap: 13px;
+  }
+  .header-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .header-actions > button:first-child {
+    display: inline-flex;
+  }
+}
