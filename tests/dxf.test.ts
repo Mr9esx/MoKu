@@ -154,3 +154,107 @@ it("reconstructs a closed line chain with original handles", () => {
   expect(p.parts[0].area).toBe(400);
   expect(() => parseDxf(dxf(stock + chain + chain))).toThrow(/分支/);
 });
+it("rejects features whose edges cross a concave cutout despite contained vertices", () => {
+  const stock = poly("s", "REF_STOCK", [
+    [0, 0],
+    [100, 0],
+    [100, 200],
+    [0, 200],
+  ]);
+  const cut = poly("p", "CUT_12MM", [
+    [0, 0],
+    [40, 0],
+    [40, 10],
+    [10, 10],
+    [10, 40],
+    [0, 40],
+  ]);
+  for (const layer of ["HOLE_THROUGH_12MM", "POCKET_DEPTH6"]) {
+    expect(() =>
+      parseDxf(
+        dxf(
+          stock +
+            cut +
+            poly("f", layer, [
+              [5, 5],
+              [35, 5],
+              [5, 35],
+            ]),
+        ),
+      ),
+    ).toThrow(/孔槽|归属|包含/);
+  }
+});
+it("rejects 3D, mesh, nonplanar, elevation and non-default OCS before XY projection", () => {
+  const stock = poly("s", "REF_STOCK", [
+    [0, 0],
+    [100, 0],
+    [100, 200],
+    [0, 200],
+  ]);
+  const legacy = (flags: number, zs: number[]) =>
+    `0\nPOLYLINE\n5\np\n8\nCUT_12MM\n70\n${flags}\n` +
+    [
+      [20, 20],
+      [40, 20],
+      [40, 40],
+      [20, 40],
+    ]
+      .map(
+        ([x, y], i) =>
+          `0\nVERTEX\n8\nCUT_12MM\n10\n${x}\n20\n${y}\n30\n${zs[i]}\n`,
+      )
+      .join("") +
+    "0\nSEQEND\n";
+  for (const flags of [9, 17, 65])
+    expect(() => parseDxf(dxf(stock + legacy(flags, [0, 1, 2, 0])))).toThrow(
+      /3D|三维|平面|网格/,
+    );
+  expect(() => parseDxf(dxf(stock + legacy(1, [0, 1, 2, 0])))).toThrow(
+    /3D|三维|平面/,
+  );
+  const cut = poly("p", "CUT_12MM", [
+    [20, 20],
+    [40, 20],
+    [40, 40],
+    [20, 40],
+  ]);
+  expect(() => parseDxf(dxf(stock + cut + "210\n0\n220\n1\n230\n0\n"))).toThrow(
+    /OCS|坐标|三维|平面/,
+  );
+  expect(() => parseDxf(dxf(stock + cut + "38\n3\n"))).toThrow(
+    /三维|平面|高程/,
+  );
+  expect(() =>
+    parseDxf(
+      dxf(stock + legacy(1, [0, 0, 0, 0]).replace("70\n1\n", "70\n1\n30\n3\n")),
+    ),
+  ).toThrow(/三维|平面|高程/);
+});
+it("restricts feature ownership tolerance to a 0.05mm boundary strip", () => {
+  const stock = poly("s", "REF_STOCK", [
+    [0, 0],
+    [100, 0],
+    [100, 200],
+    [0, 200],
+  ]);
+  const cut = poly("p", "CUT_12MM", [
+    [0, 0],
+    [40, 0],
+    [40, 10],
+    [10, 10],
+    [10, 40],
+    [0, 40],
+  ]);
+  const feature = (outside: number) =>
+    poly("f", "POCKET_DEPTH6", [
+      [5, 15],
+      [10 + outside, 15],
+      [10 + outside, 25],
+      [5, 25],
+    ]);
+  expect(
+    parseDxf(dxf(stock + cut + feature(0.04))).parts[0].pockets,
+  ).toHaveLength(1);
+  expect(() => parseDxf(dxf(stock + cut + feature(0.06)))).toThrow(/孔槽|归属/);
+});

@@ -1,4 +1,5 @@
 import DxfParser from "dxf-parser";
+import ClipperLib from "clipper-lib";
 import type { Point, Part, Project, Stock, Placement } from "./types";
 import {
   bounds,
@@ -104,6 +105,78 @@ function nearInside(p: Point, poly: Point[]) {
     )
   );
 }
+// Ownership tolerates only the thin mismatch caused by independent arc sampling.
+// Subtracting a buffered parent tests every point along feature edges and interiors,
+// including diagonals crossing concave cutouts; vertex containment alone cannot.
+const OWNERSHIP_TOLERANCE = 0.05;
+const CLIP_SCALE = 1e6;
+function containsFeature(feature: Point[], parent: Point[]) {
+  if (!feature.every((point) => nearInside(point, parent))) return false;
+  const toPath = (points: Point[]) =>
+    points.map((point) => ({
+      X: Math.round(point.x * CLIP_SCALE),
+      Y: Math.round(point.y * CLIP_SCALE),
+    }));
+  const parentPath = toPath(parent);
+  if (!ClipperLib.Clipper.Orientation(parentPath)) parentPath.reverse();
+  const offset = new ClipperLib.ClipperOffset(2, 0.001 * CLIP_SCALE);
+  offset.AddPath(
+    parentPath,
+    ClipperLib.JoinType.jtRound,
+    ClipperLib.EndType.etClosedPolygon,
+  );
+  const buffered: ClipperLib.Paths = [];
+  offset.Execute(buffered, OWNERSHIP_TOLERANCE * CLIP_SCALE);
+  const clipper = new ClipperLib.Clipper();
+  clipper.AddPath(toPath(feature), ClipperLib.PolyType.ptSubject, true);
+  clipper.AddPaths(buffered, ClipperLib.PolyType.ptClip, true);
+  const outside: ClipperLib.Paths = [];
+  clipper.Execute(
+    ClipperLib.ClipType.ctDifference,
+    outside,
+    ClipperLib.PolyFillType.pftNonZero,
+    ClipperLib.PolyFillType.pftNonZero,
+  );
+  return outside.length === 0;
+}
+
+// dxf-parser drops POLYLINE elevation and some vertex flags. Validate raw groups
+// before parsing so unsupported 3D/OCS geometry can never become an XY contour.
+function validatePlanarGroup(entityType: string, code: string, value: string) {
+  if (
+    !["LWPOLYLINE", "POLYLINE", "VERTEX", "LINE", "ARC", "CIRCLE"].includes(
+      entityType,
+    )
+  )
+    return;
+  const number = Number(value);
+  if (
+    ["30", "31", "32", "38", "39"].includes(code) &&
+    (!Number.isFinite(number) || number !== 0)
+  )
+    fail(
+      `实体 ${entityType} 包含三维坐标、高程或挤出厚度，请导出 Z=0 的二维平面图纸`,
+    );
+  if (
+    ["210", "220", "230"].includes(code) &&
+    number !== (code === "230" ? 1 : 0)
+  )
+    fail(
+      `实体 ${entityType} 使用非默认 OCS 坐标系，请转换到世界 XY 平面后导入`,
+    );
+  if (
+    code === "70" &&
+    entityType === "POLYLINE" &&
+    number & (2 | 4 | 8 | 16 | 32 | 64)
+  )
+    fail("不支持 3D POLYLINE、网格或拟合曲线，请转换为二维闭合多段线");
+  if (
+    code === "70" &&
+    entityType === "VERTEX" &&
+    number & (1 | 2 | 8 | 16 | 32 | 64 | 128)
+  )
+    fail("不支持三维、网格或拟合曲线顶点，请转换为二维闭合多段线");
+}
 function stockAxes(poly: Point[]) {
   let vertices = poly.slice();
   let changed = true;
@@ -165,11 +238,14 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
   // Reject unsupported entities before dxf-parser can silently discard them.
   const pairs = text.split(/\r?\n/);
   let inEntities = false;
+  let entityType = "";
   for (let i = 0; i < pairs.length - 1; i += 2) {
     const code = pairs[i].trim(),
       value = pairs[i + 1].trim();
     if (code === "2" && value === "ENTITIES") inEntities = true;
     if (inEntities && code === "0" && value === "ENDSEC") inEntities = false;
+    if (inEntities && code === "0") entityType = value;
+    if (inEntities) validatePlanarGroup(entityType, code, value);
     if (
       inEntities &&
       code === "0" &&
@@ -374,7 +450,7 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
     /^(HOLE|POCKET)/i.test(s.e.layer!),
   )) {
     const owners = cuts.filter((c) =>
-      feature.points.every((p) => nearInside(p, c.points)),
+      containsFeature(feature.points, c.points),
     );
     if (owners.length !== 1) fail(`孔槽 ${feature.e.handle} 无法唯一归属零件`);
     const part = sourceParts.get(owners[0])!,
