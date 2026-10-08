@@ -152,4 +152,5 @@ it("reconstructs a closed line chain with original handles", () => {
   const p = parseDxf(dxf(stock + chain));
   expect(p.parts[0].id).toBe("L0+L1+L2+L3");
   expect(p.parts[0].area).toBe(400);
+  expect(() => parseDxf(dxf(stock + chain + chain))).toThrow(/分支/);
 });
