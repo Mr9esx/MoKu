@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import { useWorkbench } from "../store";
 import { transformPoints } from "../core/geometry";
 import { points, displayPoints } from "../core/export";
 import { snapPlacement, type Guide } from "../core/editing";
+import { fitCanvasViewport } from "../core/canvasViewport";
 import type { Layout, LayoutMetrics, Placement, Project } from "../core/types";
 export function StockCanvas({
   layout,
@@ -26,6 +27,14 @@ export function StockCanvas({
     [pan, setPan] = useState({ x: 0, y: 0 }),
     [ghost, setGhost] = useState<Placement | null>(null),
     [guides, setGuides] = useState<Guide[]>([]);
+  const [viewport, setViewport] = useState({
+    width: 1,
+    height: 1,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  });
   const svg = useRef<SVGSVGElement>(null),
     drag = useRef<{
       start: { x: number; y: number };
@@ -36,6 +45,28 @@ export function StockCanvas({
       offset?: number;
       sheetHeight?: number;
     } | null>(null);
+  useLayoutEffect(() => {
+    const node = svg.current;
+    if (!node) return;
+    const measure = () => {
+      const rect = node.getBoundingClientRect(),
+        style = getComputedStyle(node);
+      const inset = (side: string) =>
+        parseFloat(style.getPropertyValue(`--canvas-fit-${side}`)) || 0;
+      setViewport({
+        width: rect.width,
+        height: rect.height,
+        left: inset("left"),
+        right: inset("right"),
+        top: inset("top"),
+        bottom: inset("bottom"),
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   const offsets = layout.sheets.map((_, i) =>
     layout.sheets.slice(0, i).reduce((n, v) => n + v.width + 160, 60),
   );
@@ -44,6 +75,7 @@ export function StockCanvas({
       layout.sheets.reduce((n, v) => n + v.width + 160, 0),
     ),
     height = Math.max(500, ...layout.sheets.map((v) => v.height)) + 180;
+  const fitted = fitCanvasViewport({ width, height }, viewport, viewport);
   const fit = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -53,6 +85,24 @@ export function StockCanvas({
     if (!matrix) return { x, y };
     const p = new DOMPoint(x, y).matrixTransform(matrix.inverse());
     return { x: p.x, y: p.y };
+  };
+  const zoomAround = (next: number, cursor: { x: number; y: number }) => {
+    setPan({
+      x: cursor.x - ((cursor.x - fitted.x - pan.x) * zoom) / next - fitted.x,
+      y: cursor.y - ((cursor.y - fitted.y - pan.y) * zoom) / next - fitted.y,
+    });
+    setZoom(next);
+  };
+  const adjustZoom = (factor: number) => {
+    const rect = svg.current?.getBoundingClientRect();
+    if (!rect) return;
+    zoomAround(
+      Math.max(0.4, Math.min(12, zoom * factor)),
+      local(
+        rect.left + (viewport.width + viewport.left - viewport.right) / 2,
+        rect.top + (viewport.height + viewport.top - viewport.bottom) / 2,
+      ),
+    );
   };
   const clear = () => {
     drag.current = null;
@@ -96,7 +146,7 @@ export function StockCanvas({
         ref={svg}
         className="stock-svg"
         aria-label="板材和零件二维预览"
-        viewBox={`${pan.x} ${pan.y} ${width / zoom} ${height / zoom}`}
+        viewBox={`${fitted.x + pan.x} ${fitted.y + pan.y} ${fitted.width / zoom} ${fitted.height / zoom}`}
         onDragOver={(e) => {
           if (
             s.view === "current" &&
@@ -132,8 +182,8 @@ export function StockCanvas({
         onWheel={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const scale = Math.max(
-            width / zoom / rect.width,
-            height / zoom / rect.height,
+            fitted.width / zoom / rect.width,
+            fitted.height / zoom / rect.height,
           );
           if (e.ctrlKey || e.metaKey) {
             const cursor = local(e.clientX, e.clientY),
@@ -141,11 +191,7 @@ export function StockCanvas({
                 0.4,
                 Math.min(12, zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)),
               );
-            setPan({
-              x: cursor.x - ((cursor.x - pan.x) * zoom) / next,
-              y: cursor.y - ((cursor.y - pan.y) * zoom) / next,
-            });
-            setZoom(next);
+            zoomAround(next, cursor);
           } else {
             setPan({
               x: pan.x + (e.shiftKey ? e.deltaY : e.deltaX) * scale,
@@ -380,16 +426,12 @@ export function StockCanvas({
         <button
           title="缩小"
           aria-label="缩小"
-          onClick={() => setZoom(Math.max(0.4, zoom / 1.2))}
+          onClick={() => adjustZoom(1 / 1.2)}
         >
           <Minus size={15} />
         </button>
         <span>{Math.round(zoom * 100)}%</span>
-        <button
-          title="放大"
-          aria-label="放大"
-          onClick={() => setZoom(Math.min(12, zoom * 1.2))}
-        >
+        <button title="放大" aria-label="放大" onClick={() => adjustZoom(1.2)}>
           <Plus size={15} />
         </button>
         <button

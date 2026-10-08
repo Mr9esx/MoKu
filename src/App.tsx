@@ -81,7 +81,7 @@ export default function App() {
     placement = layout?.placements.find((v) => v.partId === s.selected);
   return (
     <main className="workspace">
-      <header className="topbar">
+      <header className="topbar floating">
         <div className="brand">
           <span className="brand-mark">木</span>
           <strong>木作</strong>

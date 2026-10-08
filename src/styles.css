@@ -85,8 +85,7 @@ small,
 .workspace {
   height: 100dvh;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  position: relative;
 }
 .brand {
   display: flex;
@@ -119,11 +118,14 @@ small,
   color: #989d94;
 }
 .workspace-surface {
-  --right-rail-width: 300px;
-  --information-top: 66px;
-  position: relative;
-  flex: 1;
-  min-height: 0;
+  --right-rail-width: 286px;
+  --information-top: 68px;
+  --canvas-fit-left: 276px;
+  --canvas-fit-right: 314px;
+  --canvas-fit-top: 88px;
+  --canvas-fit-bottom: 104px;
+  position: absolute;
+  inset: 0;
   background-color: #f0f1ee;
   background-image: radial-gradient(#d8dcd4 0.7px, transparent 0.7px);
   background-size: 20px 20px;
@@ -242,7 +244,7 @@ small,
 }
 .canvas-region {
   position: absolute;
-  inset: var(--information-top) 330px 0 282px;
+  inset: 0;
 }
 .drawing {
   width: 100%;
@@ -254,7 +256,7 @@ small,
   display: block;
   width: 100%;
   height: 100%;
-  padding: 24px 20px 76px;
+  padding: 0;
   touch-action: none;
   user-select: none;
 }
@@ -289,8 +291,8 @@ small,
 }
 .view-switch {
   position: absolute;
-  bottom: 18px;
-  left: 50%;
+  bottom: 42px;
+  left: calc((100% + var(--canvas-fit-left) - var(--canvas-fit-right)) / 2);
   transform: translateX(-50%);
   z-index: 2;
   display: flex;
@@ -378,8 +380,8 @@ dd {
 }
 .zoom-controls {
   position: absolute;
-  right: 15px;
-  bottom: 18px;
+  right: 324px;
+  bottom: 42px;
   display: flex;
   align-items: center;
   gap: 3px;
@@ -401,18 +403,24 @@ dd {
   color: #4c5d41;
 }
 .statusbar {
-  height: 28px;
+  position: absolute;
+  bottom: 6px;
+  left: 14px;
+  right: 14px;
+  z-index: 6;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  border-top: 1px solid #dce0d7;
+  padding: 0 2px;
+  pointer-events: none;
+  border: 0;
   color: #8a9281;
   font-size: var(--text-caption);
-  background: #f8f9f6;
-  flex-shrink: 0;
+  background: transparent;
 }
 .statusbar button {
+  pointer-events: auto;
   font-size: var(--text-caption);
   min-height: 0;
   padding: 0;
@@ -852,15 +860,16 @@ dd {
 
 /* Fixed contextual workbench: selection swaps content without changing geometry. */
 .topbar {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  right: 14px;
   height: 42px;
-  flex: 0 0 42px;
   display: grid;
   grid-template-columns: minmax(200px, 1fr) auto minmax(260px, 1fr);
   align-items: center;
   padding: 0 14px;
   gap: 20px;
-  border-bottom: 1px solid #dce0d8;
-  background: #fcfdfb;
   z-index: 8;
 }
 .topbar button {
@@ -913,23 +922,16 @@ dd {
 .more-menu button {
   justify-content: flex-start;
 }
-.workspace-surface {
-  --right-rail-width: 286px;
-  --information-top: 14px;
-}
 .parts-panel {
   width: 248px;
-  top: 14px;
-  bottom: 14px;
+  top: var(--information-top);
+  bottom: 36px;
   left: 14px;
-}
-.canvas-region {
-  inset: 0 310px 0 272px;
 }
 .analysis-panel,
 .inspector {
-  top: 14px;
-  bottom: 14px;
+  top: var(--information-top);
+  bottom: 36px;
   right: 14px;
   width: 286px;
   max-height: none;
@@ -1016,7 +1018,8 @@ dd {
   line-height: 1.8;
 }
 .empty-canvas {
-  padding: 24px;
+  padding: var(--canvas-fit-top) var(--canvas-fit-right)
+    var(--canvas-fit-bottom) var(--canvas-fit-left);
 }
 .empty-canvas > div {
   max-width: 330px;
@@ -1041,15 +1044,17 @@ dd {
 }
 .candidate-bar {
   position: absolute;
-  top: 14px;
-  left: 50%;
+  top: 72px;
+  left: calc((100% + var(--canvas-fit-left) - var(--canvas-fit-right)) / 2);
   transform: translateX(-50%);
   z-index: 3;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  max-width: calc(100% - 12px);
+  max-width: calc(
+    100% - var(--canvas-fit-left) - var(--canvas-fit-right) - 12px
+  );
   flex-wrap: wrap;
   font-size: var(--text-body);
 }
@@ -1211,8 +1216,8 @@ dd {
 }
 @media (max-width: 1180px) {
   .zoom-controls {
-    bottom: 64px;
-    right: 8px;
+    bottom: 94px;
+    right: 324px;
   }
   .view-switch button {
     padding: 6px 8px;
@@ -1226,15 +1231,15 @@ dd {
 }
 @media (max-width: 900px) {
   .topbar {
-    grid-template-columns: minmax(90px, 1fr) auto auto;
-    gap: 6px;
-    padding: 0 8px;
+    grid-template-columns: minmax(60px, 1fr) auto auto;
+    gap: 4px;
+    padding: 0 6px;
     height: 52px;
-    flex-basis: 52px;
   }
   .topbar button {
-    min-width: 38px;
+    min-width: 34px;
     height: 40px;
+    padding: 6px;
   }
   .top-actions > button span,
   .project-title {
@@ -1243,11 +1248,24 @@ dd {
   .edit-tools {
     gap: 0;
   }
+  .workspace-surface {
+    --information-top: 134px;
+    --canvas-fit-left: 16px;
+    --canvas-fit-right: 16px;
+    --canvas-fit-top: 144px;
+    --canvas-fit-bottom: 104px;
+  }
   .mobile-navigation {
+    position: absolute;
+    top: 74px;
+    left: 14px;
+    right: 14px;
+    z-index: 8;
     display: flex;
-    flex-shrink: 0;
-    background: #fcfdfb;
-    border-bottom: 1px solid #dce0d8;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid #dce0d8;
+    border-radius: 10px;
+    box-shadow: 0 3px 12px #17271308;
     padding: 5px 10px;
     gap: 6px;
   }
@@ -1257,14 +1275,13 @@ dd {
   }
   .workspace-surface > .parts-panel,
   .workspace-surface > .analysis-panel,
-  .workspace-surface > .inspector,
-  .workspace-surface > .canvas-region {
+  .workspace-surface > .inspector {
     display: none;
   }
   .workspace-surface.mobile-resources > .parts-panel {
     display: flex;
   }
-  .workspace-surface.mobile-canvas > .canvas-region {
+  .workspace-surface > .canvas-region {
     display: block;
   }
   .workspace-surface.mobile-info > .analysis-panel {
@@ -1276,18 +1293,19 @@ dd {
   .parts-panel,
   .analysis-panel,
   .inspector {
-    inset: 10px;
+    inset: var(--information-top) 14px 36px;
     width: auto;
     max-height: none;
   }
   .canvas-region {
     inset: 0;
   }
-  .stock-svg {
-    padding: 20px 10px 100px;
-  }
   .zoom-controls {
-    bottom: 66px;
+    bottom: 94px;
+    right: 14px;
+  }
+  .candidate-bar {
+    top: 134px;
   }
   .part-row {
     padding: 14px 10px;
@@ -1320,6 +1338,18 @@ dd {
   }
   .export-drawer {
     width: min(420px, 100%);
+  }
+}
+
+@media (max-width: 370px) {
+  .topbar {
+    grid-template-columns: minmax(25px, 1fr) auto auto;
+  }
+  .brand strong {
+    display: none;
+  }
+  .topbar button {
+    min-width: 32px;
   }
 }
 
