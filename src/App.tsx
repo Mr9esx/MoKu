@@ -202,7 +202,7 @@ export default function App() {
           </button>
         </nav>
       </header>
-      <div className="workspace-surface">
+      <div className={`workspace-surface ${analysisOpen ? "analysis-open" : "analysis-closed"}`}>
         <aside
           className={`parts-panel floating ${collapsed ? "collapsed" : ""}`}
         >

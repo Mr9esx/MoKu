@@ -670,6 +670,7 @@ dd {
 .top-toolbar button { font-size: 11px; min-height: 34px; }
 .top-toolbar .toolbar-divider { margin: 0 5px; }
 .canvas-region.list-collapsed { left: 0; }
+.workspace-surface.analysis-closed .canvas-region { right: 0; }
 .analysis-panel {
   position: absolute;
   right: 15px;
