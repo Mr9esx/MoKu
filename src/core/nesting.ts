@@ -22,6 +22,57 @@ const EPS = 1e-7;
 // Fixed wall-clock and candidate limits bound even unusually large imported projects.
 const MAX_MS = 5000;
 const MAX_CANDIDATES = 60000;
+// Bounded sorted axes and lazy grid/contact merge avoid allocating xs × ys.
+export function* anchorCandidates(
+  xs: Iterable<number>,
+  ys: Iterable<number>,
+  contacts: Iterable<{ x: number; y: number }>,
+  variant: number,
+  exhausted: () => boolean,
+): Generator<{ x: number; y: number }> {
+  function collect(values: Iterable<number>) {
+    const result: number[] = [];
+    const iterator = values[Symbol.iterator]();
+    while (result.length < 512 && !exhausted()) {
+      const next = iterator.next();
+      if (next.done) break;
+      result.push(next.value);
+    }
+    return result.sort((a, b) => a - b);
+  }
+  const xValues = collect(xs),
+    yValues = collect(ys);
+  if (exhausted()) return;
+  const contactValues: { x: number; y: number }[] = [];
+  for (const contact of contacts) {
+    if (exhausted()) return;
+    contactValues.push(contact);
+    if (contactValues.length === 5760) break;
+  }
+  const compare = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    variant % 2 ? a.x - b.x || a.y - b.y : a.y - b.y || a.x - b.x;
+  contactValues.sort(compare);
+  let contactIndex = 0;
+  const outer = variant % 2 ? xValues : yValues,
+    inner = variant % 2 ? yValues : xValues;
+  for (const a of outer)
+    for (const b of inner) {
+      if (exhausted()) return;
+      const grid = variant % 2 ? { x: a, y: b } : { x: b, y: a };
+      while (
+        contactIndex < contactValues.length &&
+        compare(contactValues[contactIndex], grid) <= 0
+      ) {
+        if (exhausted()) return;
+        yield contactValues[contactIndex++];
+      }
+      yield grid;
+    }
+  while (contactIndex < contactValues.length) {
+    if (exhausted()) return;
+    yield contactValues[contactIndex++];
+  }
+}
 export function optimizeLayout(
   project: Project,
   settings: NestSettings,
@@ -135,12 +186,16 @@ export function optimizeLayout(
     sheet: Stock,
     variant: number,
   ) {
-    const existing = others
-      .filter((p) => p.sheetId === sheet.id)
-      .map((p) => {
-        const poly = placedOutline(parts.get(p.partId)!, p);
-        return { poly, box: bounds(poly) };
-      });
+    const existing: {
+      poly: ReturnType<typeof placedOutline>;
+      box: ReturnType<typeof bounds>;
+    }[] = [];
+    for (const p of others) {
+      if (exhausted()) return [];
+      if (p.sheetId !== sheet.id) continue;
+      const poly = placedOutline(parts.get(p.partId)!, p);
+      existing.push({ poly, box: bounds(poly) });
+    }
     const found: Placement[] = [];
     for (const rotation of rotations.get(part.id)!) {
       const origin = {
@@ -161,6 +216,8 @@ export function optimizeLayout(
         sheet.height - settings.margin - box.maxY,
       ]);
       for (const { box: b } of existing) {
+        if (exhausted()) return found;
+        if (xs.size >= 512 || ys.size >= 512) break;
         xs.add(b.maxX + settings.gap - box.minX);
         xs.add(b.minX - settings.gap - box.maxX);
         xs.add(b.minX - box.minX);
@@ -173,18 +230,13 @@ export function optimizeLayout(
       for (const e of existing.slice(0, 20))
         for (const a of e.poly.slice(0, 12))
           for (const b of poly.slice(0, 12)) {
+            if (exhausted()) return found;
             contacts.push(
               { x: a.x - b.x + settings.gap, y: a.y - b.y },
               { x: a.x - b.x, y: a.y - b.y + settings.gap },
             );
           }
-      const anchors = [
-        ...Array.from(xs).flatMap((x) => Array.from(ys).map((y) => ({ x, y }))),
-        ...contacts,
-      ];
-      anchors.sort((a, b) =>
-        variant % 2 ? a.x - b.x || a.y - b.y : a.y - b.y || a.x - b.x,
-      );
+      const anchors = anchorCandidates(xs, ys, contacts, variant, exhausted);
       for (const anchor of anchors) {
         if (exhausted()) return found;
         candidates++;

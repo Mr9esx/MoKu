@@ -130,19 +130,20 @@ it("preserves real 53-part sample as feasible seed and never returns illegal gap
   for (const gap of [3, 6]) {
     const s = { ...settings, gap, margin: 6, iterations: 1 };
     const r = optimizeLayout(p, s);
-    console.log("sample", gap, r.elapsedMs, r.message, {
-      metrics: r.metrics,
-      original: r.originalMetrics,
-      moved: r.layout?.placements.filter((v) => {
-        const o = p.original.placements.find((o) => o.partId === v.partId)!;
-        return (
-          o.x !== v.x ||
-          o.y !== v.y ||
-          o.rotation !== v.rotation ||
-          o.sheetId !== v.sheetId
-        );
-      }).length,
-    });
+    if (process.env.NEST_BENCHMARK)
+      console.log("sample", gap, r.elapsedMs, r.message, {
+        metrics: r.metrics,
+        original: r.originalMetrics,
+        moved: r.layout?.placements.filter((v) => {
+          const o = p.original.placements.find((o) => o.partId === v.partId)!;
+          return (
+            o.x !== v.x ||
+            o.y !== v.y ||
+            o.rotation !== v.rotation ||
+            o.sheetId !== v.sheetId
+          );
+        }).length,
+      });
     if (r.layout) {
       expect(r.layout.placements).toHaveLength(53);
       expect(validateLayout(p, r.layout, s)).toEqual([]);
@@ -214,10 +215,11 @@ it("runs bounded real-sample search in each mode with visible relocation", () =>
       placements: r.layout!.placements,
     });
   }
-  console.log(
-    "modes",
-    results.map(({ placements, ...r }) => r),
-  );
+  if (process.env.NEST_BENCHMARK)
+    console.log(
+      "modes",
+      results.map(({ placements, ...r }) => r),
+    );
   expect(
     new Set(results.map((r) => JSON.stringify(r.placements))).size,
   ).toBeGreaterThan(1);
@@ -252,4 +254,48 @@ it("Worker emits progress/done and error protocol", async () => {
   } finally {
     vi.unstubAllGlobals();
   }
+});
+it("stops anchor preparation when budget expires before creating a Cartesian product", async () => {
+  const { anchorCandidates } = await import("../src/core/nesting");
+  let inspected = 0,
+    checks = 0;
+  function* manyCoordinates() {
+    for (let i = 0; i < 100000; i++) {
+      inspected++;
+      yield i;
+    }
+  }
+  const result = [
+    ...anchorCandidates(
+      manyCoordinates(),
+      manyCoordinates(),
+      [],
+      0,
+      () => ++checks > 12,
+    ),
+  ];
+  expect(result).toEqual([]);
+  expect(inspected).toBeLessThanOrEqual(12);
+});
+it("bounds axis storage and lazily checks the candidate budget", async () => {
+  const { anchorCandidates } = await import("../src/core/nesting");
+  let inspected = 0,
+    checks = 0;
+  function* manyCoordinates() {
+    for (let i = 0; i < 100000; i++) {
+      inspected++;
+      yield i;
+    }
+  }
+  const iterator = anchorCandidates(
+    manyCoordinates(),
+    manyCoordinates(),
+    [],
+    1,
+    () => ++checks > 1100,
+  );
+  const result = [...iterator];
+  expect(inspected).toBeLessThanOrEqual(1024);
+  expect(result.length).toBeGreaterThan(0);
+  expect(result.length).toBeLessThan(100);
 });
