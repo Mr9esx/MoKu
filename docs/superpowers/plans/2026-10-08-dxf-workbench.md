@@ -109,3 +109,14 @@ Export current legal-or-source arrangement as SVG in mm with identifiers, holes/
 - [x] Run pnpm test and pnpm build. Add README with startup, supported formats, actual algorithm, current scope and limitations.
 - [x] Launch pnpm dev; controller browser QA covers upload/sample, selection, modes/search/cancel, candidate/apply/undo, settings invalidation, thickness, responsive layout and download. Resolve actual failures before finishing.
 - [x] Commit task-owned files, write task report including actual checks, return status.
+
+
+### Task 4: NestMaxx 工作区布局与新增组件/板材、磁吸拖动
+
+用户追加要求优先于先前页面布局。实际浏览器参考记录在 docs/reference/nestmaxx-observations.md，详细要求保存在 docs/superpowers/specs/2026-10-08-nestmaxx-workspace.md；复用已验证核心。
+
+- [ ] 全屏画布、左侧组件、工具栏 DXF 导入、选中属性、设置弹窗、导出抽屉与快捷键。
+- [ ] 可新增矩形/圆形组件及板材，保持原始导入快照与模型级撤销。
+- [ ] 拖动与旋转、8像素弱磁吸和对齐线，独立合法性验证、锁定和过期候选保护。
+- [ ] 新编辑/磁吸测试观察 red/green，完整测试与构建，浏览器 QA 并修复。
+- [ ] 提交任务代码、审查与整体验证，再发布 owner-private Site。
