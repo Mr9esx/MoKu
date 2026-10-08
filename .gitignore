@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.superpowers/
+*.tsbuildinfo
+.DS_Store
+.openai/sites-local/

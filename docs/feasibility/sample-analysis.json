@@ -1,0 +1,735 @@
+{
+  "source": "/Users/mr9esx/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/Mr9-esx_a542/msg/file/2026-10/吧台_5mm版_25mm圆孔_蓝色填充.dxf",
+  "source_sha256": "8b24977c71c4807b7c60e29020d509f8be1b7301c4a7ab36d9cfe0b6fc45d7b1",
+  "unit": "mm",
+  "method": "ezdxf path flattening 0.01 mm, coordinates rounded to 0.000001 mm, containment tolerance 0.05 mm. Shapely area, intersection, distance. P21/P22 assigned by nearest unmatched label because source label lies in cutout.",
+  "entities": {
+    "LWPOLYLINE": 111,
+    "HATCH": 57,
+    "MTEXT": 7,
+    "TEXT": 53,
+    "CIRCLE": 2
+  },
+  "sheets": [
+    {
+      "sheet": 1,
+      "size_mm": [
+        1220,
+        2440
+      ],
+      "suggested_thickness_mm": 12,
+      "parts": 25,
+      "outer_area_m2": 2.444540820029563,
+      "net_area_m2": 2.439636410410656,
+      "outline_usage_pct": 82.11975342749136,
+      "net_usage_pct": 81.9549990060016,
+      "minimum_gap_mm": 3.0,
+      "closest_pairs": [
+        [
+          3.0,
+          "P16",
+          "P17"
+        ],
+        [
+          5.999999999999999,
+          "P08",
+          "P15"
+        ],
+        [
+          6.0,
+          "P01",
+          "P03"
+        ],
+        [
+          6.0,
+          "P01",
+          "P05"
+        ],
+        [
+          6.0,
+          "P02",
+          "P03"
+        ]
+      ],
+      "minimum_edge_margin_mm": 6.000000000000001
+    },
+    {
+      "sheet": 2,
+      "size_mm": [
+        1220,
+        2440
+      ],
+      "suggested_thickness_mm": 12,
+      "parts": 16,
+      "outer_area_m2": 2.5336670002532227,
+      "net_area_m2": 2.4999287771213363,
+      "outline_usage_pct": 85.11377990638346,
+      "net_usage_pct": 83.98040772377506,
+      "minimum_gap_mm": 6.0,
+      "closest_pairs": [
+        [
+          6.0,
+          "P25",
+          "P26"
+        ],
+        [
+          6.0,
+          "P25",
+          "P27"
+        ],
+        [
+          6.0,
+          "P25",
+          "P28"
+        ],
+        [
+          6.0,
+          "P26",
+          "P28"
+        ],
+        [
+          6.0,
+          "P29",
+          "P34"
+        ]
+      ],
+      "minimum_edge_margin_mm": 5.999999999999999
+    },
+    {
+      "sheet": 3,
+      "size_mm": [
+        1220,
+        2440
+      ],
+      "suggested_thickness_mm": 5,
+      "parts": 12,
+      "outer_area_m2": 2.65016,
+      "net_area_m2": 2.6459616619364117,
+      "outline_usage_pct": 89.02714324106424,
+      "net_usage_pct": 88.88610796615197,
+      "minimum_gap_mm": 6.0,
+      "closest_pairs": [
+        [
+          6.0,
+          "P41",
+          "P42"
+        ],
+        [
+          6.0,
+          "P41",
+          "P45"
+        ],
+        [
+          6.0,
+          "P41",
+          "P46"
+        ],
+        [
+          6.0,
+          "P42",
+          "P44"
+        ],
+        [
+          6.0,
+          "P42",
+          "P45"
+        ]
+      ],
+      "minimum_edge_margin_mm": 6.000000000000001
+    }
+  ],
+  "parts": [
+    {
+      "id": "P01",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 142.0,
+      "bbox_height_mm": 1096.0,
+      "outline_area_mm2": 115321.822,
+      "through_holes": 5,
+      "pockets": 1,
+      "source_handle": "37"
+    },
+    {
+      "id": "P02",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 320.0,
+      "bbox_height_mm": 490.0,
+      "outline_area_mm2": 156800.0,
+      "through_holes": 0,
+      "pockets": 2,
+      "source_handle": "44"
+    },
+    {
+      "id": "P03",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 320.0,
+      "bbox_height_mm": 490.0,
+      "outline_area_mm2": 156800.0,
+      "through_holes": 0,
+      "pockets": 2,
+      "source_handle": "49"
+    },
+    {
+      "id": "P04",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 280.0,
+      "bbox_height_mm": 280.0,
+      "outline_area_mm2": 78400.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "4E"
+    },
+    {
+      "id": "P05",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 100.0,
+      "bbox_height_mm": 850.0,
+      "outline_area_mm2": 72771.056,
+      "through_holes": 0,
+      "pockets": 1,
+      "source_handle": "4F"
+    },
+    {
+      "id": "P06",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 50.0,
+      "bbox_height_mm": 156.0,
+      "outline_area_mm2": 7800.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "52"
+    },
+    {
+      "id": "P07",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 142.0,
+      "bbox_height_mm": 1096.0,
+      "outline_area_mm2": 115321.822,
+      "through_holes": 4,
+      "pockets": 1,
+      "source_handle": "53"
+    },
+    {
+      "id": "P08",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 150.0,
+      "bbox_height_mm": 1200.0,
+      "outline_area_mm2": 137500.0,
+      "through_holes": 0,
+      "pockets": 2,
+      "source_handle": "5E"
+    },
+    {
+      "id": "P09",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 60.0,
+      "bbox_height_mm": 240.0,
+      "outline_area_mm2": 14400.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "63"
+    },
+    {
+      "id": "P10",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 60.0,
+      "bbox_height_mm": 248.0,
+      "outline_area_mm2": 14880.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "64"
+    },
+    {
+      "id": "P11",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 112.0,
+      "bbox_height_mm": 304.0,
+      "outline_area_mm2": 34048.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "65"
+    },
+    {
+      "id": "P12",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 112.0,
+      "bbox_height_mm": 304.0,
+      "outline_area_mm2": 34048.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "66"
+    },
+    {
+      "id": "P13",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 60.0,
+      "bbox_height_mm": 240.0,
+      "outline_area_mm2": 14400.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "67"
+    },
+    {
+      "id": "P14",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 60.0,
+      "bbox_height_mm": 248.0,
+      "outline_area_mm2": 14880.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "68"
+    },
+    {
+      "id": "P15",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 95.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 65289.784,
+      "through_holes": 0,
+      "pockets": 2,
+      "source_handle": "69"
+    },
+    {
+      "id": "P16",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 700.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 479687.862,
+      "through_holes": 0,
+      "pockets": 2,
+      "source_handle": "6E"
+    },
+    {
+      "id": "P17",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 670.0,
+      "bbox_height_mm": 130.0,
+      "outline_area_mm2": 85703.882,
+      "through_holes": 0,
+      "pockets": 1,
+      "source_handle": "73"
+    },
+    {
+      "id": "P18",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 95.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 65289.784,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "76"
+    },
+    {
+      "id": "P19",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 280.0,
+      "bbox_height_mm": 112.0,
+      "outline_area_mm2": 31360.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "77"
+    },
+    {
+      "id": "P20",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 95.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 65289.784,
+      "through_holes": 0,
+      "pockets": 1,
+      "source_handle": "78"
+    },
+    {
+      "id": "P21",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 95.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 64679.548,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "7B"
+    },
+    {
+      "id": "P22",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 95.0,
+      "bbox_height_mm": 794.0,
+      "outline_area_mm2": 74831.806,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "7C"
+    },
+    {
+      "id": "P23",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 280.0,
+      "bbox_height_mm": 112.0,
+      "outline_area_mm2": 31360.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "7D"
+    },
+    {
+      "id": "P24",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 150.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 105000.0,
+      "through_holes": 0,
+      "pockets": 2,
+      "source_handle": "7E"
+    },
+    {
+      "id": "P25",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 320.0,
+      "bbox_height_mm": 490.0,
+      "outline_area_mm2": 156800.0,
+      "through_holes": 0,
+      "pockets": 2,
+      "source_handle": "83"
+    },
+    {
+      "id": "P26",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 320.0,
+      "bbox_height_mm": 490.0,
+      "outline_area_mm2": 156800.0,
+      "through_holes": 0,
+      "pockets": 2,
+      "source_handle": "88"
+    },
+    {
+      "id": "P27",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 1096.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 623365.5,
+      "through_holes": 6,
+      "pockets": 1,
+      "source_handle": "8D"
+    },
+    {
+      "id": "P28",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 1096.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 623365.5,
+      "through_holes": 8,
+      "pockets": 1,
+      "source_handle": "9C"
+    },
+    {
+      "id": "P29",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 240.0,
+      "bbox_height_mm": 240.0,
+      "outline_area_mm2": 57600.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "AF"
+    },
+    {
+      "id": "P30",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 532.0,
+      "bbox_height_mm": 320.0,
+      "outline_area_mm2": 170240.0,
+      "through_holes": 0,
+      "pockets": 1,
+      "source_handle": "B0"
+    },
+    {
+      "id": "P31",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 532.0,
+      "bbox_height_mm": 320.0,
+      "outline_area_mm2": 170240.0,
+      "through_holes": 0,
+      "pockets": 1,
+      "source_handle": "B3"
+    },
+    {
+      "id": "P32",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 532.0,
+      "bbox_height_mm": 54.0,
+      "outline_area_mm2": 28728.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "B6"
+    },
+    {
+      "id": "P33",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 532.0,
+      "bbox_height_mm": 30.0,
+      "outline_area_mm2": 15960.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "B7"
+    },
+    {
+      "id": "P34",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 400.0,
+      "bbox_height_mm": 100.0,
+      "outline_area_mm2": 40000.0,
+      "through_holes": 0,
+      "pockets": 1,
+      "source_handle": "B8"
+    },
+    {
+      "id": "P35",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 654.0,
+      "bbox_height_mm": 100.0,
+      "outline_area_mm2": 65400.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "BB"
+    },
+    {
+      "id": "P36",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 532.0,
+      "bbox_height_mm": 320.0,
+      "outline_area_mm2": 170240.0,
+      "through_holes": 0,
+      "pockets": 1,
+      "source_handle": "BC"
+    },
+    {
+      "id": "P37",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 532.0,
+      "bbox_height_mm": 320.0,
+      "outline_area_mm2": 170240.0,
+      "through_holes": 0,
+      "pockets": 1,
+      "source_handle": "BF"
+    },
+    {
+      "id": "P38",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 532.0,
+      "bbox_height_mm": 54.0,
+      "outline_area_mm2": 28728.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "C2"
+    },
+    {
+      "id": "P39",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 532.0,
+      "bbox_height_mm": 30.0,
+      "outline_area_mm2": 15960.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "C3"
+    },
+    {
+      "id": "P40",
+      "sheet": 2,
+      "thickness_mm": 12,
+      "bbox_width_mm": 400.0,
+      "bbox_height_mm": 100.0,
+      "outline_area_mm2": 40000.0,
+      "through_holes": 0,
+      "pockets": 1,
+      "source_handle": "C4"
+    },
+    {
+      "id": "P41",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 532.0,
+      "bbox_height_mm": 200.0,
+      "outline_area_mm2": 106400.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "C7"
+    },
+    {
+      "id": "P42",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 348.0,
+      "bbox_height_mm": 792.0,
+      "outline_area_mm2": 275616.0,
+      "through_holes": 1,
+      "pockets": 0,
+      "source_handle": "C8"
+    },
+    {
+      "id": "P43",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 1087.0,
+      "bbox_height_mm": 688.0,
+      "outline_area_mm2": 747856.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "C9"
+    },
+    {
+      "id": "P44",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 1038.0,
+      "bbox_height_mm": 688.0,
+      "outline_area_mm2": 714144.0,
+      "through_holes": 2,
+      "pockets": 0,
+      "source_handle": "CA"
+    },
+    {
+      "id": "P45",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 348.0,
+      "bbox_height_mm": 792.0,
+      "outline_area_mm2": 275616.0,
+      "through_holes": 1,
+      "pockets": 0,
+      "source_handle": "CF"
+    },
+    {
+      "id": "P46",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 532.0,
+      "bbox_height_mm": 200.0,
+      "outline_area_mm2": 106400.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "D0"
+    },
+    {
+      "id": "P47",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 400.0,
+      "bbox_height_mm": 642.0,
+      "outline_area_mm2": 256800.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "D1"
+    },
+    {
+      "id": "P48",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 40.0,
+      "bbox_height_mm": 180.0,
+      "outline_area_mm2": 7200.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "D2"
+    },
+    {
+      "id": "P49",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 156.0,
+      "bbox_height_mm": 488.0,
+      "outline_area_mm2": 76128.0,
+      "through_holes": 1,
+      "pockets": 0,
+      "source_handle": "D3"
+    },
+    {
+      "id": "P50",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 40.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 28000.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "D6"
+    },
+    {
+      "id": "P51",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 40.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 28000.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "D7"
+    },
+    {
+      "id": "P52",
+      "sheet": 3,
+      "thickness_mm": 5,
+      "bbox_width_mm": 40.0,
+      "bbox_height_mm": 700.0,
+      "outline_area_mm2": 28000.0,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "D8"
+    },
+    {
+      "id": "P53",
+      "sheet": 1,
+      "thickness_mm": 12,
+      "bbox_width_mm": 700.0,
+      "bbox_height_mm": 600.0,
+      "outline_area_mm2": 408677.668,
+      "through_holes": 0,
+      "pockets": 0,
+      "source_handle": "D9"
+    }
+  ],
+  "checks": {
+    "all_53_parts_assigned": true,
+    "all_29_pockets_assigned_once": true,
+    "invalid_normalized_contours": 0,
+    "overlapping_parts": 0,
+    "outside_stock_parts": 0,
+    "all_28_holes_assigned_once": true
+  },
+  "assembly_validated": false
+}

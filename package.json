@@ -1,0 +1,10 @@
+{
+  "name": "homemade-workbench",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.12.4",
+  "scripts": { "dev": "vite --host 127.0.0.1 --port 4190", "build": "tsc -b && vite build", "test": "vitest run", "preview": "vite preview --host 127.0.0.1 --port 4190" },
+  "dependencies": { "react": "^19.2.6", "react-dom": "^19.2.6", "zustand": "^5.0.13", "lucide-react": "^1.16.0", "dxf-parser": "^1.1.2", "clipper-lib": "^6.4.2" },
+  "devDependencies": { "typescript": "^6.0.3", "vite": "^8.0.13", "@vitejs/plugin-react": "^6.0.2", "@types/react": "^19.2.14", "@types/react-dom": "^19.2.3", "@types/node": "^24.0.0", "@types/clipper-lib": "^6.4.0", "vitest": "^3.2.4" }
+}
