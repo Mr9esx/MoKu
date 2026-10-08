@@ -115,8 +115,8 @@ Export current legal-or-source arrangement as SVG in mm with identifiers, holes/
 
 用户追加要求优先于先前页面布局。实际浏览器参考记录在 docs/reference/nestmaxx-observations.md，详细要求保存在 docs/superpowers/specs/2026-10-08-nestmaxx-workspace.md；复用已验证核心。
 
-- [ ] 全屏画布、左侧组件、工具栏 DXF 导入、选中属性、设置弹窗、导出抽屉与快捷键。
-- [ ] 可新增矩形/圆形组件及板材，保持原始导入快照与模型级撤销。
-- [ ] 拖动与旋转、8像素弱磁吸和对齐线，独立合法性验证、锁定和过期候选保护。
-- [ ] 新编辑/磁吸测试观察 red/green，完整测试与构建，浏览器 QA 并修复。
-- [ ] 提交任务代码、审查与整体验证，再发布 owner-private Site。
+- [x] 全屏画布、左侧组件、工具栏 DXF 导入、选中属性、设置弹窗、导出抽屉与快捷键。
+- [x] 可新增矩形/圆形组件及板材，保持原始导入快照与模型级撤销。
+- [x] 拖动与旋转、8像素弱磁吸和对齐线，独立合法性验证、锁定和过期候选保护。
+- [x] 新编辑/磁吸测试观察 red/green，完整测试与构建，浏览器 QA 并修复（实际窄屏/原生下载限制见 docs/verification.md）。
+- [x] 提交任务代码、审查与整体验证。通过 Sites 的 owner-private 发布流程交付站点。
