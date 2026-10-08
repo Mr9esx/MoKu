@@ -1,6 +1,6 @@
 # DXF Workbench Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Deliver a usable React workbench that imports the supplied DXF, previews/selects all parts and generates validated layouts in three modes.
 
@@ -51,7 +51,7 @@ Export parseDxf(text: string, name?: string): Project from dxf.ts; throw Error w
 
 Export signedArea(points), polygonArea(points), bounds(points), transformPoints(points, part, placement), placedOutline(part, placement), validateLayout(project, layout, settings), measureLayout(project, layout, settings) from geometry.ts. Bounds returns {minX,minY,maxX,maxY,width,height}. validateLayout checks exactly-once identity, valid finite placements, matching stock thickness, allowed rotations, real contour intersections and minimum edge-to-edge distance, stock margin. It returns LayoutIssue[]. No hole nesting. Pocket/holes are not obstacles for packing. Include unknown thickness failure, locks against project.original when locked, and negative/NaN settings rejection. measureLayout computes immutable area ratio, estimates center-to-center CNC rapid travel per stock (nearest-neighbor path), and finds conservative largest free axis-aligned rectangular remnant per sheet; describe approximation in docs. Remnant rectangles may not intersect outer parts, and should be eroded enough to respect gap where applicable. Retain large-area edges rather than bounding box only for true shape checking.
 
-- [ ] Write failing tests using the real sample and hand-derived fixtures before implementation. Key independent assertions:
+- [x] Write failing tests using the real sample and hand-derived fixtures before implementation. Key independent assertions:
 
 ```ts
 expect(project.sheets.map(s => [s.width, s.height, s.thickness])).toEqual([[1220,2440,12],[1220,2440,12],[1220,2440,5]]);
@@ -63,9 +63,9 @@ expect(project.parts.find(p => p.name === 'P42')?.height).toBeCloseTo(792);
 ```
 
 Also test rotated 1220×2440 stock with collinear vertices, bulge semicircle has expected radius/area, sample source flags P16/P17 with 6mm gap, two L-shapes whose bboxes overlap but contours don't, gap/boundary violation, missing/duplicate parts, wrong thickness, holes stay aligned after 90° rotation, remnant doesn't overlap a placed rectangle, unsupported unit/open contour rejection.
-- [ ] Run pnpm test tests/dxf.test.ts tests/geometry.test.ts to observe missing behavior; then implement the specified interfaces and parser/geometry.
-- [ ] Re-run targeted tests and pnpm exec tsc --noEmit. Record actual results, approximation limits and source mapping decisions.
-- [ ] Commit only task-owned files, write the report and return status.
+- [x] Run pnpm test tests/dxf.test.ts tests/geometry.test.ts to observe missing behavior; then implement the specified interfaces and parser/geometry.
+- [x] Re-run targeted tests and pnpm exec tsc --noEmit. Record actual results, approximation limits and source mapping decisions.
+- [x] Commit only task-owned files, write the report and return status.
 
 ### Task 2: Validated three-mode optimizer and worker
 
@@ -77,7 +77,7 @@ Also test rotated 1220×2440 stock with collinear vertices, bulge semicircle has
 
 Algorithm: use true external contours, clipper geometry or contour-based candidate placement (NFP contact candidates acceptable). Offset/spacing must be obeyed and independently revalidated. Multi-start heuristic changes part order, rotation and candidate placements; deduplicate equivalent orientations when possible, cache geometry, prioritize large/hard pieces, and try different anchors. Keep groups by thickness/material. No new sheets by default. Locked pieces go in first at identical coordinates. Search util mode minimizes sheet count then occupied extent; machining mode favors estimated rapid travel and orderly rows; remnant mode favors usable free rectangles meeting minimum width/height (orient the usable-remnant minimum consistently and document). A feasible original remains candidate but must be validated against CURRENT settings. Invalid originals cannot be the claimed best result. Distinct ranking rules and candidate placement anchors must allow materially different modes. Never drop unplaced parts. Null layout on no legal solution plus explicit reason. Budget bounded to avoid runaway synchronous work; UI Worker keeps responsive.
 
-- [ ] Write tests before implementing; run to observe missing behavior.
+- [x] Write tests before implementing; run to observe missing behavior.
 
 ```ts
 const result = optimizeLayout(project, settings);
@@ -86,9 +86,9 @@ expect(validateLayout(project,result.layout!,settings)).toEqual([]);
 ```
 
 Additional hand-made cases: 2 stocks compacted to 1 with three small pieces; locked piece unchanged; narrow piece fits only with rotation; wrong thickness never mixed; impossible pieces/gap return null; original illegal gap never passes through; shape interlocking placement; all three modes produce valid candidates, remnant mode improves largest qualifying rectangle on a suitable fixture; input is unchanged; budgets/progress work. Include sample real geometry, complete 53 pieces with legal default 3mm gap/6mm margin; testing 6mm gap may legitimately report no feasible solution within budget but cannot return invalid candidate.
-- [ ] Implement search and worker protocol, ensuring all returned layouts independently pass validateLayout.
-- [ ] Run pnpm test tests/nesting.test.ts and core tests; pnpm exec tsc --noEmit. Record actual runtime for sample and limitations (heuristic, no globally optimal guarantee).
-- [ ] Commit task files, write report, return status.
+- [x] Implement search and worker protocol, ensuring all returned layouts independently pass validateLayout.
+- [x] Run pnpm test tests/nesting.test.ts and core tests; pnpm exec tsc --noEmit. Record actual runtime for sample and limitations (heuristic, no globally optimal guarantee).
+- [x] Commit task files, write report, return status.
 
 ### Task 3: Interactive React SVG workbench
 
@@ -104,8 +104,8 @@ Nest panel: mode selector Chinese '利用率优先 / 加工优先 / 余料优先
 
 Export current legal-or-source arrangement as SVG in mm with identifiers, holes/pockets and sheet metadata; don't call it CNC toolpath. Prevent browser file overflow using DXF size limit and clear errors; file upload no network. Unsupported DXF error is visible and keeps prior valid project. Empty imported stock cannot manufacture parts. Mobile layout stacks sections, controls tappable, table scrolls. Pending imports can't overwrite newer imports; errors consistently clear busy states. User can inspect sample 25mm holes and changing thickness genuinely updates data.
 
-- [ ] Implement app components and store using real imported geometry, no placeholder interactions or inactive buttons.
-- [ ] Add only meaningful state/export tests where behavior warrants (stale candidates, undo, transforms in exported SVG); run failing tests before corresponding state/export implementation.
-- [ ] Run pnpm test and pnpm build. Add README with startup, supported formats, actual algorithm, current scope and limitations.
-- [ ] Launch pnpm dev; controller browser QA covers upload/sample, selection, modes/search/cancel, candidate/apply/undo, settings invalidation, thickness, responsive layout and download. Resolve actual failures before finishing.
-- [ ] Commit task-owned files, write task report including actual checks, return status.
+- [x] Implement app components and store using real imported geometry, no placeholder interactions or inactive buttons.
+- [x] Add only meaningful state/export tests where behavior warrants (stale candidates, undo, transforms in exported SVG); run failing tests before corresponding state/export implementation.
+- [x] Run pnpm test and pnpm build. Add README with startup, supported formats, actual algorithm, current scope and limitations.
+- [x] Launch pnpm dev; controller browser QA covers upload/sample, selection, modes/search/cancel, candidate/apply/undo, settings invalidation, thickness, responsive layout and download. Resolve actual failures before finishing.
+- [x] Commit task-owned files, write task report including actual checks, return status.
