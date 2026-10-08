@@ -76,7 +76,7 @@ export function* anchorCandidates(
 export function optimizeLayout(
   project: Project,
   settings: NestSettings,
-  onProgress?: (attempt: number, best: LayoutMetrics | null) => void,
+  onProgress?: (attempt: number, best: LayoutMetrics | null, bestLayout?: Layout) => void,
 ): NestResult {
   if (
     !["utilization", "machining", "remnant"].includes(settings.mode) ||
@@ -138,6 +138,15 @@ export function optimizeLayout(
     }
     return false;
   }
+  let lastCheckpoint = -Infinity;
+  let checkpoint: Layout | null = null;
+  function publish(force = false) {
+    if (best && best !== checkpoint && (force || performance.now() - lastCheckpoint >= 100)) {
+      onProgress?.(attempts, metrics, best);
+      checkpoint = best;
+      lastCheckpoint = performance.now();
+    }
+  }
   function consider(layout: Layout) {
     const result = active(layout);
     if (validateLayout(project, result, settings).length) return;
@@ -145,6 +154,7 @@ export function optimizeLayout(
     if (better(result, m)) {
       best = result;
       metrics = m;
+      publish();
     }
   }
   if (!sourceIssues.length) consider(project.original);
@@ -337,6 +347,7 @@ export function optimizeLayout(
     if (placed.length === project.parts.length)
       consider({ sheets: project.sheets, placements: placed });
     attempts++;
+    publish(true);
     onProgress?.(attempts, metrics);
   }
   return {

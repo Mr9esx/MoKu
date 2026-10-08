@@ -1,6 +1,8 @@
 import { useWorkbench } from "../store";
 export function PartsTable() {
   const s = useWorkbench();
+  const layout = s.view === "original" ? s.project?.original
+    : s.view === "candidate" ? s.candidate?.layout : s.current;
   return (
     <section className="parts-table">
       <div className="section-title">
@@ -26,7 +28,7 @@ export function PartsTable() {
                   <button onClick={() => s.select(p.id)}>{p.name}</button>
                 </td>
                 <td>
-                  {s.project!.sheets.findIndex((v) => v.id === p.stockId) + 1}
+                  {s.project!.sheets.findIndex((v) => v.id === layout?.placements.find(placement => placement.partId === p.id)?.sheetId) + 1}
                 </td>
                 <td>
                   {Math.round(p.width)} × {Math.round(p.height)}

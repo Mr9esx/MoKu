@@ -1,6 +1,6 @@
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
-import { validateLayout } from "./core/geometry";
+import { measureLayout, validateLayout } from "./core/geometry";
 import type { Project, Layout, NestSettings, NestResult } from "./core/types";
 export const defaults: NestSettings = {
   mode: "remnant",
@@ -36,7 +36,7 @@ type State = {
   setView: (v: State["view"]) => void;
   beginSearch: () => number;
   receiveResult: (id: number, r: NestResult) => void;
-  progress: (id: number, n: number) => void;
+  progress: (id: number, n: number, bestLayout?: Layout) => void;
   cancel: () => void;
   apply: () => void;
   undo: () => void;
@@ -168,14 +168,31 @@ export function createWorkbenchStore() {
           view: valid ? "candidate" : "current",
         });
       },
-      progress: (id, attempt) => {
-        if (id === get().run) set({ attempt });
+      progress: (id, attempt, bestLayout) => {
+        const s = get();
+        if (id !== s.run || s.status !== "searching") return;
+        set({ attempt });
+        if (!bestLayout || !s.project || !s.current ||
+          validateLayout({ ...s.project, original: s.current }, bestLayout, s.settings).length) return;
+        set({ candidate: {
+          layout: structuredClone(bestLayout),
+          metrics: measureLayout(s.project, bestLayout, s.settings),
+          originalMetrics: s.candidate?.originalMetrics ?? measureLayout(s.project, s.current, s.settings),
+          attempts: attempt, elapsedMs: 0, issues: [],
+          message: "已收到完整合法候选",
+        } });
       },
-      cancel: () =>
-        set({ ...invalidate(), message: "搜索已取消，当前排版保留。" }),
+      cancel: () => {
+        stopWorker();
+        const s = get();
+        set({ run: s.run + 1, status: "idle",
+          view: s.candidate ? "candidate" : "current",
+          message: s.candidate ? "搜索已取消，最佳合法候选已保留，尚未应用。" : "搜索已取消，当前排版保留。" });
+      },
       apply: () => {
         const s = get();
-        if (!s.candidate?.layout || !s.current) return;
+        if (!s.candidate?.layout || !s.current || !s.project || s.status === "searching" ||
+          validateLayout({ ...s.project, original: s.current }, s.candidate.layout, s.settings).length) return;
         set({
           history: [...s.history, structuredClone(s.current)],
           current: structuredClone(s.candidate.layout),
@@ -219,7 +236,7 @@ export function startSearch() {
   });
   worker.onmessage = (e) => {
     if (e.data.type === "progress")
-      workbench.getState().progress(run, e.data.attempt);
+      workbench.getState().progress(run, e.data.attempt, e.data.bestLayout);
     if (e.data.type === "done")
       workbench.getState().receiveResult(run, e.data.result);
     if (e.data.type === "error" && workbench.getState().run === run) {

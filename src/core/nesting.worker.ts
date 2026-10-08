@@ -13,7 +13,7 @@ self.onmessage = (
     const result = optimizeLayout(
       event.data.project,
       event.data.settings,
-      (attempt, best) => self.postMessage({ type: "progress", attempt, best }),
+      (attempt, best, bestLayout) => self.postMessage({ type: "progress", attempt, best, bestLayout }),
     );
     self.postMessage({ type: "done", result });
   } catch (error) {

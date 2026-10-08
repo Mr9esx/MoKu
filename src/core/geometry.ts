@@ -275,6 +275,14 @@ export function validateLayout(
     }
   return issues;
 }
+// Each axis has at most 256 coordinates; remnant work/storage is bounded by
+// O(n log n + 256²) / O(n + 256²), independently of part count.
+export function remnantAxis(min: number, max: number, edges: number[]): number[] {
+  if (max <= min) return [];
+  const all = [...new Set([min, max, ...edges.filter(v => v > min && v < max)])].sort((a,b) => a-b);
+  if (all.length <= 256) return all;
+  return Array.from({length:256}, (_,i) => all[Math.floor(i * (all.length - 1) / 255)]);
+}
 export function measureLayout(
   project: Project,
   layout: Layout,
@@ -316,62 +324,59 @@ export function measureLayout(
       maxX: b.maxX + s.gap,
       maxY: b.maxY + s.gap,
     }));
-    const xs = [
-      ...new Set([
-        s.margin,
-        stock.width - s.margin,
-        ...obstacles.flatMap((b) => [
-          Math.max(s.margin, b.minX),
-          Math.min(stock.width - s.margin, b.maxX),
-        ]),
-      ]),
-    ]
-      .filter((x) => x >= s.margin && x <= stock.width - s.margin)
-      .sort((a, b) => a - b);
-    const ys = [
-      ...new Set([
-        s.margin,
-        stock.height - s.margin,
-        ...obstacles.flatMap((b) => [
-          Math.max(s.margin, b.minY),
-          Math.min(stock.height - s.margin, b.maxY),
-        ]),
-      ]),
-    ]
-      .filter((y) => y >= s.margin && y <= stock.height - s.margin)
-      .sort((a, b) => a - b);
+    const xs = remnantAxis(s.margin, stock.width - s.margin,
+      obstacles.flatMap(b => [b.minX, b.maxX]));
+    const ys = remnantAxis(s.margin, stock.height - s.margin,
+      obstacles.flatMap(b => [b.minY, b.maxY]));
+    if (xs.length < 2 || ys.length < 2) continue;
+    // At most 256² difference entries. Cover every cell intersecting an obstacle,
+    // including edges omitted by coordinate thinning: coarsening only loses space.
+    const stride = xs.length, diff = new Int32Array(stride * ys.length);
+    const lower = (axis: number[], v: number) => {
+      let lo = 0, hi = axis.length;
+      while (lo < hi) { const mid = (lo + hi) >>> 1;
+        if (axis[mid] < v) lo = mid + 1; else hi = mid; }
+      return lo;
+    };
+    for (const b of obstacles) {
+      const x0 = Math.max(xs[0], b.minX), x1 = Math.min(xs.at(-1)!, b.maxX);
+      const y0 = Math.max(ys[0], b.minY), y1 = Math.min(ys.at(-1)!, b.maxY);
+      if (x0 >= x1 || y0 >= y1) continue;
+      const lx = lower(xs, x0), ly = lower(ys, y0);
+      const left = xs[lx] === x0 ? lx : lx - 1;
+      const bottom = ys[ly] === y0 ? ly : ly - 1;
+      const right = lower(xs, x1), top = lower(ys, y1);
+      diff[bottom * stride + left]++;
+      diff[bottom * stride + right]--;
+      diff[top * stride + left]--;
+      diff[top * stride + right]++;
+    }
     let best: Remnant | undefined;
-    for (let i = 0; i < xs.length; i++)
-      for (let j = i + 1; j < xs.length; j++) {
-        const width = xs[j] - xs[i];
-        if (width < s.minRemnantWidth) continue;
-        let start: number | undefined;
-        for (let k = 0; k < ys.length - 1; k++) {
-          const blocked = obstacles.some(
-            (b) =>
-              b.minX < xs[j] - EPS &&
-              b.maxX > xs[i] + EPS &&
-              b.minY < ys[k + 1] - EPS &&
-              b.maxY > ys[k] + EPS,
-          );
-          if (blocked) {
-            start = undefined;
-            continue;
-          }
-          start ??= ys[k];
-          const height = ys[k + 1] - start,
-            area = width * height;
-          if (height >= s.minRemnantHeight && (!best || area > best.area))
-            best = {
-              sheetId: stock.id,
-              x: xs[i],
-              y: start,
-              width,
-              height,
-              area,
-            };
-        }
+    const heights = new Float64Array(xs.length - 1);
+    for (let y = 0; y < ys.length - 1; y++) {
+      for (let x = 0; x < xs.length - 1; x++) {
+        const k = y * stride + x;
+        diff[k] += (x ? diff[k - 1] : 0) + (y ? diff[k - stride] : 0)
+          - (x && y ? diff[k - stride - 1] : 0);
+        heights[x] = diff[k] ? 0 : heights[x] + ys[y + 1] - ys[y];
       }
+      // Monotone histogram stack with physical (variable-cell) width and height.
+      const stack: { start: number; height: number }[] = [];
+      for (let x = 0; x <= heights.length; x++) {
+        const height = x === heights.length ? 0 : heights[x];
+        let start = x;
+        while (stack.length && stack.at(-1)!.height > height) {
+          const bar = stack.pop()!;
+          start = bar.start;
+          const width = xs[x] - xs[start], area = width * bar.height;
+          if (width >= s.minRemnantWidth && bar.height >= s.minRemnantHeight && (!best || area > best.area))
+            best = { sheetId: stock.id, x: xs[start], y: ys[y + 1] - bar.height,
+              width, height: bar.height, area };
+        }
+        if (height > 0 && (!stack.length || stack.at(-1)!.height < height))
+          stack.push({ start, height });
+      }
+    }
     if (best) remnants.push(best);
   }
   const outlineArea = project.parts.reduce((n, p) => n + p.area, 0),

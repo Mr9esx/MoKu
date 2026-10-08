@@ -137,7 +137,7 @@ export default function App() {
           <div>
             <span>轮廓利用率</span>
             <strong>{formatPercent(metrics.utilization)}</strong>
-            <small>按固定板材总面积</small>
+            <small>按当前排版板材总面积</small>
           </div>
           <div>
             <span>近似加工行程</span>
@@ -204,7 +204,7 @@ export default function App() {
             </button>
           </div>
           {layout && s.project ? (
-            <StockCanvas layout={layout} />
+            <StockCanvas layout={layout} metrics={metrics!} />
           ) : (
             <div className="loading-paper">
               {s.importing ? "正在解析真实 DXF 轮廓…" : "等待图纸"}

@@ -1,20 +1,16 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Maximize, ZoomIn, ZoomOut } from "lucide-react";
 import { useWorkbench } from "../store";
-import { measureLayout, transformPoints } from "../core/geometry";
+import { transformPoints } from "../core/geometry";
 import { points, displayPoints } from "../core/export";
-import type { Layout } from "../core/types";
-export function StockCanvas({ layout }: { layout: Layout }) {
+import type { Layout, LayoutMetrics } from "../core/types";
+export function StockCanvas({ layout, metrics }: { layout: Layout; metrics: LayoutMetrics }) {
   const s = useWorkbench(),
     [zoom, setZoom] = useState(1),
     [pan, setPan] = useState({ x: 0, y: 0 }),
     [remnants, setRemnants] = useState(true);
   const drag = useRef<{ x: number; y: number; pan: typeof pan } | null>(null);
   const project = s.project!;
-  const metrics = useMemo(
-    () => measureLayout(project, layout, s.settings),
-    [project, layout, s.settings],
-  );
   const thicknessLegend = (thick: boolean) =>
     [
       ...new Set(
@@ -97,7 +93,7 @@ export function StockCanvas({ layout }: { layout: Layout }) {
         {layout.sheets.map((sheet, i) => (
           <g key={sheet.id} transform={`translate(${offsets[i]} 85)`}>
             <text className="sheet-title" x={0} y={-42}>
-              {String(i + 1).padStart(2, "0")} / {sheet.thickness} mm
+              {String(project.sheets.findIndex(v => v.id === sheet.id) + 1).padStart(2, "0")} / {sheet.thickness} mm
             </text>
             <text
               className="dimension"
@@ -155,11 +151,7 @@ export function StockCanvas({ layout }: { layout: Layout }) {
                     className={`part ${selected ? "selected" : ""}`}
                     onClick={() => s.select(part.id)}
                   >
-                    <title>
-                      {part.name} · {Math.round(part.width)} ×{" "}
-                      {Math.round(part.height)} mm · {part.thickness} mm
-                      {p.locked ? " · 已锁定" : ""}
-                    </title>
+                    <title>{`${part.name} · ${Math.round(part.width)} × ${Math.round(part.height)} mm · ${part.thickness} mm${p.locked ? " · 已锁定" : ""}`}</title>
                     <polygon
                       points={points(
                         displayPoints(

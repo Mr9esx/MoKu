@@ -86,7 +86,7 @@ export function NestPanel() {
             开始排版
           </button>
         )}
-        <button disabled={!s.candidate?.layout} onClick={s.apply}>
+        <button disabled={!s.candidate?.layout || s.status === "searching"} onClick={s.apply}>
           <Check size={16} />
           应用
         </button>
