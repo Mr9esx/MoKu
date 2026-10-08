@@ -162,17 +162,15 @@ export function findInitialPlacement(
   return null;
 }
 export type Guide = { axis: "x" | "y"; value: number };
-export function snapPlacement(
+function placementContext(
   project: Project,
   layout: Layout,
   p: Placement,
   s: NestSettings,
-  threshold: number,
-  enabled: boolean,
-): { placement: Placement; guides: Guide[]; valid: boolean } {
+) {
   const part = project.parts.find((v) => v.id === p.partId),
     sheet = layout.sheets.find((v) => v.id === p.sheetId);
-  if (!part || !sheet) return { placement: p, guides: [], valid: false };
+  if (!part || !sheet) return null;
   const neighbors = layout.placements
     .filter((v) => v.partId !== p.partId && v.sheetId === p.sheetId)
     .flatMap((placement) => {
@@ -211,6 +209,19 @@ export function snapPlacement(
       (v) => v.partIds.length === 0 || v.partIds.includes(part.id),
     );
   };
+  return { part, sheet, neighbors, valid };
+}
+export function snapPlacement(
+  project: Project,
+  layout: Layout,
+  p: Placement,
+  s: NestSettings,
+  threshold: number,
+  enabled: boolean,
+): { placement: Placement; guides: Guide[]; valid: boolean } {
+  const context = placementContext(project, layout, p, s);
+  if (!context) return { placement: p, guides: [], valid: false };
+  const { part, sheet, neighbors, valid } = context;
   if (!enabled) return { placement: p, guides: [], valid: valid(p) };
   const b = bounds(transformPoints(part.outline, part, p));
   const gapTargets: {
@@ -281,4 +292,77 @@ export function snapPlacement(
       };
   }
   return { placement: p, guides: [], valid: false };
+}
+
+/** Release correction is independent of the screen-space weak-alignment radius. */
+export function settlePlacement(
+  project: Project,
+  layout: Layout,
+  p: Placement,
+  s: NestSettings,
+): Placement | null {
+  const context = placementContext(project, layout, p, s);
+  if (!context || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+  const { part, sheet, neighbors, valid } = context;
+  if (layout.placements.find((v) => v.partId === p.partId)?.locked) return null;
+  if (
+    part.thickness !== sheet.thickness ||
+    (part.material && part.material !== sheet.material)
+  )
+    return null;
+  const box = bounds(transformPoints(part.outline, part, p));
+  const minX = p.x + s.margin - box.minX,
+    maxX = p.x + sheet.width - s.margin - box.maxX;
+  const minY = p.y + s.margin - box.minY,
+    maxY = p.y + sheet.height - s.margin - box.maxY;
+  if (minX > maxX || minY > maxY) return null;
+  const stationary = layout.placements.filter((v) => v.partId !== p.partId);
+  // Existing unrelated issues cannot be fixed by moving this one part. Check them
+  // once, then validate only the moving contour for each release candidate.
+  if (
+    validateLayout(
+      { ...project, original: layout },
+      { ...layout, placements: stationary },
+      s,
+      {
+        requireAll: false,
+      },
+    ).length
+  )
+    return null;
+  const legal = valid;
+  const base = {
+    ...p,
+    x: Math.max(minX, Math.min(maxX, p.x)),
+    y: Math.max(minY, Math.min(maxY, p.y)),
+  };
+  if (legal(base)) return base;
+  const xs = [base.x, minX, maxX],
+    ys = [base.y, minY, maxY];
+  for (const { box: n } of neighbors) {
+    xs.push(p.x + n.minX - s.gap - box.maxX, p.x + n.maxX + s.gap - box.minX);
+    ys.push(p.y + n.minY - s.gap - box.maxY, p.y + n.maxY + s.gap - box.minY);
+  }
+  const anchors = (
+    values: number[],
+    min: number,
+    max: number,
+    origin: number,
+  ) =>
+    [...new Set(values)]
+      .filter((v) => Number.isFinite(v) && v >= min && v <= max)
+      .sort((a, b) => Math.abs(a - origin) - Math.abs(b - origin))
+      .slice(0, 24);
+  const xChoices = anchors(xs, minX, maxX, p.x),
+    yChoices = anchors(ys, minY, maxY, p.y);
+  const candidates = xChoices
+    .flatMap((x) => yChoices.map((y) => ({ ...p, x, y })))
+    .sort(
+      (a, b) =>
+        (a.x - p.x) ** 2 +
+        (a.y - p.y) ** 2 -
+        ((b.x - p.x) ** 2 + (b.y - p.y) ** 2),
+    );
+  for (const candidate of candidates) if (legal(candidate)) return candidate;
+  return null;
 }

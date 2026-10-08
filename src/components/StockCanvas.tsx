@@ -3,7 +3,7 @@ import { Maximize, Minus, Plus } from "lucide-react";
 import { useWorkbench } from "../store";
 import { transformPoints } from "../core/geometry";
 import { points, displayPoints } from "../core/export";
-import { snapPlacement, type Guide } from "../core/editing";
+import { settlePlacement, snapPlacement, type Guide } from "../core/editing";
 import { fitCanvasViewport } from "../core/canvasViewport";
 import type { Layout, LayoutMetrics, Placement, Project } from "../core/types";
 export function StockCanvas({
@@ -26,7 +26,6 @@ export function StockCanvas({
   const [zoom, setZoom] = useState(1),
     [pan, setPan] = useState({ x: 0, y: 0 }),
     [ghost, setGhost] = useState<Placement | null>(null),
-    [ghostValid, setGhostValid] = useState(true),
     [guides, setGuides] = useState<Guide[]>([]);
   const [viewport, setViewport] = useState({
     width: 1,
@@ -86,6 +85,30 @@ export function StockCanvas({
     if (!matrix) return { x, y };
     const p = new DOMPoint(x, y).matrixTransform(matrix.inverse());
     return { x: p.x, y: p.y };
+  };
+  const draggedPlacement = (
+    d: NonNullable<typeof drag.current>,
+    cursor: { x: number; y: number },
+  ): Placement => {
+    const source = d.placement!;
+    const x = source.x + (d.offset ?? 0) + cursor.x - d.start.x;
+    const y = 85 + (d.sheetHeight ?? 0) - source.y + cursor.y - d.start.y;
+    let i = layout.sheets.findIndex(
+      (v, j) =>
+        cursor.x >= offsets[j] &&
+        cursor.x <= offsets[j] + v.width &&
+        cursor.y >= 85 &&
+        cursor.y <= 85 + v.height,
+    );
+    if (i < 0) i = layout.sheets.findIndex((v) => v.id === source.sheetId);
+    const sheet = layout.sheets[i];
+    const p: Placement = {
+      ...source,
+      sheetId: sheet.id,
+      x: x - offsets[i],
+      y: sheet.height + 85 - y,
+    };
+    return p;
   };
   const zoomAround = (next: number, cursor: { x: number; y: number }) => {
     setPan({
@@ -172,13 +195,19 @@ export function StockCanvas({
                 cursor.y <= 85 + v.height,
             );
           if (i < 0) return;
-          s.movePart({
-            partId: id,
-            sheetId: layout.sheets[i].id,
-            x: cursor.x - offsets[i],
-            y: layout.sheets[i].height + 85 - cursor.y - part.height,
-            rotation: 0,
-          });
+          const placement = settlePlacement(
+            project,
+            layout,
+            {
+              partId: id,
+              sheetId: layout.sheets[i].id,
+              x: cursor.x - offsets[i],
+              y: layout.sheets[i].height + 85 - cursor.y - part.height,
+              rotation: 0,
+            },
+            s.settings,
+          );
+          if (placement) s.movePart(placement);
         }}
         onWheel={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
@@ -228,25 +257,7 @@ export function StockCanvas({
             });
             return;
           }
-          const source = d.placement;
-          const x = source.x + (d.offset ?? 0) + cursor.x - d.start.x;
-          const y = 85 + (d.sheetHeight ?? 0) - source.y + cursor.y - d.start.y;
-          let i = layout.sheets.findIndex(
-            (v, j) =>
-              cursor.x >= offsets[j] &&
-              cursor.x <= offsets[j] + v.width &&
-              cursor.y >= 85 &&
-              cursor.y <= 85 + v.height,
-          );
-          if (i < 0)
-            i = layout.sheets.findIndex((v) => v.id === source.sheetId);
-          const sheet = layout.sheets[i];
-          const p = {
-            ...source,
-            sheetId: sheet.id,
-            x: x - offsets[i],
-            y: sheet.height + 85 - y,
-          };
+          const p = draggedPlacement(d, cursor);
           const scale = 1 / (svg.current?.getScreenCTM()?.a ?? 1);
           const snapped = snapPlacement(
             project,
@@ -257,7 +268,6 @@ export function StockCanvas({
             magnet && !e.altKey,
           );
           setGhost(snapped.placement);
-          setGhostValid(snapped.valid);
           setGuides(snapped.guides);
         }}
         onPointerUp={(e) => {
@@ -267,8 +277,28 @@ export function StockCanvas({
                 e.clientX - drag.current.clientStart.x,
                 e.clientY - drag.current.clientStart.y,
               ) > 4;
-          if (ghost) s.movePart(ghost);
-          else if (
+          if (drag.current?.placement && drag.current.moved) {
+            const raw = draggedPlacement(
+              drag.current,
+              local(e.clientX, e.clientY),
+            );
+            const scale = 1 / (svg.current?.getScreenCTM()?.a ?? 1);
+            const snapped = snapPlacement(
+              project,
+              layout,
+              raw,
+              s.settings,
+              8 * scale,
+              magnet && !e.altKey,
+            );
+            const placement = settlePlacement(
+              project,
+              layout,
+              snapped.placement,
+              s.settings,
+            );
+            if (placement) s.movePart(placement);
+          } else if (
             drag.current &&
             !drag.current.placement &&
             !drag.current.moved
@@ -343,7 +373,7 @@ export function StockCanvas({
               return (
                 <g
                   key={`${p.partId}-${index}`}
-                  className={`part ${selected ? "selected" : ""} ${isGhost && !ghostValid ? "invalid-placement" : ""}`}
+                  className={`part ${selected ? "selected" : ""}`}
                   opacity={isGhost ? 0.6 : ghost?.partId === part.id ? 0.35 : 1}
                   pointerEvents={isGhost ? "none" : undefined}
                   onPointerDown={(e) => {
@@ -367,20 +397,8 @@ export function StockCanvas({
                   <title>{`${part.name} · ${part.width.toFixed(1)} × ${part.height.toFixed(1)} mm`}</title>
                   <polygon
                     points={poly(part.outline)}
-                    fill={
-                      isGhost && !ghostValid
-                        ? "#eccbbf"
-                        : part.thickness > 5
-                          ? "#cdb68e"
-                          : "#a8b59b"
-                    }
-                    stroke={
-                      isGhost && !ghostValid
-                        ? "#bd6244"
-                        : selected
-                          ? "#26392e"
-                          : "#877c67"
-                    }
+                    fill={part.thickness > 5 ? "#cdb68e" : "#a8b59b"}
+                    stroke={selected ? "#26392e" : "#877c67"}
                     strokeWidth={selected ? 6 : 1.7}
                   />
                   {part.pockets.map((v, j) => (
@@ -436,15 +454,6 @@ export function StockCanvas({
           </g>
         ))}
       </svg>
-      {ghost && (
-        <div
-          className={`drag-feedback floating ${ghostValid ? "" : "invalid"}`}
-          role="status"
-        >
-          {ghostValid ? "可放置" : "位置不可用"} · 零件间距至少 {s.settings.gap}{" "}
-          mm
-        </div>
-      )}
       <div className="zoom-controls floating">
         <button
           title="缩小"

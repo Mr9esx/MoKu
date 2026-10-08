@@ -263,22 +263,6 @@ small,
 .tool-hand .stock-svg {
   cursor: grab;
 }
-.drag-feedback {
-  position: absolute;
-  left: calc((100% + var(--canvas-fit-left) - var(--canvas-fit-right)) / 2);
-  bottom: 146px;
-  transform: translateX(-50%);
-  max-width: calc(100% - var(--canvas-fit-left) - var(--canvas-fit-right));
-  padding: 7px 12px;
-  font-size: var(--text-caption);
-  color: #506745;
-  pointer-events: none;
-  z-index: 2;
-}
-.drag-feedback.invalid {
-  color: #a3452e;
-  border-color: #dba18c;
-}
 .tool-hand .stock-svg:active {
   cursor: grabbing;
 }
