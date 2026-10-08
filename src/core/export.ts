@@ -73,6 +73,18 @@ export function exportEligibility(
     ]),
   );
   const source =
+    current.sheets.every((stock) =>
+      project.sheets.some(
+        (v) =>
+          v.id === stock.id &&
+          v.width === stock.width &&
+          v.height === stock.height &&
+          v.material === stock.material &&
+          v.thickness === stock.thickness,
+      ),
+    ) &&
+    current.placements.length === project.parts.length &&
+    project.parts.every((part) => originals.has(part.id)) &&
     (!project.importedSource ||
       (JSON.stringify(
         project.parts.map(

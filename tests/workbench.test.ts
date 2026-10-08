@@ -18,7 +18,7 @@ it("invalidates candidates on settings and rejects stale results", () => {
   expect(s.getState().candidate).toBeNull();
   expect(s.getState().status).toBe("idle");
 });
-it("undo restores exact geometry and thickness invalidates history", () => {
+it("undo restores exact geometry and thickness edits remain undoable", () => {
   const s = createWorkbenchStore();
   s.getState().importProject(project());
   const old = structuredClone(s.getState().current!);
@@ -32,7 +32,9 @@ it("undo restores exact geometry and thickness invalidates history", () => {
   s.getState().undo();
   expect(s.getState().current).toEqual(old);
   s.getState().setThickness(old.sheets[0].id, 5);
-  expect(s.getState().history).toEqual([]);
+  expect(s.getState().history).toHaveLength(1);
+  s.getState().undo();
+  expect(s.getState().current).toEqual(old);
   expect(s.getState().project!.original.placements).toEqual(old.placements);
 });
 it("a newer import wins and failed import keeps the prior project", () => {

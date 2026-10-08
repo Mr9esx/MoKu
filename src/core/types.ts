@@ -14,6 +14,8 @@ export type Part = {
   id: string;
   name: string;
   stockId: string;
+  material?: string;
+  source?: string;
   layer: string;
   thickness: number;
   width: number;
@@ -35,6 +37,7 @@ export type Placement = {
 export type Layout = { sheets: Stock[]; placements: Placement[] };
 export type Project = {
   importedSource?: Project;
+  sourceFiles?: Project[];
   name: string;
   units: "mm";
   sheets: Stock[];

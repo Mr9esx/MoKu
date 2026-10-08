@@ -1,76 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Upload,
   Download,
   MousePointer2,
   Hand,
-  Plus,
-  Layers,
-  BarChart3,
-  HelpCircle,
+  Magnet,
   Play,
   Square,
   Undo2,
-  RotateCcw,
-  ChevronDown,
-  Search,
-  X,
-  Lock,
-  Unlock,
-  RotateCw,
+  MoreHorizontal,
 } from "lucide-react";
 import { useWorkbench } from "./store";
-import { importDrawing } from "./import";
 import { StockCanvas } from "./components/StockCanvas";
 import { WorkspaceDialogs, type Dialog } from "./components/WorkspaceDialogs";
 import { LayoutAnalysis } from "./components/LayoutAnalysis";
+import { ResourcePanel } from "./components/ResourcePanel";
+import { ContextInspector } from "./components/ContextInspector";
 import { editingLayout } from "./core/editing";
 import { measureLayout, validateLayout } from "./core/geometry";
-import { points, displayPoints } from "./core/export";
-import type { Part, Rotation } from "./core/types";
 export const formatPercent = (n: number) => `${(n * 100).toFixed(1)}%`;
-function Thumbnail({ part }: { part: Part }) {
-  return (
-    <svg
-      viewBox={`-8 -8 ${part.width + 16} ${part.height + 16}`}
-      aria-hidden="true"
-    >
-      <polygon
-        points={points(displayPoints(part.outline, part.height))}
-        fill={part.thickness > 5 ? "#cdb68e" : "#a8b59b"}
-        stroke="#877c67"
-        strokeWidth="2"
-      />
-      {part.pockets.map((p, i) => (
-        <polygon
-          key={`p${i}`}
-          points={points(displayPoints(p.outline, part.height))}
-          fill="#e9e8d8"
-        />
-      ))}
-      {part.holes.map((p, i) => (
-        <polygon
-          key={`h${i}`}
-          points={points(displayPoints(p, part.height))}
-          fill="#aac7d7"
-        />
-      ))}
-    </svg>
-  );
-}
 export default function App() {
   const s = useWorkbench(),
     [dialog, setDialog] = useState<Dialog>(null),
     [tool, setTool] = useState<"select" | "hand">("select"),
     [magnet, setMagnet] = useState(true),
-    [query, setQuery] = useState(""),
-    [collapsed, setCollapsed] = useState(false),
-    [analysisOpen, setAnalysisOpen] = useState(true);
+    [more, setMore] = useState(false),
+    [mobile, setMobile] = useState("canvas");
   useEffect(() => {
-    void importDrawing();
-  }, []);
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
+    const key = (e: KeyboardEvent) => {
       if (
         dialog ||
         (e.target as HTMLElement).closest(
@@ -78,6 +34,12 @@ export default function App() {
         )
       )
         return;
+      if (e.key === "Escape" && more) {
+        setMore(false);
+        e.preventDefault();
+        return;
+      }
+      if (e.key === "Escape" && !e.defaultPrevented) s.select(null);
       if (e.key.toLowerCase() === "v") setTool("select");
       if (e.key.toLowerCase() === "h") setTool("hand");
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -85,9 +47,9 @@ export default function App() {
         s.undo();
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [dialog, s.undo]);
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [dialog, more, s.undo]);
   const project = s.view === "original" ? (s.source ?? s.project) : s.project;
   const layout =
     s.view === "original"
@@ -116,169 +78,173 @@ export default function App() {
   );
   const part = project?.parts.find((v) => v.id === s.selected),
     placement = layout?.placements.find((v) => v.partId === s.selected);
-  const items =
-    s.project?.parts.filter((v) =>
-      `${v.name} ${v.id} ${v.thickness}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-    ) ?? [];
   return (
     <main className="workspace">
-      <div className={`workspace-surface ${analysisOpen ? "analysis-open" : "analysis-closed"}`}>
-        <aside className="floating-tools floating" aria-label="布局操作">
-          <nav className="floating-toolbar" aria-label="工作区工具栏">
-            <div className="toolbar-group">
-              <button
-                title="选择 · V"
-                aria-label="选择工具"
-                className={tool === "select" ? "active" : ""}
-                onClick={() => setTool("select")}
-              >
-                <MousePointer2 size={18} />
-              </button>
-              <button
-                title="平移 · H"
-                aria-label="平移工具"
-                className={tool === "hand" ? "active" : ""}
-                onClick={() => setTool("hand")}
-              >
-                <Hand size={18} />
-              </button>
-              <span className="toolbar-divider" />
-              <button aria-label="DXF 导入" title="导入本地 DXF 图纸" onClick={() => setDialog("import")}>
-                <Upload size={17} />
-                <span className="tool-label">DXF 导入</span>
-              </button>
-              <button
-                title="新增矩形或圆形组件"
-                aria-label="新增组件"
-                onClick={() => setDialog("part")}
-              >
-                <Plus size={18} />
-                <span className="tool-label">组件</span>
-              </button>
-              <button
-                title="新增板材 / 板材设置"
-                aria-label="板材设置"
-                onClick={() => setDialog("stock")}
-              >
-                <Layers size={18} />
-                <span className="tool-label">板材</span>
-              </button>
-              <button
-                className="primary pack-action"
-                aria-label={s.status === "searching" ? "取消搜索" : "排版"}
-                disabled={!s.project || s.importing}
-                title="排版设置 / 取消搜索"
-                onClick={() => s.status === "searching" ? s.cancel() : setDialog("settings")}
-              >
-                {s.status === "searching" ? <Square size={16} /> : <Play size={16} />}
-                <span>{s.status === "searching" ? "取消" : "排版"}</span>
-              </button>
-            </div>
-            <div className="toolbar-group secondary-tools">
-              <button disabled={!s.history.length} title="撤销 · Ctrl/⌘ Z" aria-label="撤销" onClick={s.undo}>
-                <Undo2 size={17} />
-              </button>
-              <button disabled={!s.project} title="恢复可用原板位置，保留新增组件，可撤销" aria-label="恢复原图" onClick={s.reset}>
-                <RotateCcw size={17} />
-              </button>
-              <button
-                title="导出 SVG"
-                aria-label="导出"
-                onClick={() => setDialog("export")}
-              >
-                <Download size={18} />
-              </button>
-              <button title="数据分析" aria-label="数据分析" aria-pressed={analysisOpen} className={analysisOpen ? "active" : ""} onClick={() => { setAnalysisOpen(!analysisOpen); s.select(null); }}>
-                <BarChart3 size={18} /><span>数据</span>
-              </button>
-              <button
-                title="操作帮助"
-                aria-label="操作帮助"
-                onClick={() => setDialog("help")}
-              >
-                <HelpCircle size={18} />
-              </button>
-            </div>
-          </nav>
-        </aside>
-        <aside
-          className={`parts-panel floating ${collapsed ? "collapsed" : ""}`}
-        >
-          <div className="brand">
-            <span className="brand-mark">木</span>
-            <strong>木作</strong>
-            <span className="brand-sub">板材工作台</span>
-          </div>
-          <div className="panel-heading">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark">木</span>
+          <strong>木作</strong>
+          <span className="project-title" title={s.project?.name}>
+            {s.project?.name ?? "未命名项目"}
+          </span>
+        </div>
+        <nav className="edit-tools" aria-label="编辑工具">
+          <button
+            title="选择 · V"
+            aria-label="选择工具"
+            className={tool === "select" ? "active" : ""}
+            onClick={() => setTool("select")}
+          >
+            <MousePointer2 size={16} />
+          </button>
+          <button
+            title="平移 · H"
+            aria-label="平移工具"
+            className={tool === "hand" ? "active" : ""}
+            onClick={() => setTool("hand")}
+          >
+            <Hand size={16} />
+          </button>
+          <button
+            title="弱磁吸 · Alt 暂时关闭"
+            aria-label="弱磁吸"
+            aria-pressed={magnet}
+            className={magnet ? "active" : ""}
+            onClick={() => setMagnet(!magnet)}
+          >
+            <Magnet size={16} />
+          </button>
+          <button
+            disabled={!s.history.length}
+            aria-label="撤销"
+            title="撤销 · Ctrl/⌘ Z"
+            onClick={s.undo}
+          >
+            <Undo2 size={16} />
+          </button>
+        </nav>
+        <div className="top-actions">
+          <button
+            className="primary"
+            aria-label={s.status === "searching" ? "取消搜索" : "自动排版"}
+            title={s.status === "searching" ? "取消搜索，保留完整合法候选" : "自动排版设置"}
+            disabled={!s.project?.parts.length}
+            onClick={() =>
+              s.status === "searching" ? s.cancel() : setDialog("settings")
+            }
+          >
+            {s.status === "searching" ? (
+              <Square size={14} />
+            ) : (
+              <Play size={14} />
+            )}
+            <span>{s.status === "searching" ? "取消搜索" : "自动排版"}</span>
+          </button>
+          <button
+            aria-label="导出"
+            disabled={!s.project}
+            onClick={() => setDialog("export")}
+          >
+            <Download size={15} />
+            <span>导出</span>
+          </button>
+          <div className="more-wrap">
             <button
-              onClick={() => setCollapsed(!collapsed)}
-              aria-expanded={!collapsed}
+              aria-label="更多"
+              aria-expanded={more}
+              onClick={() => setMore(!more)}
             >
-              <ChevronDown size={14} />
-              <strong>组件</strong>
-              <span>{s.project?.parts.length ?? 0}</span>
+              <MoreHorizontal size={18} />
             </button>
+            {more && (
+              <div className="more-menu floating">
+                <button
+                  disabled={!s.project}
+                  onClick={() => {
+                    setDialog("restore");
+                    setMore(false);
+                  }}
+                >
+                  恢复原图位置
+                </button>
+                <button
+                  onClick={() => {
+                    setDialog("sample");
+                    setMore(false);
+                  }}
+                >
+                  打开示例图纸…
+                </button>
+                <button
+                  onClick={() => {
+                    setDialog("help");
+                    setMore(false);
+                  }}
+                >
+                  操作帮助
+                </button>
+              </div>
+            )}
           </div>
-          {!collapsed && (
-            <>
-              <label className="component-search">
-                <Search size={14} />
-                <input
-                  placeholder="搜索组件"
-                  aria-label="搜索组件"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </label>
-              <div className="parts-list">
-                {items.map((p) => {
-                  const current = s.current?.placements.find(
-                      (v) => v.partId === p.id,
-                    ),
-                    source = s.source?.original.placements.find(
-                      (v) => v.partId === p.id,
-                    );
-                  return (
-                    <button
-                      key={p.id}
-                      className={`part-row ${s.selected === p.id ? "selected" : ""}`}
-                      onClick={() => {
-                        s.select(p.id);
-                        setTool("select");
-                      }}
-                    >
-                      <span className="thumbnail">
-                        <Thumbnail part={p} />
-                      </span>
-                      <span className="part-row-copy">
-                        <strong>{p.name}</strong>
-                        <span>
-                          {Math.round(p.width)} × {Math.round(p.height)} mm
-                        </span>
-                        <small>
-                          {p.thickness} mm · 当前板{" "}
-                          {s.project!.sheets.findIndex(
-                            (v) => v.id === current?.sheetId,
-                          ) + 1}
-                          {source
-                            ? ` / 原板 ${s.source!.sheets.findIndex((v) => v.id === source.sheetId) + 1}`
-                            : " / 新建"}
-                        </small>
-                      </span>
-                    </button>
-                  );
-                })}
+        </div>
+      </header>
+      <nav className="mobile-navigation" aria-label="工作区区域">
+        {[
+          ["resources", "资源"],
+          ["canvas", "画布"],
+          ["info", "信息"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            className={mobile === key ? "active" : ""}
+            onClick={() => setMobile(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <div className={`workspace-surface mobile-${mobile}`}>
+        <ResourcePanel
+          project={project}
+          layout={layout}
+          open={setDialog}
+          onSelect={() => {
+            setTool("select");
+            setMobile("info");
+          }}
+        />
+        <div className="canvas-region">
+          {project && layout && metrics && canvasLayout?.sheets.length ? (
+            <StockCanvas
+              project={project}
+              layout={canvasLayout}
+              metrics={metrics}
+              tool={tool}
+              magnet={magnet}
+              interactionBlocked={!!dialog || more}
+            />
+          ) : (
+            <div className="empty-canvas" onClick={() => s.select(null)}>
+              <div>
+                <span className="empty-mark">木</span>
+                <h2>{project ? "零件已就绪，先准备板材" : "从一张图纸开始"}</h2>
+                <p>
+                  {project
+                    ? `${project.parts.length} 个零件待放置。新增兼容板材后拖入或自动排版。`
+                    : "导入整板排版或独立零件轮廓，在这里安排你的木作。"}
+                </p>
+                <button
+                  className="primary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDialog(project ? "stock" : "import");
+                  }}
+                >
+                  {project ? "新增板材" : "导入 DXF"}
+                </button>
               </div>
-              <div className="panel-foot">
-                {s.project?.sheets.length ?? 0} 张板材 · 间距 {s.settings.gap}{" "}
-                mm · 板边 {s.settings.margin} mm
-              </div>
-            </>
+            </div>
           )}
-        </aside>
-        <div className={`canvas-region ${collapsed ? "list-collapsed" : ""}`}>
           <div className="view-switch floating">
             {(
               [
@@ -290,173 +256,106 @@ export default function App() {
               <button
                 key={view}
                 className={s.view === view ? "active" : ""}
-                disabled={view === "candidate" && !s.candidate?.layout}
+                disabled={
+                  !s.project ||
+                  (view === "original" && !s.source) ||
+                  (view === "candidate" && !s.candidate?.layout)
+                }
+                title={
+                  view === "candidate" && !s.candidate
+                    ? "自动排版后可比较候选"
+                    : ""
+                }
                 onClick={() => s.setView(view)}
               >
                 {label}
               </button>
             ))}
           </div>
-          {project && layout && metrics && canvasLayout!.sheets.length ? (
-            <StockCanvas
-              project={project}
-              layout={canvasLayout!}
-              metrics={metrics}
-              tool={tool}
-              magnet={magnet}
-              onMagnet={() => setMagnet(!magnet)}
-            />
-          ) : (
-            <div className="empty-canvas">
-              <div>
-                <p>{s.importing ? "正在识别 DXF 图纸…" : project ? "暂无板材，新增板材后开始编辑" : "请从顶部工具栏导入 DXF"}</p>
-                <button className="primary" onClick={() => setDialog(project ? "stock" : "import")}>
-                  <Plus size={16} />{project ? "新增板材" : "DXF 导入"}
-                </button>
-              </div>
-            </div>
-          )}
-          {(s.message || s.candidate || s.status === "searching") && (
-            <div className="progress-strip floating" role="status">
+          {(s.candidate || s.status === "searching") && (
+            <div className="candidate-bar floating">
               <span>
                 {s.status === "searching"
-                  ? `搜索中 · ${s.attempt} / ${s.settings.iterations} 次`
-                  : s.message}
+                  ? `搜索 ${s.attempt}/${s.settings.iterations}`
+                  : `候选 ${s.candidate?.metrics?.sheetCount ?? 0} 张板 · ${formatPercent(s.candidate?.metrics?.utilization ?? 0)}`}
               </span>
-              {s.candidate?.metrics && (
-                <small>
-                  利用率 {formatPercent(s.candidate.metrics.utilization)} · 行程{" "}
-                  {(s.candidate.metrics.travel / 1000).toFixed(2)} m · 余料{" "}
-                  {(s.candidate.metrics.reusableArea / 1e6).toFixed(2)} m²
-                </small>
-              )}
               {s.candidate && (
-                <button
-                  className="primary"
-                  disabled={s.status === "searching"}
-                  onClick={s.apply}
-                >
-                  应用候选
-                </button>
+                <>
+                  <button
+                    className="primary"
+                    disabled={s.status === "searching"}
+                    onClick={s.apply}
+                  >
+                    应用候选
+                  </button>
+                  <button onClick={s.discardCandidate}>放弃</button>
+                </>
               )}
             </div>
           )}
         </div>
-        {!part && analysisOpen && project && layout && metrics && (
-          <LayoutAnalysis project={project} layout={layout} metrics={metrics}
-            source={s.source} currentProject={s.project} current={s.current}
-            candidate={s.candidate?.layout ?? null} settings={s.settings} view={s.view}
-            issues={issues} onCheck={() => setDialog("check")} onClose={() => setAnalysisOpen(false)} />
-        )}
-        {part && (
-          <aside className="inspector floating">
+        {part && project ? (
+          <ContextInspector
+            key={part.id}
+            part={part}
+            placement={placement}
+            project={project}
+          />
+        ) : project && layout && metrics ? (
+          <LayoutAnalysis
+            project={project}
+            layout={layout}
+            metrics={metrics}
+            source={s.source}
+            currentProject={s.project}
+            current={s.current}
+            candidate={s.candidate?.layout ?? null}
+            settings={s.settings}
+            view={s.view}
+            issues={issues}
+            onCheck={() => setDialog("check")}
+          />
+        ) : (
+          <aside className="analysis-panel floating">
             <div className="panel-heading">
-              <strong>组件属性</strong>
-              <button
-                aria-label="关闭组件属性"
-                title="关闭"
-                onClick={() => s.select(null)}
-              >
-                <X size={16} />
-              </button>
+              <strong>数据概览</strong>
             </div>
-            <h2>{part.name}</h2>
-            <div className="inspector-preview">
-              <Thumbnail part={part} />
-            </div>
-            <div className="part-dimensions">
-              {part.width.toFixed(1)} × {part.height.toFixed(1)}{" "}
-              <small>mm</small>
-            </div>
-            <dl>
-              <div>
-                <dt>板厚</dt>
-                <dd>{part.thickness} mm</dd>
-              </div>
-              <div>
-                <dt>所在板材</dt>
-                <dd>
-                  板{" "}
-                  {project!.sheets.findIndex(
-                    (v) => v.id === placement?.sheetId,
-                  ) + 1}
-                </dd>
-              </div>
-              <div>
-                <dt>通孔</dt>
-                <dd>{part.holes.length} 处</dd>
-              </div>
-              <div>
-                <dt>铣槽</dt>
-                <dd>{part.pockets.length} 处</dd>
-              </div>
-              {part.pockets.length > 0 && (
+            <div className="analysis-body">
+              <p className="hint">导入后显示真实用板、利用率和待放置数量。</p>
+              <div className="utilization-summary">
                 <div>
-                  <dt>槽深</dt>
-                  <dd>
-                    {[
-                      ...new Set(part.pockets.map((v) => v.depth ?? "未知")),
-                    ].join(" / ")}{" "}
-                    mm
-                  </dd>
+                  <span>轮廓利用率</span>
+                  <strong>—</strong>
                 </div>
-              )}
-              <div>
-                <dt>旋转</dt>
-                <dd>{placement?.rotation ?? 0}°</dd>
+                <div>
+                  <span>使用板材</span>
+                  <strong>0</strong>
+                </div>
               </div>
-            </dl>
-            <div className="inspector-actions">
-              <button onClick={() => s.toggleLock(part.id)}>
-                {placement?.locked ? <Lock size={14} /> : <Unlock size={14} />}{" "}
-                {placement?.locked ? "解锁" : "锁定"}
-              </button>
-              <button
-                disabled={
-                  !s.settings.allowRotation ||
-                  placement?.locked ||
-                  s.view !== "current"
-                }
-                onClick={() =>
-                  placement &&
-                  s.movePart({
-                    ...placement,
-                    rotation: ((placement.rotation + 90) % 360) as Rotation,
-                  })
-                }
-              >
-                <RotateCw size={14} />
-                旋转 90°
-              </button>
             </div>
-            <p className="hint">
-              {s.view === "original"
-                ? "正在查看不可变原图；切换当前排版后拖动编辑。"
-                : "拖动组件调整位置，蓝线表示对齐参考。"}
-            </p>
           </aside>
         )}
       </div>
       <footer className="statusbar">
-        <span>
-          <span className="file-info">{s.project?.name ?? "等待图纸"}</span> · {tool === "select" ? "↖ 选择 · V" : "✋ 平移 · H"}{" "}
-          <span className="status-help">拖动组件调整 · Alt 关闭磁吸</span>
+        <span role="status">
+          {s.message ||
+            (!project
+              ? "等待导入图纸"
+              : s.view !== "current"
+                ? "只读视图 · 切换当前排版后编辑"
+                : "拖动零件 · Alt 暂停磁吸 · Esc 返回概览")}
         </span>
-        <span>
-          {issues.length ? (
-            <button
-              className="status-warning"
-              onClick={() => setDialog("check")}
-            >
-              {issues.length} 项待核对
-            </button>
-          ) : (
-            "轮廓与间距检查通过"
-          )}{" "}
-          · 已放 {layout?.placements.length ?? 0}/{project?.parts.length ?? 0} ·
-          用板 {new Set(layout?.placements.map((v) => v.sheetId)).size} 张 ·
-          利用率 {formatPercent(metrics?.utilization ?? 0)}
-        </span>
+        <button
+          disabled={!project}
+          className={issues.length ? "status-warning" : ""}
+          onClick={() => setDialog("check")}
+        >
+          {!project
+            ? "尚未检查"
+            : issues.length
+              ? `${issues.length} 项待核对`
+              : "轮廓与间距检查通过"}
+        </button>
       </footer>
       <WorkspaceDialogs dialog={dialog} close={() => setDialog(null)} />
     </main>

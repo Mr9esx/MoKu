@@ -7,6 +7,7 @@ import {
   pointInPolygon,
   pointSegmentDistance,
   validContour,
+  contoursOverlap,
 } from "./geometry";
 type Entity = {
   type: string;
@@ -256,7 +257,25 @@ function stockAxes(poly: Point[]) {
       }),
   };
 }
-export function parseDxf(text: string, name = "导入图纸"): Project {
+function validateHoles(parts: Part[]) {
+  for (const part of parts)
+    for (let i = 0; i < part.holes.length; i++)
+      for (let j = i + 1; j < part.holes.length; j++)
+        if (contoursOverlap(part.holes[i], part.holes[j]))
+          fail(`${part.name} 通孔轮廓相交或重叠，请合并或修正后导入`);
+}
+export type ImportOptions = {
+  mode?: "board" | "parts";
+  unit?: "mm" | "cm" | "m" | "inch" | "foot";
+  thickness?: number;
+  material?: string;
+  quantity?: number;
+};
+export function parseDxf(
+  text: string,
+  name = "导入图纸",
+  options: ImportOptions = {},
+): Project {
   // Reject unsupported entities before dxf-parser can silently discard them.
   const pairs = text.split(/\r?\n/);
   let inEntities = false;
@@ -313,13 +332,43 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
   } catch {
     fail("DXF 解析失败，请导出有效的 ASCII DXF 文件");
   }
-  if (!parsed || parsed.header?.$INSUNITS !== 4)
-    fail("图纸 HEADER 必须明确声明毫米单位（$INSUNITS=4）");
+  if (!parsed) fail("DXF 解析失败");
+  const scales: Record<number, number> = {
+    1: 25.4,
+    2: 304.8,
+    4: 1,
+    5: 10,
+    6: 1000,
+    7: 1e6,
+    8: 0.0000254,
+    9: 0.0254,
+    10: 914.4,
+    11: 1e-7,
+    12: 1e-6,
+    13: 0.001,
+    14: 100,
+    15: 10000,
+    16: 100000,
+  };
+  const scale = options.unit
+    ? { mm: 1, cm: 10, m: 1000, inch: 25.4, foot: 304.8 }[options.unit]
+    : scales[Number(parsed!.header?.$INSUNITS)];
+  if (!scale)
+    fail("图纸单位未知，请明确选择原文件单位后重新预览（毫米 $INSUNITS=4）");
   const entities = parsed!.entities as unknown as Entity[];
+  for (const e of entities) {
+    const convert = (p: Point) => ({ ...p, x: p.x * scale, y: p.y * scale });
+    if (e.vertices) e.vertices = e.vertices.map(convert);
+    if (e.center) e.center = convert(e.center);
+    if (e.startPoint) e.startPoint = convert(e.startPoint);
+    if (e.position) e.position = convert(e.position);
+    if (e.radius) e.radius *= scale;
+  }
   const shapes: { e: Entity; points: Point[] }[] = [];
   const chains = new Map<string, Entity[]>();
   for (const e of entities) {
     if (["HATCH", "TEXT", "MTEXT"].includes(e.type)) continue;
+    if (!e.layer || e.layer === "0") e.layer = "CUT_DEFAULT";
     if (!/^(CUT|HOLE|POCKET|REF_STOCK)/i.test(e.layer ?? ""))
       fail(
         `无法识别图层 ${e.layer} 的加工语义，请指定 CUT/HOLE/POCKET/REF_STOCK`,
@@ -389,8 +438,115 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
   for (const shape of shapes)
     if (!validContour(shape.points))
       fail(`实体 ${shape.e.handle} 轮廓自交或无效`);
-  const frames = shapes.filter((s) => /^REF_STOCK/i.test(s.e.layer!));
-  if (!frames.length) fail("没有识别到 REF_STOCK 正交板框");
+  let frames = shapes.filter((s) => /^REF_STOCK/i.test(s.e.layer!));
+  if (options.mode === "parts") {
+    if (frames.length) fail("零件轮廓模式不接受板框，请选择整板图纸导入");
+    const cuts = shapes.filter((s) => /^CUT/i.test(s.e.layer!));
+    if (!cuts.length) fail("没有识别到闭合零件，请检查外轮廓");
+    if (cuts.length > 1000) fail("一次最多导入 1000 个零件，请拆分文件");
+    for (let i = 0; i < cuts.length; i++)
+      for (let j = i + 1; j < cuts.length; j++)
+        if (
+          containsFeature(cuts[i].points, cuts[j].points) ||
+          containsFeature(cuts[j].points, cuts[i].points) ||
+          contoursOverlap(cuts[i].points, cuts[j].points)
+        )
+          fail(
+            "零件外轮廓重叠或内部加工语义不明确，请将内轮廓标为 HOLE 或 POCKET_DEPTH数值",
+          );
+    const parts: Part[] = cuts.map((cut, i) => {
+      const b = bounds(cut.points),
+        local = (p: Point) => rounded({ x: p.x - b.minX, y: p.y - b.minY });
+      return {
+        id: cut.e.handle ?? `part-${i + 1}`,
+        name: `零件 ${i + 1}`,
+        stockId: "",
+        material: options.material?.trim() || "未指定",
+        source: name,
+        layer: cut.e.layer!,
+        thickness: options.thickness ?? 0,
+        width: b.width,
+        height: b.height,
+        area: polygonArea(cut.points),
+        outline: cut.points.map(local),
+        holes: [],
+        pockets: [],
+        label: { x: b.width / 2, y: b.height / 2 },
+      };
+    });
+    for (const feature of shapes.filter((s) =>
+      /^(HOLE|POCKET)/i.test(s.e.layer!),
+    )) {
+      const owners = cuts
+        .map((c, i) => (containsFeature(feature.points, c.points) ? i : -1))
+        .filter((i) => i >= 0);
+      if (owners.length !== 1)
+        fail(`孔槽 ${feature.e.handle} 无法唯一归属零件`);
+      const index = owners[0],
+        part = parts[index],
+        b = bounds(cuts[index].points);
+      const outline = feature.points.map((p) =>
+        rounded({ x: p.x - b.minX, y: p.y - b.minY }),
+      );
+      if (/^HOLE/i.test(feature.e.layer!)) part.holes.push(outline);
+      else {
+        const depth =
+          Number(feature.e.layer?.match(/DEPTH(\d+(?:\.\d+)?)$/i)?.[1] ?? 0) *
+          scale;
+        if (!depth) fail("铣槽深度未知，请使用 POCKET_DEPTH数值图层后导入");
+        if (part.thickness && depth >= part.thickness) fail("槽深必须小于板厚");
+        part.pockets.push({ outline, depth });
+      }
+    }
+    if (new Set(parts.map((p) => p.id)).size !== parts.length)
+      fail("源实体 ID 重复，请修复图纸");
+    validateHoles(parts);
+    const quantity = options.quantity ?? 1;
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      quantity > 100 ||
+      parts.length * quantity > 1000
+    )
+      fail("数量需为 1–100 的整数，导入最多 1000 个零件");
+    const copies = parts.flatMap((p) =>
+      Array.from({ length: quantity }, (_, i) => ({
+        ...structuredClone(p),
+        id: quantity === 1 ? p.id : `${p.id}-copy-${i + 1}`,
+        name: quantity === 1 ? p.name : `${p.name} · ${i + 1}`,
+      })),
+    );
+    return {
+      name,
+      units: "mm",
+      sheets: [],
+      parts: copies,
+      original: { sheets: [], placements: [] },
+      warnings: options.thickness ? [] : ["请输入零件板厚和材质后确认"],
+    };
+  }
+  if (!frames.length) {
+    const cuts = shapes.filter((s) => /^CUT/i.test(s.e.layer!));
+    const outer = cuts.filter(
+      (c) =>
+        !cuts.some(
+          (other) => other !== c && containsFeature(c.points, other.points),
+        ),
+    );
+    if (
+      !outer.length ||
+      outer.some(
+        (c) =>
+          !cuts.some(
+            (other) => other !== c && containsFeature(other.points, c.points),
+          ),
+      )
+    )
+      fail("未找到明确板框；请将板框标为 REF_STOCK，或改用零件轮廓导入");
+    for (const frame of outer) stockAxes(frame.points);
+    frames = outer;
+    for (const frame of frames) frame.e.layer = "REF_STOCK_INFERRED";
+  }
   const sheets: Stock[] = [],
     parts: Part[] = [],
     placements: Placement[] = [],
@@ -399,6 +555,14 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
     .filter((e) => e.type === "TEXT" && /^P\d+$/i.test(e.text ?? ""))
     .map((e) => ({ e, point: e.startPoint ?? e.position!, used: false }));
   const cuts = shapes.filter((s) => /^CUT/i.test(s.e.layer!));
+  if (cuts.length > 1000) fail("一次最多导入 1000 个零件，请拆分文件");
+  for (let i = 0; i < cuts.length; i++)
+    for (let j = i + 1; j < cuts.length; j++)
+      if (
+        containsFeature(cuts[i].points, cuts[j].points) ||
+        containsFeature(cuts[j].points, cuts[i].points)
+      )
+        fail("内部轮廓的加工语义不明确，请使用 HOLE 或 POCKET_DEPTH数值图层");
   const assigned = new Set<(typeof cuts)[number]>();
   const sourceParts = new Map<(typeof cuts)[number], Part>();
   for (const [i, frame] of frames.entries()) {
@@ -430,6 +594,8 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
         id: cut.e.handle ?? `part-${parts.length + 1}`,
         name: insideLabel?.e.text ?? "",
         stockId: stock.id,
+        material: stock.material,
+        source: name,
         layer: cut.e.layer!,
         thickness,
         width: box.width,
@@ -518,8 +684,8 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
       part.holes.push(outline);
     } else {
       const depth =
-        Number(feature.e.layer?.match(/DEPTH(\d+(?:\.\d+)?)$/i)?.[1] ?? 0) ||
-        null;
+        Number(feature.e.layer?.match(/DEPTH(\d+(?:\.\d+)?)$/i)?.[1] ?? 0) *
+          scale || null;
       if (depth === null)
         fail("铣槽深度未知，请使用 POCKET_DEPTH 数值图层后导入");
       if (part.thickness > 0 && depth! >= part.thickness)
@@ -527,6 +693,7 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
       part.pockets.push({ outline, depth });
     }
   }
+  validateHoles(parts);
   if (labels.some((l) => !l.used)) fail("存在未匹配的零件编号，请核对图纸");
   if (
     new Set(parts.map((p) => p.id)).size !== parts.length ||

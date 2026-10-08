@@ -76,7 +76,11 @@ export function* anchorCandidates(
 export function optimizeLayout(
   project: Project,
   settings: NestSettings,
-  onProgress?: (attempt: number, best: LayoutMetrics | null, bestLayout?: Layout) => void,
+  onProgress?: (
+    attempt: number,
+    best: LayoutMetrics | null,
+    bestLayout?: Layout,
+  ) => void,
 ): NestResult {
   if (
     !["utilization", "machining", "remnant"].includes(settings.mode) ||
@@ -141,7 +145,11 @@ export function optimizeLayout(
   let lastCheckpoint = -Infinity;
   let checkpoint: Layout | null = null;
   function publish(force = false) {
-    if (best && best !== checkpoint && (force || performance.now() - lastCheckpoint >= 100)) {
+    if (
+      best &&
+      best !== checkpoint &&
+      (force || performance.now() - lastCheckpoint >= 100)
+    ) {
       onProgress?.(attempts, metrics, best);
       checkpoint = best;
       lastCheckpoint = performance.now();
@@ -187,7 +195,7 @@ export function optimizeLayout(
     const source = project.sheets.find((s) => s.id === part.stockId);
     return (
       part.thickness === sheet.thickness &&
-      (!source || source.material === sheet.material)
+      (part.material ?? source?.material ?? sheet.material) === sheet.material
     );
   }
   function options(

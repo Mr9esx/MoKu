@@ -1,0 +1,177 @@
+import { useState } from "react";
+import { Upload, Plus, Search, Trash2 } from "lucide-react";
+import { useWorkbench } from "../store";
+import { Thumbnail } from "./Thumbnail";
+import type { Dialog } from "./WorkspaceDialogs";
+import type { Project, Layout } from "../core/types";
+export function ResourcePanel({
+  project,
+  layout,
+  open,
+  onSelect,
+}: {
+  project: Project | null;
+  layout?: Layout | null;
+  open: (d: Dialog) => void;
+  onSelect: () => void;
+}) {
+  const s = useWorkbench(),
+    [tab, setTab] = useState<"parts" | "stock">("parts"),
+    [query, setQuery] = useState("");
+  const items =
+    project?.parts.filter((p) =>
+      `${p.name} ${p.thickness} ${p.material ?? ""}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+    ) ?? [];
+  const stocks =
+    project?.sheets.filter((p) =>
+      `${p.name} ${p.material} ${p.thickness}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+    ) ?? [];
+  return (
+    <aside className="parts-panel floating" aria-label="资源">
+      <div className="resource-import">
+        <button className="wide" onClick={() => open("import")}>
+          <Upload size={15} />
+          导入 DXF
+        </button>
+      </div>
+      <div className="resource-tabs">
+        <button
+          className={tab === "parts" ? "active" : ""}
+          onClick={() => {
+            setTab("parts");
+            setQuery("");
+          }}
+        >
+          零件 <small>{project?.parts.length ?? 0}</small>
+        </button>
+        <button
+          className={tab === "stock" ? "active" : ""}
+          onClick={() => {
+            setTab("stock");
+            setQuery("");
+          }}
+        >
+          板材 <small>{project?.sheets.length ?? 0}</small>
+        </button>
+      </div>
+      <div className="resource-actions">
+        <label className="component-search">
+          <Search size={14} />
+          <input
+            placeholder={`搜索${tab === "parts" ? "零件" : "板材"}`}
+            aria-label={`搜索${tab === "parts" ? "零件" : "板材"}`}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+        <button
+          title={`新增${tab === "parts" ? "零件" : "板材"}`}
+          aria-label={`新增${tab === "parts" ? "零件" : "板材"}`}
+          onClick={() => open(tab === "parts" ? "part" : "stock")}
+        >
+          <Plus size={16} />
+        </button>
+      </div>
+      <div className="parts-list">
+        {tab === "parts"
+          ? items.map((p) => {
+              const placed = layout?.placements.find((v) => v.partId === p.id);
+              return (
+                <button
+                  draggable={!placed && s.view === "current"}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("application/x-wood-part", p.id);
+                    e.dataTransfer.effectAllowed = "copy";
+                    s.select(p.id);
+                  }}
+                  key={p.id}
+                  className={`part-row ${s.selected === p.id ? "selected" : ""}`}
+                  onClick={() => {
+                    s.select(p.id);
+                    onSelect();
+                  }}
+                >
+                  <span className="thumbnail">
+                    <Thumbnail part={p} />
+                  </span>
+                  <span className="part-row-copy">
+                    <strong>{p.name}</strong>
+                    <span>
+                      {p.width.toFixed(1)} × {p.height.toFixed(1)} mm
+                    </span>
+                    <small>
+                      {p.thickness || "待填"} mm ·{" "}
+                      {placed
+                        ? project?.sheets.find((v) => v.id === placed.sheetId)
+                            ?.name
+                        : "待放置"}
+                    </small>
+                  </span>
+                  {!placed && <span className="pending-dot" title="待放置" />}
+                </button>
+              );
+            })
+          : stocks.map((v) => {
+              const count =
+                layout?.placements.filter((p) => p.sheetId === v.id).length ??
+                0;
+              return (
+                <section className="resource-stock" key={v.id}>
+                  <strong>{v.name}</strong>
+                  <span>
+                    {v.width} × {v.height} mm
+                  </span>
+                  <small>
+                    {v.thickness} mm · {v.material} · {count} 个零件
+                  </small>
+                  <div>
+                    <button
+                      disabled={s.view !== "current"}
+                      onClick={() => open("stock")}
+                    >
+                      设置
+                    </button>
+                    <button
+                      aria-label={`删除 ${v.name}`}
+                      title={count ? "先移走零件" : "删除空板材，可撤销"}
+                      disabled={count > 0 || s.view !== "current"}
+                      onClick={() => s.removeStock(v.id)}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </section>
+              );
+            })}
+        {!(tab === "parts" ? items.length : stocks.length) && (
+          <div className="resource-empty">
+            <p>
+              {query
+                ? "没有匹配的资源"
+                : tab === "parts"
+                  ? "导入零件轮廓或新增零件"
+                  : "先新增板材，再放置零件"}
+            </p>
+            <button onClick={() => open(tab === "parts" ? "import" : "stock")}>
+              {tab === "parts" ? "导入整板 / 零件" : "新增板材"}
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="panel-foot">
+        {tab === "parts"
+          ? `已放置 ${layout?.placements.length ?? 0} / ${project?.parts.length ?? 0} · 待放置 ${(project?.parts.length ?? 0) - (layout?.placements.length ?? 0)}`
+          : `库存 ${project?.sheets.length ?? 0} 张 · 空板可删除`}
+        <span>
+          {s.view !== "current"
+            ? "当前视图只读"
+            : "拖动待放置零件到板材，或点选后放置"}
+        </span>
+      </div>
+    </aside>
+  );
+}

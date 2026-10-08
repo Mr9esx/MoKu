@@ -32,8 +32,12 @@ export type PartInput = {
   width: number;
   height: number;
   thickness: number;
+  material?: string;
+  quantity?: number;
+  place?: boolean;
 };
 export type StockInput = {
+  material?: string;
   name: string;
   width: number;
   height: number;
@@ -70,8 +74,10 @@ export function makePart(input: PartInput, id: string, stockId: string): Part {
         ];
   return {
     id,
-    name: input.name.trim() || "新组件",
+    name: input.name.trim() || "新零件",
     stockId,
+    material: input.material,
+    source: "手动创建",
     layer: "CUSTOM",
     thickness: t,
     width: w,
@@ -95,7 +101,9 @@ export function findInitialPlacement(
     return { p, part: v, bounds: bounds(transformPoints(v.outline, v, p)) };
   });
   for (const sheet of layout.sheets.filter(
-    (v) => v.thickness === part.thickness,
+    (v) =>
+      v.thickness === part.thickness &&
+      (!part.material || v.material === part.material),
   )) {
     const onSheet = occupied.filter((v) => v.p.sheetId === sheet.id);
     const xs = new Set([s.margin, sheet.width - s.margin - part.width]),

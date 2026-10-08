@@ -33,9 +33,9 @@ it("imports the independently measured sample", () => {
     ),
   ).toBe(true);
 });
-it("rejects unsupported units", () =>
+it("rejects undeclared units", () =>
   expect(() =>
-    parseDxf(text.replace(/\$INSUNITS\s+70\s+4/, "$INSUNITS\n70\n1")),
+    parseDxf(text.replace(/\$INSUNITS\s+70\s+4/, "$INSUNITS\n70\n0")),
   ).toThrow(/毫米|单位/));
 const dxf = (entities: string, units = 4) =>
   `0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n${units}\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n${entities}0\nENDSEC\n0\nEOF\n`;

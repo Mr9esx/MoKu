@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Maximize, Minus, Plus, Magnet } from "lucide-react";
+import { Maximize, Minus, Plus } from "lucide-react";
 import { useWorkbench } from "../store";
 import { transformPoints } from "../core/geometry";
 import { points, displayPoints } from "../core/export";
@@ -11,14 +11,14 @@ export function StockCanvas({
   project: provided,
   tool = "select",
   magnet = true,
-  onMagnet,
+  interactionBlocked = false,
 }: {
   layout: Layout;
   metrics: LayoutMetrics;
   project?: Project;
   tool?: "select" | "hand";
   magnet?: boolean;
-  onMagnet?: () => void;
+  interactionBlocked?: boolean;
 }) {
   const s = useWorkbench(),
     project = provided ?? s.project!;
@@ -29,6 +29,8 @@ export function StockCanvas({
   const svg = useRef<SVGSVGElement>(null),
     drag = useRef<{
       start: { x: number; y: number };
+      clientStart: { x: number; y: number };
+      moved: boolean;
       pan: { x: number; y: number };
       placement?: Placement;
       offset?: number;
@@ -65,7 +67,11 @@ export function StockCanvas({
         )
       )
         return;
-      if (e.key === "Escape") clear();
+      if (interactionBlocked) return;
+      if (e.key === "Escape" && drag.current) {
+        e.preventDefault();
+        clear();
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === "0") {
         e.preventDefault();
         fit();
@@ -73,7 +79,7 @@ export function StockCanvas({
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, []);
+  }, [interactionBlocked]);
   useEffect(() => {
     clear();
   }, [layout]);
@@ -91,6 +97,38 @@ export function StockCanvas({
         className="stock-svg"
         aria-label="板材和零件二维预览"
         viewBox={`${pan.x} ${pan.y} ${width / zoom} ${height / zoom}`}
+        onDragOver={(e) => {
+          if (
+            s.view === "current" &&
+            e.dataTransfer.types.includes("application/x-wood-part")
+          ) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (s.view !== "current") return;
+          const id = e.dataTransfer.getData("application/x-wood-part"),
+            part = project.parts.find((p) => p.id === id);
+          if (!part || layout.placements.some((p) => p.partId === id)) return;
+          const cursor = local(e.clientX, e.clientY),
+            i = layout.sheets.findIndex(
+              (v, j) =>
+                cursor.x >= offsets[j] &&
+                cursor.x <= offsets[j] + v.width &&
+                cursor.y >= 85 &&
+                cursor.y <= 85 + v.height,
+            );
+          if (i < 0) return;
+          s.movePart({
+            partId: id,
+            sheetId: layout.sheets[i].id,
+            x: cursor.x - offsets[i],
+            y: layout.sheets[i].height + 85 - cursor.y - part.height,
+            rotation: 0,
+          });
+        }}
         onWheel={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const scale = Math.max(
@@ -118,12 +156,23 @@ export function StockCanvas({
         onPointerDown={(e) => {
           if (!drag.current) {
             e.currentTarget.setPointerCapture(e.pointerId);
-            drag.current = { start: local(e.clientX, e.clientY), pan };
+            drag.current = {
+              start: local(e.clientX, e.clientY),
+              clientStart: { x: e.clientX, y: e.clientY },
+              moved: false,
+              pan,
+            };
           }
         }}
         onPointerMove={(e) => {
           const d = drag.current;
           if (!d) return;
+          d.moved ||=
+            Math.hypot(
+              e.clientX - d.clientStart.x,
+              e.clientY - d.clientStart.y,
+            ) > 4;
+          if (!d.moved) return;
           const cursor = local(e.clientX, e.clientY);
           if (!d.placement) {
             setPan({
@@ -163,8 +212,20 @@ export function StockCanvas({
           setGhost(snapped.placement);
           setGuides(snapped.guides);
         }}
-        onPointerUp={() => {
+        onPointerUp={(e) => {
+          if (drag.current)
+            drag.current.moved ||=
+              Math.hypot(
+                e.clientX - drag.current.clientStart.x,
+                e.clientY - drag.current.clientStart.y,
+              ) > 4;
           if (ghost) s.movePart(ghost);
+          else if (
+            drag.current &&
+            !drag.current.placement &&
+            !drag.current.moved
+          )
+            s.select(null);
           clear();
         }}
         onPointerCancel={clear}
@@ -246,6 +307,8 @@ export function StockCanvas({
                     svg.current?.setPointerCapture(e.pointerId);
                     drag.current = {
                       start: local(e.clientX, e.clientY),
+                      clientStart: { x: e.clientX, y: e.clientY },
+                      moved: false,
                       pan,
                       placement: p,
                       offset: offsets[i],
@@ -335,15 +398,6 @@ export function StockCanvas({
           onClick={fit}
         >
           <Maximize size={15} />
-        </button>
-        <button
-          className={magnet ? "active" : ""}
-          title="弱磁吸 · Alt 暂时关闭"
-          aria-label="弱磁吸"
-          aria-pressed={magnet}
-          onClick={onMagnet}
-        >
-          <Magnet size={15} />
         </button>
       </div>
     </section>

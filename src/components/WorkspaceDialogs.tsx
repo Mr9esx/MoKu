@@ -2,11 +2,20 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X, Trash2, Undo2 } from "lucide-react";
 import { useWorkbench, startSearch } from "../store";
 import { NestPanel } from "./NestPanel";
-import { importDrawing } from "../import";
+import { ImportPreview } from "./ImportPreview";
 import { validateLayout } from "../core/geometry";
 import { exportEligibility, exportCurrentSvg } from "../core/export";
 export type Dialog =
-  "settings" | "import" | "part" | "stock" | "export" | "help" | "check" | null;
+  | "settings"
+  | "import"
+  | "sample"
+  | "restore"
+  | "part"
+  | "stock"
+  | "export"
+  | "help"
+  | "check"
+  | null;
 export function WorkspaceDialogs({
   dialog,
   close,
@@ -15,21 +24,26 @@ export function WorkspaceDialogs({
   close: () => void;
 }) {
   const s = useWorkbench(),
-    ref = useRef<HTMLDivElement>(null),
-    file = useRef<HTMLInputElement>(null);
-  const [name, setName] = useState("新组件"),
+    ref = useRef<HTMLDivElement>(null);
+  const [name, setName] = useState("新零件"),
     [shape, setShape] = useState<"rectangle" | "circle">("rectangle"),
     [width, setWidth] = useState(200),
     [height, setHeight] = useState(100),
     [thickness, setThickness] = useState(12),
+    [material, setMaterial] = useState("木材"),
+    [quantity, setQuantity] = useState(1),
+    [place, setPlace] = useState(false),
     [error, setError] = useState(""),
     [filename, setFilename] = useState("木作-排版");
   useEffect(() => {
     if (!dialog) return;
     setError("");
     setThickness(12);
+    setQuantity(1);
+    setPlace(false);
+    setMaterial(s.project?.sheets[0]?.material ?? "木材");
     if (dialog === "import") workbench.setState({ importMessage: "" });
-    setName(dialog === "stock" ? "新板材" : "新组件");
+    setName(dialog === "stock" ? "新板材" : "新零件");
     setWidth(dialog === "stock" ? 1220 : 200);
     setHeight(dialog === "stock" ? 2440 : 100);
     const previous = document.activeElement as HTMLElement;
@@ -39,6 +53,7 @@ export function WorkspaceDialogs({
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         close();
       }
       if (e.key === "Tab") {
@@ -67,8 +82,10 @@ export function WorkspaceDialogs({
   if (!dialog) return null;
   const titles = {
     settings: "排版设置",
-    import: "导入 DXF 图纸",
-    part: "新增组件",
+    import: "导入 DXF",
+    sample: "预览示例图纸",
+    restore: "恢复原图位置",
+    part: "新增零件",
     stock: "板材设置",
     export: "导出排版",
     help: "操作帮助",
@@ -154,7 +171,7 @@ export function WorkspaceDialogs({
     content = (
       <div className="help">
         <p>
-          <kbd>V</kbd> 选择组件；拖动当前排版中的组件，松开后检查并保存。
+          <kbd>V</kbd> 选择零件；拖动当前排版中的零件，松开后检查并保存。
         </p>
         <p>
           <kbd>H</kbd> 手形平移；普通滚轮移动画布，Shift 横向移动。
@@ -171,58 +188,27 @@ export function WorkspaceDialogs({
           关闭弹窗或取消拖动。
         </p>
         <p>
-          恢复原图恢复仍在库存中的原板位置；已删除原板上的组件保留当前位置。新增板材和组件保留，可撤销。
+          恢复原图恢复仍在库存中的原板位置；已删除原板上的零件保留当前位置。新增板材和零件保留，可撤销。
         </p>
       </div>
     );
-  else if (dialog === "import")
+  else if (dialog === "import" || dialog === "sample")
+    content = <ImportPreview close={close} sample={dialog === "sample"} />;
+  else if (dialog === "restore")
     content = (
       <>
         <p>
-          在浏览器内读取毫米单位
-          DXF，图纸不会上传。识别板材边框、闭合组件轮廓、通孔与槽深。
+          恢复仍在库存中的原板位置。原板已删除的零件保留当前位置；新增板材和零件保留。本次操作可撤销。
         </p>
-        <p className="hint">
-          单位使用
-          $INSUNITS=4（mm）；未声明毫米单位的文件会拒绝导入。图层约定请使用随附示例图纸：REF_STOCK
-          / CUT_*MM / HOLE / POCKET_DEPTH数值，具体识别结果以解析反馈为准。
-        </p>
-        <input
-          ref={file}
-          type="file"
-          accept=".dxf"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void importDrawing(f);
-            e.target.value = "";
-          }}
-        />
         <button
           className="primary wide"
-          disabled={s.importing}
-          onClick={() => file.current?.click()}
+          onClick={() => {
+            s.reset();
+            close();
+          }}
         >
-          {s.importing ? "正在解析…" : "选择本地 DXF 文件"}
+          确认恢复原图位置
         </button>
-        <button className="wide" disabled={s.importing} onClick={() => void importDrawing()}>
-          载入随附示例图纸
-        </button>
-        {s.source && (
-          <div className="import-result">
-            <strong>{s.source.name}</strong>
-            <p>
-              原文件已识别 {s.source.sheets.length} 张板材 ·{" "}
-              {s.source.parts.length} 个组件
-            </p>
-          </div>
-        )}
-        <p role="status">{s.importing ? "正在解析图纸…" : s.importMessage}</p>
-        {s.source?.warnings.map((w, i) => (
-          <p className="warning" key={i}>
-            {w}
-          </p>
-        ))}
       </>
     );
   else if (dialog === "export") {
@@ -286,24 +272,73 @@ export function WorkspaceDialogs({
           <div className="stock-list">
             <div className="stock-list-heading">
               <span>当前库存 · {s.project?.sheets.length ?? 0} 张</span>
-              <button disabled={!s.history.length} onClick={s.undo}><Undo2 size={14} />撤销</button>
+              <button disabled={!s.history.length} onClick={s.undo}>
+                <Undo2 size={14} />
+                撤销
+              </button>
             </div>
             {s.project?.sheets.map((v, i) => {
-              const count = s.current?.placements.filter(p => p.sheetId === v.id).length ?? 0;
-              return <div className="stock-item" key={v.id}>
-                <label>
-                  <span>板材 {i + 1} · {v.name}<small>{v.width} × {v.height} mm · {v.material} · 当前 {count} 个组件</small></span>
-                  <input aria-label={`板材 ${i + 1} 厚度`} type="number" min={1} max={100} value={v.thickness} onChange={e => s.setThickness(v.id, e.target.valueAsNumber)} />
-                  <span>mm</span>
-                </label>
-                <div className="stock-delete-row">
-                  <span>{count ? "先移走组件" : "空板材可删除，可撤销"}</span>
-                  <button disabled={count > 0} title={count ? "先移走组件" : "删除空板材"} aria-label={`删除板材 ${i + 1} ${v.name}`} onClick={() => s.removeStock(v.id)}><Trash2 size={14} />删除</button>
+              const count =
+                s.current?.placements.filter((p) => p.sheetId === v.id)
+                  .length ?? 0;
+              return (
+                <div className="stock-item" key={v.id}>
+                  <label>
+                    <span>
+                      板材 {i + 1} · {v.name}
+                      <small>
+                        {v.width} × {v.height} mm · {v.material} · 当前 {count}{" "}
+                        个零件
+                      </small>
+                    </span>
+                    <input
+                      aria-label={`板材 ${i + 1} 厚度`}
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={v.thickness}
+                      onChange={(e) =>
+                        s.setThickness(v.id, e.target.valueAsNumber)
+                      }
+                    />
+                    <span>mm</span>
+                  </label>
+                  <label>
+                    材质
+                    <input
+                      className="stock-material"
+                      aria-label={`板材 ${i + 1} 材质`}
+                      defaultValue={v.material}
+                      onBlur={(e) => {
+                        if (
+                          e.target.value.trim() &&
+                          e.target.value !== v.material
+                        )
+                          s.setMaterial(v.id, e.target.value);
+                      }}
+                    />
+                  </label>
+                  <div className="stock-delete-row">
+                    <span>{count ? "先移走零件" : "空板材可删除，可撤销"}</span>
+                    <button
+                      disabled={count > 0}
+                      title={count ? "先移走零件" : "删除空板材"}
+                      aria-label={`删除板材 ${i + 1} ${v.name}`}
+                      onClick={() => s.removeStock(v.id)}
+                    >
+                      <Trash2 size={14} />
+                      删除
+                    </button>
+                  </div>
                 </div>
-              </div>;
+              );
             })}
-            {!s.project?.sheets.length && <p className="hint">暂无板材，请新增板材开始编辑。</p>}
-            <p className="hint" role="status">{s.message}</p>
+            {!s.project?.sheets.length && (
+              <p className="hint">暂无板材，请新增板材开始编辑。</p>
+            )}
+            <p className="hint" role="status">
+              {s.message}
+            </p>
             <h3>新增板材</h3>
           </div>
         )}
@@ -341,9 +376,40 @@ export function WorkspaceDialogs({
             )}
           {numeric("板厚", thickness, setThickness, 1, 100)}
         </div>
+        <label>
+          材质
+          <input
+            aria-label="材质"
+            value={material}
+            onChange={(e) => setMaterial(e.target.value)}
+          />
+        </label>
+        {dialog === "part" && (
+          <>
+            <label>
+              数量
+              <input
+                aria-label="新增数量"
+                type="number"
+                min={1}
+                max={100}
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.valueAsNumber)}
+              />
+            </label>
+            <label className="check-inline">
+              <input
+                type="checkbox"
+                checked={place}
+                onChange={(e) => setPlace(e.target.checked)}
+              />
+              立即寻找合法位置（默认加入待放置）
+            </label>
+          </>
+        )}
         {dialog === "part" && (
           <div className="shape-preview">
-            <svg viewBox="0 0 220 110" aria-label="组件参数预览">
+            <svg viewBox="0 0 220 110" aria-label="零件参数预览">
               {shape === "circle" ? (
                 <circle cx="110" cy="55" r="42" fill="#cdb68e" />
               ) : (
@@ -364,21 +430,30 @@ export function WorkspaceDialogs({
         )}
         <p className="hint">
           {dialog === "part"
-            ? "自动寻找匹配板厚、满足板边和间距的初始位置。无法放入时请先新增板材。"
-            : "材质沿用同板厚板材；新增板材立即加入排版库存。"}
+            ? "加入待放置后，可拖入兼容板材或自动排版。勾选立即放置时会核对尺寸、板厚、材质与间距。"
+            : "请指定板厚和材质；新增板材立即加入真实库存。"}
         </p>
         <button
           className="primary wide"
           onClick={() => {
             const ok =
               dialog === "part"
-                ? s.addPart({ name, shape, width, height, thickness })
-                : s.addStock({ name, width, height, thickness });
+                ? s.addPart({
+                    name,
+                    shape,
+                    width,
+                    height,
+                    thickness,
+                    material,
+                    quantity,
+                    place,
+                  })
+                : s.addStock({ name, width, height, thickness, material });
             if (ok) close();
             else setError(latestMessage());
           }}
         >
-          确认新增{dialog === "part" ? "组件" : "板材"}
+          确认新增{dialog === "part" ? "零件" : "板材"}
         </button>
       </>
     );

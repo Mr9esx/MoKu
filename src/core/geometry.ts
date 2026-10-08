@@ -165,6 +165,7 @@ export function validateLayout(
   project: Project,
   layout: Layout,
   s: NestSettings,
+  options: { requireAll?: boolean } = {},
 ): LayoutIssue[] {
   const issues: LayoutIssue[] = [];
   const add = (
@@ -182,12 +183,23 @@ export function validateLayout(
   }
   if (new Set(layout.sheets.map((v) => v.id)).size !== layout.sheets.length)
     add("invalid", "板材 ID 重复");
+  for (const stock of layout.sheets) {
+    const inventory = project.sheets.find((s) => s.id === stock.id);
+    if (
+      !inventory ||
+      inventory.width !== stock.width ||
+      inventory.height !== stock.height ||
+      inventory.thickness !== stock.thickness ||
+      inventory.material !== stock.material
+    )
+      add("invalid", "布局板材与真实库存不一致");
+  }
   for (const stock of layout.sheets)
     if (![stock.width, stock.height].every((v) => Number.isFinite(v) && v > 0))
       add("invalid", "板材尺寸无效");
   for (const part of project.parts) {
     const count = layout.placements.filter((p) => p.partId === part.id).length;
-    if (count !== 1)
+    if (count > 1 || (count === 0 && options.requireAll !== false))
       add("missing", `${part.name} 必须且只能放置一次`, [part.id]);
   }
   const placed: { part: Part; p: Placement; outline: Point[] }[] = [];
@@ -226,7 +238,10 @@ export function validateLayout(
     )
       add("invalid", `${part.name} 槽深未知或超出板厚`, [part.id]);
     const sourceStock = project.sheets.find((s) => s.id === part.stockId);
-    if (sourceStock && sourceStock.material !== stock.material)
+    if (
+      (part.material ?? sourceStock?.material ?? stock.material) !==
+      stock.material
+    )
       add("invalid", `${part.name} 材料不匹配`, [part.id]);
     const original = project.original.placements.find(
       (v) => v.partId === part.id,
@@ -277,11 +292,20 @@ export function validateLayout(
 }
 // Each axis has at most 256 coordinates; remnant work/storage is bounded by
 // O(n log n + 256²) / O(n + 256²), independently of part count.
-export function remnantAxis(min: number, max: number, edges: number[]): number[] {
+export function remnantAxis(
+  min: number,
+  max: number,
+  edges: number[],
+): number[] {
   if (max <= min) return [];
-  const all = [...new Set([min, max, ...edges.filter(v => v > min && v < max)])].sort((a,b) => a-b);
+  const all = [
+    ...new Set([min, max, ...edges.filter((v) => v > min && v < max)]),
+  ].sort((a, b) => a - b);
   if (all.length <= 256) return all;
-  return Array.from({length:256}, (_,i) => all[Math.floor(i * (all.length - 1) / 255)]);
+  return Array.from(
+    { length: 256 },
+    (_, i) => all[Math.floor((i * (all.length - 1)) / 255)],
+  );
 }
 export function measureLayout(
   project: Project,
@@ -324,28 +348,43 @@ export function measureLayout(
       maxX: b.maxX + s.gap,
       maxY: b.maxY + s.gap,
     }));
-    const xs = remnantAxis(s.margin, stock.width - s.margin,
-      obstacles.flatMap(b => [b.minX, b.maxX]));
-    const ys = remnantAxis(s.margin, stock.height - s.margin,
-      obstacles.flatMap(b => [b.minY, b.maxY]));
+    const xs = remnantAxis(
+      s.margin,
+      stock.width - s.margin,
+      obstacles.flatMap((b) => [b.minX, b.maxX]),
+    );
+    const ys = remnantAxis(
+      s.margin,
+      stock.height - s.margin,
+      obstacles.flatMap((b) => [b.minY, b.maxY]),
+    );
     if (xs.length < 2 || ys.length < 2) continue;
     // At most 256² difference entries. Cover every cell intersecting an obstacle,
     // including edges omitted by coordinate thinning: coarsening only loses space.
-    const stride = xs.length, diff = new Int32Array(stride * ys.length);
+    const stride = xs.length,
+      diff = new Int32Array(stride * ys.length);
     const lower = (axis: number[], v: number) => {
-      let lo = 0, hi = axis.length;
-      while (lo < hi) { const mid = (lo + hi) >>> 1;
-        if (axis[mid] < v) lo = mid + 1; else hi = mid; }
+      let lo = 0,
+        hi = axis.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (axis[mid] < v) lo = mid + 1;
+        else hi = mid;
+      }
       return lo;
     };
     for (const b of obstacles) {
-      const x0 = Math.max(xs[0], b.minX), x1 = Math.min(xs.at(-1)!, b.maxX);
-      const y0 = Math.max(ys[0], b.minY), y1 = Math.min(ys.at(-1)!, b.maxY);
+      const x0 = Math.max(xs[0], b.minX),
+        x1 = Math.min(xs.at(-1)!, b.maxX);
+      const y0 = Math.max(ys[0], b.minY),
+        y1 = Math.min(ys.at(-1)!, b.maxY);
       if (x0 >= x1 || y0 >= y1) continue;
-      const lx = lower(xs, x0), ly = lower(ys, y0);
+      const lx = lower(xs, x0),
+        ly = lower(ys, y0);
       const left = xs[lx] === x0 ? lx : lx - 1;
       const bottom = ys[ly] === y0 ? ly : ly - 1;
-      const right = lower(xs, x1), top = lower(ys, y1);
+      const right = lower(xs, x1),
+        top = lower(ys, y1);
       diff[bottom * stride + left]++;
       diff[bottom * stride + right]--;
       diff[top * stride + left]--;
@@ -356,8 +395,10 @@ export function measureLayout(
     for (let y = 0; y < ys.length - 1; y++) {
       for (let x = 0; x < xs.length - 1; x++) {
         const k = y * stride + x;
-        diff[k] += (x ? diff[k - 1] : 0) + (y ? diff[k - stride] : 0)
-          - (x && y ? diff[k - stride - 1] : 0);
+        diff[k] +=
+          (x ? diff[k - 1] : 0) +
+          (y ? diff[k - stride] : 0) -
+          (x && y ? diff[k - stride - 1] : 0);
         heights[x] = diff[k] ? 0 : heights[x] + ys[y + 1] - ys[y];
       }
       // Monotone histogram stack with physical (variable-cell) width and height.
@@ -368,10 +409,21 @@ export function measureLayout(
         while (stack.length && stack.at(-1)!.height > height) {
           const bar = stack.pop()!;
           start = bar.start;
-          const width = xs[x] - xs[start], area = width * bar.height;
-          if (width >= s.minRemnantWidth && bar.height >= s.minRemnantHeight && (!best || area > best.area))
-            best = { sheetId: stock.id, x: xs[start], y: ys[y + 1] - bar.height,
-              width, height: bar.height, area };
+          const width = xs[x] - xs[start],
+            area = width * bar.height;
+          if (
+            width >= s.minRemnantWidth &&
+            bar.height >= s.minRemnantHeight &&
+            (!best || area > best.area)
+          )
+            best = {
+              sheetId: stock.id,
+              x: xs[start],
+              y: ys[y + 1] - bar.height,
+              width,
+              height: bar.height,
+              area,
+            };
         }
         if (height > 0 && (!stack.length || stack.at(-1)!.height < height))
           stack.push({ start, height });
@@ -379,7 +431,10 @@ export function measureLayout(
     }
     if (best) remnants.push(best);
   }
-  const outlineArea = project.parts.reduce((n, p) => n + p.area, 0),
+  const placedIds = new Set(layout.placements.map((p) => p.partId));
+  const outlineArea = project.parts
+      .filter((p) => placedIds.has(p.id))
+      .reduce((n, p) => n + p.area, 0),
     stockArea = layout.sheets.reduce((n, s) => n + s.width * s.height, 0);
   return {
     sheetCount: layout.sheets.length,

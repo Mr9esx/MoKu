@@ -1,3 +1,9 @@
+import {
+  emptyProject,
+  mergeImport,
+  type WorkspaceSnapshot,
+  type ImportTarget,
+} from "./core/importTransaction";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import { measureLayout, validateLayout } from "./core/geometry";
@@ -34,7 +40,16 @@ type State = {
   movePart: (p: Placement) => boolean;
   current: Layout | null;
   candidate: NestResult | null;
-  history: { project: Project; current: Layout }[];
+  history: WorkspaceSnapshot[];
+  draft: Project | null;
+  previewImport: (id: number, p: Project) => void;
+  cancelImport: () => void;
+  confirmImport: (p: Project, target: ImportTarget) => void;
+  discardCandidate: () => void;
+  setMaterial: (id: string, material: string) => void;
+  removePart: (id: string) => boolean;
+  duplicatePart: (id: string, quantity: number) => boolean;
+  placePart: (id: string, sheetId: string) => boolean;
   selected: string | null;
   settings: NestSettings;
   status: "idle" | "searching" | "done" | "error";
@@ -80,6 +95,12 @@ export function createWorkbenchStore() {
         attempt: 0,
       };
     };
+    const snapshot = (): WorkspaceSnapshot =>
+      structuredClone({
+        project: get().project,
+        current: get().current,
+        source: get().source,
+      });
     const load = (project: Project) =>
       set({
         ...invalidate(),
@@ -96,6 +117,7 @@ export function createWorkbenchStore() {
         importMessage: "",
       });
     return {
+      draft: null,
       project: null,
       source: null,
       current: null,
@@ -112,10 +134,42 @@ export function createWorkbenchStore() {
       importMessage: "",
       view: "current",
       importProject: load,
+      previewImport: (id, p) => {
+        if (id === get().importRun)
+          set({ draft: p, importing: false, importMessage: "" });
+      },
+      cancelImport: () =>
+        set({
+          draft: null,
+          importing: false,
+          importMessage: "",
+          importRun: get().importRun + 1,
+        }),
+      confirmImport: (p, target) => {
+        const s = get(),
+          before = snapshot(),
+          merged = mergeImport(before, p, target);
+        set({
+          ...invalidate(),
+          ...merged,
+          history: [...s.history, before],
+          draft: null,
+          importing: false,
+          importMessage: "",
+          selected: null,
+          importRun: s.importRun + 1,
+          message:
+            target === "append"
+              ? "已追加导入，可撤销"
+              : "已打开新项目，可撤销恢复上一项目",
+        });
+      },
+      discardCandidate: () =>
+        set({ ...invalidate(), message: "已放弃候选，当前排版保留" }),
       beginImport: () => {
         const id = get().importRun + 1;
         set({
-          ...invalidate(),
+          draft: null,
           importRun: id,
           importing: true,
           importMessage: "",
@@ -129,9 +183,8 @@ export function createWorkbenchStore() {
         if (id === get().importRun)
           set({
             importing: false,
-            message,
             importMessage: message,
-            status: "error",
+            draft: null,
           });
       },
       setSettings: (s) =>
@@ -156,7 +209,7 @@ export function createWorkbenchStore() {
             original: { ...p.original, sheets: sheets(p.original.sheets) },
           },
           current: { ...c, sheets: sheets(c.sheets) },
-          history: [],
+          history: [...get().history, snapshot()],
         });
       },
       toggleLock: (id) => {
@@ -164,6 +217,7 @@ export function createWorkbenchStore() {
         if (c)
           set({
             ...invalidate(),
+            history: [...get().history, snapshot()],
             current: {
               ...c,
               placements: c.placements.map((p) =>
@@ -174,8 +228,10 @@ export function createWorkbenchStore() {
       },
       addStock: (input) => {
         const s = get();
-        if (!s.project || !s.current) return false;
+        const project = s.project ?? emptyProject(),
+          current = s.current ?? project.original;
         if (
+          (input.material !== undefined && !input.material.trim()) ||
           ![input.width, input.height, input.thickness].every(
             Number.isFinite,
           ) ||
@@ -186,16 +242,17 @@ export function createWorkbenchStore() {
           input.thickness < 1 ||
           input.thickness > 100
         ) {
-          set({ message: "板材宽高 100–10000 mm，板厚 1–100 mm" });
+          set({ message: "请填写材质；板材宽高 100–10000 mm，板厚 1–100 mm" });
           return false;
         }
         const stock = {
           ...input,
           id: crypto.randomUUID(),
           material:
-            s.project.sheets.find((v) => v.thickness === input.thickness)
-              ?.material ??
-            s.project.sheets[0]?.material ??
+            input.material?.trim() ||
+            project.sheets.find((v) => v.thickness === input.thickness)
+              ?.material ||
+            project.sheets[0]?.material ||
             "木材",
         };
         set({
@@ -203,104 +260,137 @@ export function createWorkbenchStore() {
           history: [
             ...s.history,
             {
+              source: structuredClone(s.source),
               project: structuredClone(s.project),
               current: structuredClone(s.current),
             },
           ],
           project: {
-            ...s.project,
-            sheets: [...s.project.sheets, stock],
+            ...project,
+            sheets: [...project.sheets, stock],
             original: {
-              ...s.project.original,
-              sheets: [...s.project.original.sheets, stock],
+              ...project.original,
+              sheets: [...project.original.sheets, stock],
             },
           },
-          current: { ...s.current, sheets: [...s.current.sheets, stock] },
+          current: { ...current, sheets: [...current.sheets, stock] },
           message: "已新增板材",
         });
         return true;
       },
       removeStock: (id) => {
         const s = get();
-        if (!s.project || !s.current || !s.project.sheets.some(v => v.id === id))
+        if (
+          !s.project ||
+          !s.current ||
+          !s.project.sheets.some((v) => v.id === id)
+        )
           return false;
-        if (s.current.placements.some(v => v.sheetId === id)) {
-          set({ message: "板材仍有组件，请先移走组件" });
+        if (s.current.placements.some((v) => v.sheetId === id)) {
+          set({ message: "板材仍有零件，请先移走零件" });
           return false;
         }
-        const placements = new Map(s.current.placements.map(v => [v.partId, v]));
+        const placements = new Map(
+          s.current.placements.map((v) => [v.partId, v]),
+        );
         set({
           ...invalidate(),
-          history: [...s.history, {
-            project: structuredClone(s.project),
-            current: structuredClone(s.current),
-          }],
+          history: [
+            ...s.history,
+            {
+              source: structuredClone(s.source),
+              project: structuredClone(s.project),
+              current: structuredClone(s.current),
+            },
+          ],
           project: {
             ...s.project,
-            sheets: s.project.sheets.filter(v => v.id !== id),
-            parts: s.project.parts.map(part => {
+            sheets: s.project.sheets.filter((v) => v.id !== id),
+            parts: s.project.parts.map((part) => {
               const current = placements.get(part.id);
               return part.stockId === id && current
                 ? { ...part, stockId: current.sheetId }
                 : part;
             }),
             original: {
-              sheets: s.project.original.sheets.filter(v => v.id !== id),
-              placements: s.project.original.placements.map(v =>
-                v.sheetId === id ? placements.get(v.partId)! : v),
+              sheets: s.project.original.sheets.filter((v) => v.id !== id),
+              placements: s.project.original.placements.map((v) =>
+                v.sheetId === id ? placements.get(v.partId)! : v,
+              ),
             },
           },
-          current: { ...s.current, sheets: s.current.sheets.filter(v => v.id !== id) },
+          current: {
+            ...s.current,
+            sheets: s.current.sheets.filter((v) => v.id !== id),
+          },
           message: "已删除空板材，可撤销恢复",
         });
         return true;
       },
       addPart: (input) => {
-        const s = get();
-        if (!s.project || !s.current) return false;
-        const stock = s.project.sheets.find(
-          (v) => v.thickness === input.thickness,
-        );
-        if (!stock) {
-          set({ message: "没有匹配板厚，请先新增板材" });
-          return false;
-        }
+        const s = get(),
+          project = s.project ?? emptyProject(),
+          current = s.current ?? project.original;
         try {
-          const part = makePart(input, crypto.randomUUID(), stock.id),
-            placement = findInitialPlacement(
-              s.project,
-              editingLayout(s.project, s.current),
-              part,
-              s.settings,
+          if (input.material !== undefined && !input.material.trim())
+            throw Error("请填写零件材质");
+          const quantity = input.quantity ?? 1;
+          if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100)
+            throw Error("数量需为 1–100 的整数");
+          const stock = project.sheets.find(
+            (v) =>
+              v.thickness === input.thickness &&
+              (!input.material || v.material === input.material),
+          );
+          const parts = [],
+            placements = [];
+          let next = current;
+          for (let i = 0; i < quantity; i++) {
+            const part = makePart(
+              {
+                ...input,
+                material: input.material ?? stock?.material ?? "木材",
+              },
+              crypto.randomUUID(),
+              stock?.id ?? "",
             );
-          if (!placement) {
-            set({ message: "未找到合法初始位置，请先新增板材或调整参数" });
-            return false;
+            const placement =
+              input.place !== true
+                ? null
+                : findInitialPlacement(
+                    { ...project, parts: [...project.parts, ...parts] },
+                    editingLayout(project, next),
+                    part,
+                    s.settings,
+                  );
+            if (input.place === true && !placement)
+              throw Error("未找到兼容的合法位置；请新增板材或选择待放置");
+            if (placement) {
+              part.stockId = placement.sheetId;
+              placements.push(placement);
+              next = {
+                ...includeStock(project, next, placement.sheetId),
+                placements: [...next.placements, placement],
+              };
+            }
+            parts.push(part);
           }
-          part.stockId = placement.sheetId;
           set({
             ...invalidate(),
-            history: [
-              ...s.history,
-              {
-                project: structuredClone(s.project),
-                current: structuredClone(s.current),
-              },
-            ],
+            history: [...s.history, snapshot()],
             project: {
-              ...s.project,
-              parts: [...s.project.parts, part],
+              ...project,
+              parts: [...project.parts, ...parts],
               original: {
-                ...s.project.original,
-                placements: [...s.project.original.placements, placement],
+                ...project.original,
+                placements: [...project.original.placements, ...placements],
               },
             },
-            current: {
-              ...includeStock(s.project, s.current, placement.sheetId),
-              placements: [...s.current.placements, placement],
-            },
-            selected: part.id,
-            message: "已新增组件",
+            current: next,
+            selected: parts[0].id,
+            message: placements.length
+              ? "已新增零件"
+              : "已新增待放置零件，请拖入板材或自动排版",
           });
           return true;
         } catch (e) {
@@ -308,26 +398,132 @@ export function createWorkbenchStore() {
           return false;
         }
       },
+      placePart: (id, sheetId) => {
+        const s = get(),
+          part = s.project?.parts.find((p) => p.id === id);
+        if (!s.project || !s.current || !part) return false;
+        const placement = findInitialPlacement(
+          s.project,
+          {
+            ...s.current,
+            sheets: s.project.sheets.filter((v) => v.id === sheetId),
+          },
+          part,
+          s.settings,
+        );
+        if (!placement) {
+          set({
+            message: "目标板材没有兼容的合法位置，请核对尺寸、板厚和材质",
+          });
+          return false;
+        }
+        return get().movePart(placement);
+      },
+      removePart: (id) => {
+        const s = get();
+        if (
+          !s.project ||
+          !s.current ||
+          !s.project.parts.some((p) => p.id === id)
+        )
+          return false;
+        set({
+          ...invalidate(),
+          history: [...s.history, snapshot()],
+          project: {
+            ...s.project,
+            parts: s.project.parts.filter((p) => p.id !== id),
+            original: {
+              ...s.project.original,
+              placements: s.project.original.placements.filter(
+                (p) => p.partId !== id,
+              ),
+            },
+          },
+          current: {
+            ...s.current,
+            placements: s.current.placements.filter((p) => p.partId !== id),
+          },
+          selected: null,
+          message: "已删除零件，可撤销",
+        });
+        return true;
+      },
+      duplicatePart: (id, quantity) => {
+        const s = get(),
+          part = s.project?.parts.find((p) => p.id === id);
+        if (
+          !part ||
+          !s.project ||
+          !s.current ||
+          !Number.isInteger(quantity) ||
+          quantity < 1 ||
+          quantity > 100
+        )
+          return false;
+        const copies = Array.from({ length: quantity }, (_, i) => ({
+          ...structuredClone(part),
+          id: crypto.randomUUID(),
+          name: `${part.name} · 副本 ${i + 1}`,
+        }));
+        set({
+          ...invalidate(),
+          history: [...s.history, snapshot()],
+          project: { ...s.project, parts: [...s.project.parts, ...copies] },
+          message: `已复制 ${quantity} 个待放置零件`,
+        });
+        return true;
+      },
+      setMaterial: (id, material) => {
+        const s = get();
+        if (!s.project || !s.current || !material.trim()) return;
+        const sheets = (ss: Layout["sheets"]) =>
+          ss.map((v) =>
+            v.id === id ? { ...v, material: material.trim() } : v,
+          );
+        set({
+          ...invalidate(),
+          history: [...s.history, snapshot()],
+          project: {
+            ...s.project,
+            sheets: sheets(s.project.sheets),
+            parts: s.project.parts.map((p) =>
+              s.current!.placements.some(
+                (v) => v.partId === p.id && v.sheetId === id,
+              )
+                ? { ...p, material: material.trim() }
+                : p,
+            ),
+          },
+          current: { ...s.current, sheets: sheets(s.current.sheets) },
+        });
+      },
       movePart: (p) => {
         const s = get();
         if (!s.project || !s.current) return false;
         const previous = s.current.placements.find(
           (v) => v.partId === p.partId,
         );
-        if (!previous || previous.locked) {
-          set({ message: "组件已锁定，无法移动或旋转" });
+        if (
+          !s.project.parts.some((v) => v.id === p.partId) ||
+          previous?.locked
+        ) {
+          set({ message: "零件已锁定，无法移动或旋转" });
           return false;
         }
         const next = {
           ...includeStock(s.project, s.current, p.sheetId),
-          placements: s.current.placements.map((v) =>
-            v.partId === p.partId ? { ...p, locked: previous.locked } : v,
-          ),
+          placements: previous
+            ? s.current.placements.map((v) =>
+                v.partId === p.partId ? { ...p, locked: previous.locked } : v,
+              )
+            : [...s.current.placements, p],
         };
         const issues = validateLayout(
           { ...s.project, original: s.current },
           next,
           s.settings,
+          { requireAll: false },
         );
         if (issues.length) {
           set({ message: `修改未应用：${issues[0].message}` });
@@ -338,6 +534,7 @@ export function createWorkbenchStore() {
           history: [
             ...s.history,
             {
+              source: structuredClone(s.source),
               project: structuredClone(s.project),
               current: structuredClone(s.current),
             },
@@ -347,14 +544,16 @@ export function createWorkbenchStore() {
         });
         return true;
       },
-      select: (selected) =>
+      select: (selected) => set({ selected }),
+      setView: (view) => {
+        const p = view === "original" ? get().source : get().project;
         set({
-          selected,
-          ...(selected && !get().source?.parts.some((v) => v.id === selected)
-            ? { view: "current" as const }
-            : {}),
-        }),
-      setView: (view) => set({ view }),
+          view,
+          selected: p?.parts.some((p) => p.id === get().selected)
+            ? get().selected
+            : null,
+        });
+      },
       beginSearch: () => {
         const run = get().run + 1;
         stopWorker();
@@ -448,6 +647,7 @@ export function createWorkbenchStore() {
           history: [
             ...s.history,
             {
+              source: structuredClone(s.source),
               project: structuredClone(s.project!),
               current: structuredClone(s.current),
             },
@@ -472,13 +672,17 @@ export function createWorkbenchStore() {
       reset: () => {
         const s = get();
         if (s.project && s.current) {
-          const available = new Set(s.project.sheets.map(v => v.id));
-          const retained = s.source?.original.placements.filter(v => !available.has(v.sheetId)).length ?? 0;
+          const available = new Set(s.project.sheets.map((v) => v.id));
+          const retained =
+            s.source?.original.placements.filter(
+              (v) => !available.has(v.sheetId),
+            ).length ?? 0;
           set({
             ...invalidate(),
             history: [
               ...s.history,
               {
+                source: structuredClone(s.source),
                 project: structuredClone(s.project!),
                 current: structuredClone(s.current),
               },
@@ -491,12 +695,13 @@ export function createWorkbenchStore() {
                   (v) => v.partId === p.partId,
                 );
                 return original && available.has(original.sheetId)
-                  ? { ...original, locked: p.locked } : p;
+                  ? { ...original, locked: p.locked }
+                  : p;
               }),
             },
             message: retained
-              ? `已恢复可用原板位置；${retained} 个组件的原板已删除，保留当前位置`
-              : "已恢复导入组件原始位置，保留新增组件",
+              ? `已恢复可用原板位置；${retained} 个零件的原板已删除，保留当前位置`
+              : "已恢复导入零件原始位置，保留新增零件",
           });
         }
       },
