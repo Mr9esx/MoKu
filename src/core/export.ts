@@ -12,6 +12,9 @@ const esc = (s: string) =>
         "'": "&apos;",
       })[c]!,
   );
+// Convert CAD positive-Y-up coordinates for SVG without flipping text glyphs.
+export const displayPoints = (p: Point[], sheetHeight: number) =>
+  p.map((v) => ({ x: v.x, y: sheetHeight - v.y }));
 export const points = (p: Point[]) => p.map((v) => `${v.x},${v.y}`).join(" ");
 export function exportSvg(project: Project, layout: Layout) {
   if (
@@ -45,8 +48,11 @@ export function exportSvg(project: Project, layout: Layout) {
         .map((p) => {
           const part = project.parts.find((v) => v.id === p.partId)!;
           const path = (poly: Point[], feature: string, fill: string) =>
-            `<polygon data-feature="${feature}" points="${points(transformPoints(poly, part, p))}" fill="${fill}" stroke="#25382e" stroke-width="0.6"/>`;
-          const label = transformPoints([part.label], part, p)[0];
+            `<polygon data-feature="${feature}" points="${points(displayPoints(transformPoints(poly, part, p), s.height))}" fill="${fill}" stroke="#25382e" stroke-width="0.6"/>`;
+          const label = displayPoints(
+            transformPoints([part.label], part, p),
+            s.height,
+          )[0];
           return `<g id="part-${esc(part.id)}"><title>${esc(part.name)}</title>${path(part.outline, "outline", part.thickness > 5 ? "#ccb58e" : "#a4b69c")}${part.pockets.map((pocket) => path(pocket.outline, "pocket", "#e6e8da")).join("")}${part.holes.map((h) => path(h, "hole", "#a4c2d3")).join("")}<text x="${label.x}" y="${label.y}" text-anchor="middle" font-size="18">${esc(part.name)}</text></g>`;
         })
         .join("")}</g>`;

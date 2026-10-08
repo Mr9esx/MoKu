@@ -85,3 +85,20 @@ it("locks against current geometry without changing imported coordinates", () =>
   expect(s.getState().current!.placements[0].locked).toBe(true);
   expect(s.getState().project!.original).toEqual(original);
 });
+it("presents CAD positive Y upward in SVG while leaving text upright and coordinates unchanged", () => {
+  const p = project();
+  const source = structuredClone(p.original);
+  const part = p.parts[0];
+  const placement = p.original.placements[0];
+  const sheet = p.sheets.find((s) => s.id === placement.sheetId)!;
+  const svg = exportSvg(p, p.original);
+  const first = part.outline[0];
+  expect(svg).toContain(
+    `points="${placement.x + first.x},${sheet.height - placement.y - first.y}`,
+  );
+  expect(svg).toContain(
+    `x="${placement.x + part.label.x}" y="${sheet.height - placement.y - part.label.y}"`,
+  );
+  expect(svg).not.toContain("scale(1 -1)");
+  expect(p.original).toEqual(source);
+});

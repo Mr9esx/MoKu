@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Maximize, ZoomIn, ZoomOut } from "lucide-react";
 import { useWorkbench } from "../store";
 import { measureLayout, transformPoints } from "../core/geometry";
-import { points } from "../core/export";
+import { points, displayPoints } from "../core/export";
 import type { Layout } from "../core/types";
 export function StockCanvas({ layout }: { layout: Layout }) {
   const s = useWorkbench(),
@@ -111,7 +111,7 @@ export function StockCanvas({ layout }: { layout: Layout }) {
                   <g key={r.sheetId}>
                     <rect
                       x={r.x}
-                      y={r.y}
+                      y={sheet.height - r.y - r.height}
                       width={r.width}
                       height={r.height}
                       fill="#b7c7ab"
@@ -122,7 +122,7 @@ export function StockCanvas({ layout }: { layout: Layout }) {
                     />
                     <text
                       x={r.x + 10}
-                      y={r.y + 28}
+                      y={sheet.height - r.y - r.height + 28}
                       fontSize="22"
                       fill="#648060"
                     >
@@ -134,7 +134,10 @@ export function StockCanvas({ layout }: { layout: Layout }) {
               .filter((p) => p.sheetId === sheet.id)
               .map((p) => {
                 const part = project.parts.find((v) => v.id === p.partId)!;
-                const label = transformPoints([part.label], part, p)[0];
+                const label = displayPoints(
+                  transformPoints([part.label], part, p),
+                  sheet.height,
+                )[0];
                 const selected = s.selected === part.id;
                 return (
                   <g
@@ -148,7 +151,12 @@ export function StockCanvas({ layout }: { layout: Layout }) {
                       {p.locked ? " · 已锁定" : ""}
                     </title>
                     <polygon
-                      points={points(transformPoints(part.outline, part, p))}
+                      points={points(
+                        displayPoints(
+                          transformPoints(part.outline, part, p),
+                          sheet.height,
+                        ),
+                      )}
                       fill={part.thickness > 5 ? "#cdb68e" : "#a8b59b"}
                       stroke={selected ? "#25382e" : "#877c67"}
                       strokeWidth={selected ? 9 : 2}
@@ -157,7 +165,10 @@ export function StockCanvas({ layout }: { layout: Layout }) {
                       <polygon
                         key={`p${j}`}
                         points={points(
-                          transformPoints(pocket.outline, part, p),
+                          displayPoints(
+                            transformPoints(pocket.outline, part, p),
+                            sheet.height,
+                          ),
                         )}
                         fill="#e9e8d8"
                         stroke="#aaa998"
@@ -167,7 +178,12 @@ export function StockCanvas({ layout }: { layout: Layout }) {
                     {part.holes.map((hole, j) => (
                       <polygon
                         key={`h${j}`}
-                        points={points(transformPoints(hole, part, p))}
+                        points={points(
+                          displayPoints(
+                            transformPoints(hole, part, p),
+                            sheet.height,
+                          ),
+                        )}
                         fill="#aac7d7"
                         stroke="#628797"
                         strokeWidth="1.4"
