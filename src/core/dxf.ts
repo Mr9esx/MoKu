@@ -212,6 +212,19 @@ export function parseDxf(text: string, name = "导入图纸"): Project {
     } else shapes.push({ e, points: contour(e) });
   }
   for (const [layer, list] of chains) {
+    const endpoints = list.flatMap((e) => {
+      const path = contour(e);
+      return [path[0], path.at(-1)!];
+    });
+    for (const point of endpoints) {
+      const degree = endpoints.filter(
+        (other) => Math.hypot(point.x - other.x, point.y - other.y) < 0.001,
+      ).length;
+      if (degree !== 2)
+        fail(
+          `图层 ${layer} 的 LINE/ARC 链未闭合或存在分支，请转换为独立闭合多段线`,
+        );
+    }
     while (list.length) {
       const first = list.shift()!,
         points = contour(first),
