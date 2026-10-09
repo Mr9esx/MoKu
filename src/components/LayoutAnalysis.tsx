@@ -1,12 +1,15 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { EfficiencyChart } from "./EfficiencyChart";
 
-import { measureLayout, polygonArea } from "../core/geometry";
+import { measureLayout, polygonArea, concentratedRemnantArea } from "../core/geometry";
+import { modeLabels } from "../core/types";
 import type {
   Layout,
   LayoutIssue,
   LayoutMetrics,
   NestSettings,
   Project,
+  NestResult,
 } from "../core/types";
 
 const percent = (n: number) => `${(n * 100).toFixed(1)}%`;
@@ -35,6 +38,7 @@ export function LayoutAnalysis({
   currentProject,
   current,
   candidate,
+  searchResult,
   settings,
   view,
   issues,
@@ -47,6 +51,7 @@ export function LayoutAnalysis({
   currentProject: Project | null;
   current: Layout | null;
   candidate: Layout | null;
+  searchResult?: NestResult | null;
   settings: NestSettings;
   view: "original" | "current" | "candidate";
   issues: LayoutIssue[];
@@ -110,228 +115,201 @@ export function LayoutAnalysis({
       settings,
     ],
   );
-  const currentMetrics = comparisons.find(
-    (row) => row.key === "current",
-  )?.metrics;
-  const candidateMetrics = comparisons.find(
-    (row) => row.key === "candidate",
-  )?.metrics;
+  const [tab, setTab] = useState<"overview" | "compare">(
+    candidate ? "compare" : "overview",
+  );
+  const [baseline, setBaseline] = useState<"current" | "original">("current");
+  const reference = comparisons.find((row) => row.key === baseline)!;
+  const proposal = comparisons.find((row) => row.key === "candidate")!;
+  const canCompare = !!proposal.metrics && !!reference.metrics;
+  const showComparison = !!candidate && tab === "compare" && canCompare;
+  const sourceDiffers = source && currentProject && (
+    source.parts.map((p) => p.id).sort().join("|") !==
+      currentProject.parts.map((p) => p.id).sort().join("|") ||
+    source.sheets.map((p) => p.id).sort().join("|") !==
+      currentProject.sheets.map((p) => p.id).sort().join("|")
+  );
+  const missing = project.parts.length - layout.placements.length;
   const largest = metrics.remnants.reduce<
     (typeof metrics.remnants)[number] | null
   >((best, r) => (!best || r.area > best.area ? r : best), null);
+  const travelDelta = canCompare
+    ? (reference.metrics!.travel - proposal.metrics!.travel) / 1000
+    : 0;
+  const referenceRemnant = reference.metrics && reference.project
+    ? concentratedRemnantArea(reference.project, reference.metrics) : 0;
+  const proposalRemnant = proposal.metrics && proposal.project
+    ? concentratedRemnantArea(proposal.project, proposal.metrics) : 0;
+  const remnantDelta = (proposalRemnant - referenceRemnant) / 1e6;
+  const crossSheetChanges = useMemo(() => {
+    const before = new Map(reference.layout?.placements.map(p => [p.partId, p.sheetId]));
+    return candidate?.placements.filter(p => before.has(p.partId) && before.get(p.partId) !== p.sheetId).length ?? 0;
+  }, [reference.layout, candidate]);
   return (
     <aside className="analysis-panel floating" aria-label="排版数据分析">
       <div className="panel-heading">
-        <strong>
-          数据概览 <span>{labels[view]}</span>
-        </strong>
+        <strong>排版概览</strong>
+        <span className="analysis-mode">{modeLabels[settings.mode]}</span>
       </div>
       <div className="analysis-body">
-        <div className="utilization-summary">
-          <div>
-            <span>轮廓利用率</span>
-            <strong>{percent(metrics.utilization)}</strong>
-          </div>
-          <div>
-            <span>使用板材 / 库存</span>
-            <strong>
-              {new Set(layout.placements.map((p) => p.sheetId)).size}
-              <small> / {project.sheets.length} 张</small>
-            </strong>
-          </div>
-        </div>
-        <div className="overview-secondary">
-          <span>
-            净利用率 {percent(metrics.stockArea ? net / metrics.stockArea : 0)}
-          </span>
-          <span>
-            已放 {layout.placements.length} / {project.parts.length}
-          </span>
-        </div>
-        {issues.length > 0 ? (
+        <EfficiencyChart />
+        {candidate && (
+          <nav className="analysis-tabs" aria-label="排版分析内容">
+            <button
+              className={!showComparison ? "active" : ""}
+              aria-pressed={!showComparison}
+              onClick={() => setTab("overview")}
+            >概览</button>
+            <button
+              className={showComparison ? "active" : ""}
+              aria-pressed={showComparison}
+              disabled={!canCompare}
+              onClick={() => setTab("compare")}
+            >对比</button>
+          </nav>
+        )}
+        {issues.length > 0 && (
           <button className="analysis-warning" onClick={onCheck}>
-            {project.parts.length - layout.placements.length > 0
-              ? `${project.parts.length - layout.placements.length} 个待放置 · `
-              : ""}
-            {issues.length} 项待核对 · 查看检查
+            <strong>
+              {missing > 0 ? `${missing} 个零件尚未放置` : `${issues.length} 项需要核对`}
+            </strong>
+            <span>{issues.length} 项待核对 · 查看问题并定位 ↗</span>
           </button>
-        ) : (
-          <p className="hint">轮廓与间距检查通过</p>
         )}
-        {candidate && current && currentMetrics && candidateMetrics && (
-          <section className="candidate-comparison">
-            <strong>候选 vs 当前</strong>
-            {currentProject &&
-              current.placements.length < currentProject.parts.length && (
-                <p className="warning">
-                  当前有{" "}
-                  {currentProject.parts.length - current.placements.length}{" "}
-                  个待放置零件；候选包含全部零件，利用率变化也来自补齐放置。
-                </p>
-              )}
-            <p>
-              用板 {new Set(current.placements.map((p) => p.sheetId)).size} →{" "}
-              {new Set(candidate.placements.map((p) => p.sheetId)).size} 张
-            </p>
-            <p>
-              轮廓利用率 {percent(currentMetrics.utilization)} →{" "}
-              {percent(candidateMetrics.utilization)}
-            </p>
-            <p>
-              可用余料 {area(currentMetrics.reusableArea)} →{" "}
-              {area(candidateMetrics.reusableArea)}
-            </p>
-            <p>
-              估算空移 {(currentMetrics.travel / 1000).toFixed(2)} →{" "}
-              {(candidateMetrics.travel / 1000).toFixed(2)} m
-            </p>
-            <small>应用 / 放弃入口始终保留在画布顶部。</small>
-          </section>
-        )}
-        <h3>每张板材</h3>
-        <div className="sheet-analysis-list">
-          {sheets.map(({ stock, count, gross, net, remnant }, i) => (
-            <section className="sheet-analysis" key={stock.id}>
-              <div>
-                <strong>
-                  板 {i + 1} · {stock.name}
-                </strong>
-                <span>
-                  {count} 个 · {stock.thickness} mm
-                </span>
-              </div>
-              <small>
-                {stock.width} × {stock.height} mm · {stock.material}
-              </small>
-              <div className="sheet-rates">
-                <span>
-                  轮廓 {percent(gross / (stock.width * stock.height))}
-                </span>
-                <span>净 {percent(net / (stock.width * stock.height))}</span>
-              </div>
-              <div className="utilization-track">
-                <span
-                  style={{
-                    width: `${Math.min(100, (gross / (stock.width * stock.height)) * 100)}%`,
-                  }}
-                />
-              </div>
-              <small>
-                矩形余料{" "}
-                {remnant
-                  ? `${Math.round(remnant.width)} × ${Math.round(remnant.height)} mm`
-                  : "未达到阈值"}
-              </small>
-            </section>
-          ))}
-          {!sheets.length && <p className="hint">当前布局没有板材。</p>}
-        </div>
-        <details className="metric-details">
-          <summary>面积、余料与加工详情</summary>
-          <dl className="analysis-stats">
-            <div>
-              <dt>已放轮廓面积</dt>
-              <dd>{area(metrics.outlineArea)}</dd>
-            </div>
-            <div>
-              <dt>已放净面积</dt>
-              <dd>{area(net)}</dd>
-            </div>
-            <div>
-              <dt>布局板面积 · {layout.sheets.length} 张</dt>
-              <dd>{area(metrics.stockArea)}</dd>
-            </div>
-            <div>
-              <dt>库存板面积</dt>
-              <dd>
-                {area(
-                  project.sheets.reduce((n, s) => n + s.width * s.height, 0),
+        {showComparison ? (
+          <>
+            <p className="comparison-intro">先核对变化，再决定是否应用。</p>
+            <label className="comparison-baseline">
+              比较基准
+              <select
+                aria-label="对比基准"
+                value={baseline}
+                onChange={(e) => setBaseline(e.target.value as "current" | "original")}
+              >
+                <option value="current">当前排版</option>
+                {source && <option value="original">原始图纸</option>}
+              </select>
+            </label>
+            {baseline === "original" && sourceDiffers && (
+              <p className="warning comparison-caveat">
+                原图与当前的零件或库存集合不同，利用率差异包含资源变化，不能直接视为排版提升。
+              </p>
+            )}
+            {reference.project && reference.layout &&
+              reference.layout.placements.length < reference.project.parts.length && (
+              <p className="warning comparison-caveat">
+                {labels[baseline]}有 {reference.project.parts.length - reference.layout.placements.length} 个待放置零件；候选包含全部零件，利用率变化也来自补齐放置。
+              </p>
+            )}
+            <table className="comparison-table compact-comparison">
+              <thead><tr><th>指标</th><th>{baseline === "current" ? "当前" : "原图"}</th><th>候选</th></tr></thead>
+              <tbody>
+                <tr><th>使用板材</th><td>{reference.used} 张</td><td>{proposal.used} 张</td></tr>
+                <tr><th>轮廓利用率</th><td>{percent(reference.metrics!.utilization)}</td><td>{percent(proposal.metrics!.utilization)}</td></tr>
+                {settings.mode === "remnant" ? (
+                  <tr><th data-tooltip="按板厚和材质分组，每组保留的最大可用矩形余料合计" tabIndex={0}>连续余料</th><td>{area(referenceRemnant)}</td><td>{area(proposalRemnant)}</td></tr>
+                ) : (
+                  <tr><th>估算空移</th><td>{(reference.metrics!.travel / 1000).toFixed(2)} m</td><td>{(proposal.metrics!.travel / 1000).toFixed(2)} m</td></tr>
                 )}
-              </dd>
+                <tr><th>跨板调整</th><td>—</td><td>{crossSheetChanges} 个零件</td></tr>
+              </tbody>
+            </table>
+            <div className="comparison-insight">
+              {settings.mode === "remnant" ? "连续余料变化" : "估算空移变化"}
+              <strong>{settings.mode === "remnant"
+                ? (Math.abs(remnantDelta) < 0.0005 ? "基本相同" : `${remnantDelta > 0 ? "增加" : "减少"} ${Math.abs(remnantDelta).toFixed(3)} m²`)
+                : (Math.abs(travelDelta) < 0.005 ? "基本相同" : `${travelDelta > 0 ? "减少" : "增加"} ${Math.abs(travelDelta).toFixed(2)} m`)}</strong>
             </div>
-            <div>
-              <dt>估算加工空移</dt>
-              <dd>{(metrics.travel / 1000).toFixed(2)} m</dd>
-            </div>
-            <div>
-              <dt>最大矩形余料</dt>
-              <dd>
-                {largest
-                  ? `${Math.round(largest.width)} × ${Math.round(largest.height)} mm`
-                  : "未达到阈值"}
-              </dd>
-            </div>
-          </dl>
-        </details>
-        <h3>视图对比</h3>
-        {source &&
-          currentProject &&
-          (source.parts
-            .map((p) => p.id)
-            .sort()
-            .join("|") !==
-            currentProject.parts
-              .map((p) => p.id)
-              .sort()
-              .join("|") ||
-            source.sheets
-              .map((p) => p.id)
-              .sort()
-              .join("|") !==
-              currentProject.sheets
-                .map((p) => p.id)
-                .sort()
-                .join("|")) && (
-            <p className="warning">
-              原图与当前的零件或库存集合不同，利用率差异包含资源变化，不能直接视为排版提升。
+            <details className="panel-disclosure comparison-details">
+              <summary data-tooltip="比较净利用率、布局板面积与可用余料" data-tooltip-collapsed>对比详情</summary>
+              <table className="comparison-table compact-comparison">
+                <thead><tr><th>指标</th><th>{baseline === "current" ? "当前" : "原图"}</th><th>候选</th></tr></thead>
+                <tbody>
+                <tr><th>净利用率</th><td>{percent(reference.metrics!.stockArea ? reference.net / reference.metrics!.stockArea : 0)}</td><td>{percent(proposal.metrics!.stockArea ? proposal.net / proposal.metrics!.stockArea : 0)}</td></tr>
+                <tr><th>布局板面积</th><td>{area(reference.metrics!.stockArea)}</td><td>{area(proposal.metrics!.stockArea)}</td></tr>
+                <tr><th>可用余料</th><td>{area(reference.metrics!.reusableArea)}</td><td>{area(proposal.metrics!.reusableArea)}</td></tr>
+                {settings.mode === "remnant" && <tr><th>估算空移</th><td>{(reference.metrics!.travel / 1000).toFixed(2)} m</td><td>{(proposal.metrics!.travel / 1000).toFixed(2)} m</td></tr>}
+                </tbody>
+              </table>
+            </details>
+            <p className="analysis-definition">
+              空移为零件中心访问估算，非 CNC 刀路。布局板面积可因紧凑排版减少；库存仍保留。余料为保守矩形近似。
             </p>
-          )}
-        <div className="comparison-scroll">
-          <table className="comparison-table">
-            <thead>
-              <tr>
-                <th>视图</th>
-                <th>轮廓 / 净</th>
-                <th>使用 / 布局板</th>
-                <th>空移</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparisons.map((row) => (
-                <tr
-                  key={row.key}
-                  className={row.key === view ? "active-row" : ""}
-                >
-                  <th>{labels[row.key]}</th>
-                  {row.metrics ? (
-                    <>
-                      <td>
-                        {percent(row.metrics.utilization)}
-                        <small>
-                          {percent(
-                            row.metrics.stockArea
-                              ? row.net / row.metrics.stockArea
-                              : 0,
-                          )}
-                        </small>
-                      </td>
-                      <td>
-                        {row.used} / {row.metrics.sheetCount}
-                        <small>{area(row.metrics.stockArea)}</small>
-                      </td>
-                      <td>{(row.metrics.travel / 1000).toFixed(2)} m</td>
-                    </>
-                  ) : (
-                    <td colSpan={3}>尚无方案</td>
-                  )}
-                </tr>
+          </>
+        ) : (
+          <>
+            <div className="utilization-summary">
+              <div><span>轮廓利用率</span><strong>{percent(metrics.utilization)}</strong></div>
+              <div><span>使用 / 库存板材</span><strong>{new Set(layout.placements.map((p) => p.sheetId)).size}<small> / {project.sheets.length} 张</small></strong></div>
+            </div>
+            <p className="placement-count">{layout.placements.length} / {project.parts.length} 个零件已放置</p>
+            <h3 className="analysis-group-title">用板明细 · {layout.sheets.length} 张</h3>
+            <div className="sheet-analysis-list">
+              {sheets.map(({ stock, count, gross, net: sheetNet, remnant }) => (
+                <details className="compact-sheet-analysis" key={stock.id}>
+                  <summary>
+                    <div className="sheet-summary-row">
+                      <strong data-tooltip-overflow={stock.name}>{stock.name}</strong>
+                      <span>{percent(gross / (stock.width * stock.height))}<i>›</i></span>
+                    </div>
+                    <div className="utilization-track"><span style={{ width: `${Math.min(100, (gross / (stock.width * stock.height)) * 100)}%` }} /></div>
+                  </summary>
+                  <dl className="analysis-stats">
+                    <div><dt>尺寸</dt><dd>{stock.width} × {stock.height} mm</dd></div>
+                    <div><dt>板厚 / 材质</dt><dd>{stock.thickness} mm · {stock.material}</dd></div>
+                    <div><dt>已放置</dt><dd>{count} 个零件</dd></div>
+                    <div><dt>净利用率</dt><dd>{percent(sheetNet / (stock.width * stock.height))}</dd></div>
+                    <div><dt>矩形余料</dt><dd>{remnant ? `${Math.round(remnant.width)} × ${Math.round(remnant.height)} mm` : "未达到阈值"}</dd></div>
+                  </dl>
+                </details>
               ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="hint analysis-note">
-          布局板面积可因紧凑排版减少；库存仍保留。空移为零件中心访问估算，余料为保守矩形近似。
-        </p>
+              {!sheets.length && <p className="hint">当前布局没有板材。</p>}
+            </div>
+            <details className="panel-disclosure">
+              <summary data-tooltip="查看净利用率、面积、余料和估算加工空移" data-tooltip-collapsed>指标详情</summary>
+              <dl className="analysis-stats">
+                <div><dt>净利用率</dt><dd>{percent(metrics.stockArea ? net / metrics.stockArea : 0)}</dd></div>
+                <div><dt>已放轮廓面积</dt><dd>{area(metrics.outlineArea)}</dd></div>
+                <div><dt>已放净面积</dt><dd>{area(net)}</dd></div>
+                <div><dt>布局板面积 · {layout.sheets.length} 张</dt><dd>{area(metrics.stockArea)}</dd></div>
+                <div><dt>库存板面积</dt><dd>{area(project.sheets.reduce((n, stock) => n + stock.width * stock.height, 0))}</dd></div>
+                <div><dt>可用余料</dt><dd>{area(metrics.reusableArea)}</dd></div>
+                <div><dt>估算加工空移</dt><dd>{(metrics.travel / 1000).toFixed(2)} m</dd></div>
+                <div><dt>最大矩形余料</dt><dd>{largest ? `${Math.round(largest.width)} × ${Math.round(largest.height)} mm` : "未达到阈值"}</dd></div>
+              </dl>
+              <p className="analysis-definition">轮廓利用率按外轮廓面积计算；净利用率扣除通孔。布局板与库存板分别计量；空移为零件中心访问估算，余料为保守矩形近似。</p>
+            </details>
+            {candidate && canCompare && (
+              <div className="candidate-callout">
+                候选方案已就绪
+                <button onClick={() => setTab("compare")}>查看候选对比 ↗</button>
+              </div>
+            )}
+          </>
+        )}
+        {candidate && searchResult?.search && (
+          <details className="panel-disclosure search-details">
+            <summary data-tooltip="查看实际用时、搜索次数与停止原因" data-tooltip-collapsed>搜索详情</summary>
+            <dl className="analysis-stats">
+              {searchResult.search.engine && <div><dt>排版引擎</dt><dd>{searchResult.search.engine}</dd></div>}
+              {searchResult.search.improved !== undefined && <div><dt>本次结果</dt><dd>{searchResult.search.improved ? "找到更优完整排法" : "保留当前排版"}</dd></div>}
+              {searchResult.search.engine && <div><dt>遗传搜索</dt><dd>{searchResult.search.groups ?? 1} 组 · {searchResult.search.generations} 代 · {searchResult.search.evaluations} 个排列</dd></div>}
+              {searchResult.search.engine && <div><dt>已验证分组排列</dt><dd>{searchResult.search.feasible ?? 0} 个</dd></div>}
+              {searchResult.search.engine && <div><dt>独立种群重启</dt><dd>{searchResult.search.restarts} 次</dd></div>}
+              <div><dt>停止原因</dt><dd>{({time:"搜索时长限制",candidates:"搜索数量限制",iterations:"完成设定搜索",disabled:"未执行优化",plateau:"利用率平台期",manual:"手动停止",exhausted:"无可继续搜索的零件"})[searchResult.search.stoppedBy]}</dd></div>
+              <div><dt>{searchResult.search.patienceLimit ? "实际用时" : "实际用时 / 时长上限"}</dt><dd>{(searchResult.elapsedMs/1000).toFixed(2)}{searchResult.search.patienceLimit ? "" : ` / ${searchResult.search.seconds}`} 秒</dd></div>
+              <div><dt>已完成代数</dt><dd>{searchResult.attempts}{searchResult.search.patienceLimit ? "" : ` / ${settings.iterations * (searchResult.search.groups ?? 1)}`} 代</dd></div>
+              {searchResult.search.patienceLimit && <div><dt>利用率未提高</dt><dd>{searchResult.search.unchanged}/{searchResult.search.patienceLimit} 代</dd></div>}
+              <div><dt>轮廓配对计算</dt><dd>{(searchResult.search.nfpPairs ?? 0).toLocaleString()} 组</dd></div>
+            </dl>
+            <p className="analysis-definition">各板厚、材质组独立进行 SVGnest 搜索，总代数按组累计；完整排版通过原始轮廓校验后才保留候选。{searchResult.search.patienceLimit ? "每组完成一代才计一次耐心；只看最高利用率，余料形状改善不重置计数。平台期停止不代表全局最优。" : "搜索不保证全局最优；几何计算和校验可能使实际用时略超设置。"}</p>
+          </details>
+        )}
+      </div>
+      <div className="information-footer">
+        {showComparison
+          ? "应用 / 放弃在画布顶部 · 核对后再决定"
+          : `${labels[view]} · ${view === "current" ? "点击板材行查看规格与余料" : "只读视图"}`}
       </div>
     </aside>
   );

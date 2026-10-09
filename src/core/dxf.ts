@@ -627,6 +627,27 @@ export function parseDxf(
     else if (thicknesses.length > 1) fail("同一板框内零件厚度不一致");
   }
   if (assigned.size !== cuts.length) fail("存在未被板框完整包含的零件");
+  // Resolve mutually unique label/envelope pairs before the nearest-distance fallback.
+  // Include named cuts in ownership checks: an overlapping envelope is not certainty.
+  const envelopes = cuts.map(cut => ({ cut, box: bounds(cut.points) }));
+  const candidates = labels.filter(l => !l.used).map(label => ({
+    label,
+    owners: envelopes.filter(({ box }) =>
+      label.point.x >= box.minX && label.point.x <= box.maxX &&
+      label.point.y >= box.minY && label.point.y <= box.maxY),
+  }));
+  for (const { label, owners } of candidates) {
+    if (owners.length !== 1) continue;
+    const cut = owners[0].cut, part = sourceParts.get(cut)!;
+    if (part.name || candidates.filter(c => c.owners.some(o => o.cut === cut)).length !== 1) continue;
+    const placement = placements.find(p => p.partId === part.id)!;
+    const axes = stockAxes(frames[sheets.findIndex(s => s.id === part.stockId)].points);
+    const q = axes.toLocal(label.point);
+    part.name = label.e.text!;
+    part.label = { x: q.x - placement.x, y: q.y - placement.y };
+    part.labelAssociation = "notch";
+    label.used = true;
+  }
   for (const part of parts.filter((p) => !p.name)) {
     const placement = placements.find((p) => p.partId === part.id)!,
       frame = frames[sheets.findIndex((s) => s.id === part.stockId)],
@@ -656,7 +677,8 @@ export function parseDxf(
       part.name = label.e.text!;
       const q = axes.toLocal(label.point);
       part.label = { x: q.x - placement.x, y: q.y - placement.y };
-      warnings.push(`${part.name} 标注位于凹口，按最近未匹配文字关联，请核对`);
+      part.labelAssociation = "nearest";
+      warnings.push(`${part.name} 标注归属不唯一，已暂按最近未匹配文字关联，请核对`);
     } else part.name = `零件 ${part.id}`;
   }
   for (const feature of shapes.filter((s) =>

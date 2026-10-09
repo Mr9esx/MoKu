@@ -285,3 +285,44 @@ it("rejects aggregate arc sampling beyond the total resource budget", () => {
   ).join("");
   expect(() => parseDxf(dxf(circles))).toThrow(/复杂|上限/);
 });
+
+it("automatically matches unique notch labels without changing source coordinates", () => {
+  const p = parseDxf(text);
+  for (const name of ["P21", "P22"]) {
+    const part = p.parts.find(p => p.name === name)!;
+    expect(part.labelAssociation).toBe("notch");
+    expect(p.warnings.some(w => w.startsWith(name + " "))).toBe(false);
+  }
+});
+it("keeps a review warning when a label is outside every part envelope", () => {
+  const p = parseDxf(dxf(
+    poly("s", "REF_STOCK", [[0,0],[100,0],[100,100],[0,100]]) +
+    poly("p", "CUT_12MM", [[10,10],[30,10],[30,30],[10,30]]) +
+    "0\nTEXT\n8\nREF_TEXT\n10\n40\n20\n40\n1\nP1\n"
+  ));
+  expect(p.parts[0].labelAssociation).toBe("nearest");
+  expect(p.warnings).toContain("P1 标注归属不唯一，已暂按最近未匹配文字关联，请核对");
+});
+
+it("preserves the exact position of an automatically associated notch label", () => {
+  const p = parseDxf(dxf(
+    poly("s", "REF_STOCK", [[0,0],[100,0],[100,100],[0,100]]) +
+    poly("p", "CUT_12MM", [[10,10],[40,10],[40,18],[18,18],[18,40],[10,40]]) +
+    "0\nTEXT\n8\nREF_TEXT\n10\n25\n20\n25\n1\nP1\n"
+  ));
+  expect(p.parts[0].labelAssociation).toBe("notch");
+  expect(p.parts[0].label).toEqual({ x: 15, y: 15 });
+  expect(p.original.placements[0]).toMatchObject({ x: 10, y: 10 });
+  expect(p.warnings).toEqual([]);
+});
+it("retains review warnings for competing labels in overlapping concave envelopes", () => {
+  const p = parseDxf(dxf(
+    poly("s", "REF_STOCK", [[0,0],[100,0],[100,100],[0,100]]) +
+    poly("a", "CUT_12MM", [[10,10],[40,10],[40,18],[18,18],[18,40],[10,40]]) +
+    poly("b", "CUT_12MM", [[50,50],[20,50],[20,42],[42,42],[42,20],[50,20]]) +
+    "0\nTEXT\n8\nREF_TEXT\n10\n25\n20\n25\n1\nP1\n" +
+    "0\nTEXT\n8\nREF_TEXT\n10\n30\n20\n30\n1\nP2\n"
+  ));
+  expect(p.parts.every(p => p.labelAssociation === "nearest")).toBe(true);
+  expect(p.warnings).toHaveLength(2);
+});

@@ -23,6 +23,7 @@ export function StockCanvas({
 }) {
   const s = useWorkbench(),
     project = provided ?? s.project!;
+  const candidateVisible = !!s.candidate || s.status === "searching";
   const [zoom, setZoom] = useState(1),
     [pan, setPan] = useState({ x: 0, y: 0 }),
     [ghost, setGhost] = useState<Placement | null>(null),
@@ -66,7 +67,7 @@ export function StockCanvas({
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [candidateVisible]);
   const offsets = layout.sheets.map((_, i) =>
     layout.sheets.slice(0, i).reduce((n, v) => n + v.width + 160, 60),
   );
@@ -328,24 +329,21 @@ export function StockCanvas({
               {sheet.width} × {sheet.height}
             </text>
             <rect
+              className="sheet-outline"
               width={sheet.width}
               height={sheet.height}
-              fill="#fffefa"
-              stroke="#a0a79b"
               strokeWidth="2"
             />
             {metrics.remnants
               .filter((r) => r.sheetId === sheet.id)
               .map((r) => (
                 <rect
+                  className="remnant-outline"
                   key={r.sheetId}
                   x={r.x}
                   y={sheet.height - r.y - r.height}
                   width={r.width}
                   height={r.height}
-                  fill="#b7c7ab"
-                  fillOpacity=".10"
-                  stroke="#9aaa91"
                   strokeDasharray="12 8"
                   strokeWidth="1"
                   pointerEvents="none"
@@ -396,26 +394,23 @@ export function StockCanvas({
                 >
                   <title>{`${part.name} · ${part.width.toFixed(1)} × ${part.height.toFixed(1)} mm`}</title>
                   <polygon
+                    className={`part-outline ${part.thickness > 5 ? "thick" : "thin"}`}
                     points={poly(part.outline)}
-                    fill={part.thickness > 5 ? "#cdb68e" : "#a8b59b"}
-                    stroke={selected ? "#26392e" : "#877c67"}
                     strokeWidth={selected ? 6 : 1.7}
                   />
                   {part.pockets.map((v, j) => (
                     <polygon
+                      className="pocket-outline"
                       key={`p${j}`}
                       points={poly(v.outline)}
-                      fill="#e9e8d8"
-                      stroke="#aaa998"
                       strokeWidth="1.3"
                     />
                   ))}
                   {part.holes.map((v, j) => (
                     <polygon
+                      className="hole-outline"
                       key={`h${j}`}
                       points={poly(v)}
-                      fill="#aac7d7"
-                      stroke="#628797"
                       strokeWidth="1.4"
                     />
                   ))}
@@ -456,18 +451,18 @@ export function StockCanvas({
       </svg>
       <div className="zoom-controls floating">
         <button
-          title="缩小"
+          data-tooltip="缩小"
           aria-label="缩小"
           onClick={() => adjustZoom(1 / 1.2)}
         >
           <Minus size={15} />
         </button>
         <span>{Math.round(zoom * 100)}%</span>
-        <button title="放大" aria-label="放大" onClick={() => adjustZoom(1.2)}>
+        <button data-tooltip="放大" aria-label="放大" onClick={() => adjustZoom(1.2)}>
           <Plus size={15} />
         </button>
         <button
-          title="适合全部板材 · Ctrl/⌘ 0"
+          data-tooltip="适合全部板材 · Ctrl/⌘ 0"
           aria-label="适合全部板材"
           onClick={fit}
         >

@@ -32,6 +32,10 @@ export function ResourcePanel({
     ) ?? [];
   return (
     <aside className="parts-panel floating" aria-label="资源">
+      <div className="panel-heading">
+        <strong>用料清单</strong>
+        <span className="section-index">01</span>
+      </div>
       <div className="resource-import">
         <button className="wide" onClick={() => open("import")}>
           <Upload size={15} />
@@ -69,7 +73,7 @@ export function ResourcePanel({
           />
         </label>
         <button
-          title={`新增${tab === "parts" ? "零件" : "板材"}`}
+          data-tooltip={`新增${tab === "parts" ? "零件" : "板材"}`}
           aria-label={`新增${tab === "parts" ? "零件" : "板材"}`}
           onClick={() => open(tab === "parts" ? "part" : "stock")}
         >
@@ -99,11 +103,11 @@ export function ResourcePanel({
                     <Thumbnail part={p} />
                   </span>
                   <span className="part-row-copy">
-                    <strong>{p.name}</strong>
-                    <span>
+                    <strong data-tooltip-overflow={p.name}>{p.name}</strong>
+                    <span data-tooltip-overflow="">
                       {p.width.toFixed(1)} × {p.height.toFixed(1)} mm
                     </span>
-                    <small>
+                    <small data-tooltip-overflow="">
                       {p.thickness || "待填"} mm ·{" "}
                       {placed
                         ? project?.sheets.find((v) => v.id === placed.sheetId)
@@ -111,7 +115,7 @@ export function ResourcePanel({
                         : "待放置"}
                     </small>
                   </span>
-                  {!placed && <span className="pending-dot" title="待放置" />}
+                  {!placed && <span className="pending-dot" data-tooltip="待放置" />}
                 </button>
               );
             })
@@ -121,11 +125,11 @@ export function ResourcePanel({
                 0;
               return (
                 <section className="resource-stock" key={v.id}>
-                  <strong>{v.name}</strong>
+                  <strong data-tooltip-overflow={v.name}>{v.name}</strong>
                   <span>
                     {v.width} × {v.height} mm
                   </span>
-                  <small>
+                  <small data-tooltip-overflow="">
                     {v.thickness} mm · {v.material} · {count} 个零件
                   </small>
                   <div>
@@ -137,7 +141,7 @@ export function ResourcePanel({
                     </button>
                     <button
                       aria-label={`删除 ${v.name}`}
-                      title={count ? "先移走零件" : "删除空板材，可撤销"}
+                      data-tooltip={s.view !== "current" ? "当前视图只读，切换当前排版后编辑" : count ? "先移走零件后才能删除板材" : "删除空板材，可撤销"}
                       disabled={count > 0 || s.view !== "current"}
                       onClick={() => s.removeStock(v.id)}
                     >

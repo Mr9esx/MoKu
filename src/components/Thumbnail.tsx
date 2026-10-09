@@ -7,23 +7,22 @@ export function Thumbnail({ part }: { part: Part }) {
       aria-hidden="true"
     >
       <polygon
+        className={`part-outline ${part.thickness > 5 ? "thick" : "thin"}`}
         points={points(displayPoints(part.outline, part.height))}
-        fill={part.thickness > 5 ? "#cdb68e" : "#a8b59b"}
-        stroke="#877c67"
         strokeWidth="2"
       />
       {part.pockets.map((p, i) => (
         <polygon
+          className="pocket-outline"
           key={`p${i}`}
           points={points(displayPoints(p.outline, part.height))}
-          fill="#e9e8d8"
         />
       ))}
       {part.holes.map((p, i) => (
         <polygon
+          className="hole-outline"
           key={`h${i}`}
           points={points(displayPoints(p, part.height))}
-          fill="#aac7d7"
         />
       ))}
     </svg>

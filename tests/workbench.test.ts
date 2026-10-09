@@ -1,7 +1,7 @@
 import { it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { parseDxf } from "../src/core/dxf";
-import { optimizeLayout } from "../src/core/nesting";
+import {validateLayout,measureLayout} from "../src/core/geometry";
 import { createWorkbenchStore } from "../src/store";
 import {
   exportSvg,
@@ -125,11 +125,14 @@ it("denies an applied moved arrangement made illegal by settings or thickness bu
   const store = createWorkbenchStore();
   store.getState().importProject(project());
   const imported = store.getState().project!;
-  const result = optimizeLayout(imported, {
-    ...store.getState().settings,
-    mode: "machining",
-    iterations: 1,
-  });
+  // Export eligibility is independent of whether a stochastic search improves
+  // a sample within one generation. Apply a known legal manual movement.
+  const layout=structuredClone(imported.original);
+  layout.placements[0].x+=1;
+  expect(validateLayout(imported,layout,store.getState().settings)).toEqual([]);
+  const result={layout,metrics:measureLayout(imported,layout,store.getState().settings),
+    originalMetrics:measureLayout(imported,imported.original,store.getState().settings),
+    attempts:0,elapsedMs:0,issues:[],message:"legal moved candidate"};
   expect(result.layout).not.toBeNull();
   expect(result.layout!.placements).not.toEqual(imported.original.placements);
   const run = store.getState().beginSearch();

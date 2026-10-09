@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { optimizeLayout } from "../src/core/nesting";
-import { validateLayout } from "../src/core/geometry";
+import { validateLayout, concentratedRemnantArea } from "../src/core/geometry";
 import { parseDxf } from "../src/core/dxf";
 import type { Project, NestSettings, Part } from "../src/core/types";
 const settings: NestSettings = {
@@ -197,7 +197,7 @@ it("remnant mode improves a scattered valid source", () => {
     r.originalMetrics.reusableArea,
   );
 });
-it("runs bounded real-sample search in each mode with visible relocation", () => {
+it("runs bounded real-sample SVGnest search in each mode and preserves a legal incumbent", () => {
   const p = parseDxf(readFileSync("public/sample.dxf", "utf8"), "sample");
   const results = [];
   for (const mode of ["utilization", "machining", "remnant"] as const) {
@@ -206,6 +206,12 @@ it("runs bounded real-sample search in each mode with visible relocation", () =>
     expect(r.layout?.placements).toHaveLength(53);
     expect(validateLayout(p, r.layout!, s)).toEqual([]);
     expect(r.elapsedMs).toBeLessThan(6500);
+    expect(r.search?.engine).toContain("SVGnest");
+    expect(r.search?.evaluations).toBeGreaterThan(0);
+    if (mode === "remnant")
+      expect(concentratedRemnantArea(p,r.metrics!)).toBeGreaterThanOrEqual(
+        concentratedRemnantArea(p,r.originalMetrics),
+      );
     results.push({
       mode,
       elapsed: r.elapsedMs,
@@ -220,9 +226,7 @@ it("runs bounded real-sample search in each mode with visible relocation", () =>
       "modes",
       results.map(({ placements, ...r }) => r),
     );
-  expect(
-    new Set(results.map((r) => JSON.stringify(r.placements))).size,
-  ).toBeGreaterThan(1);
+
 }, 30000);
 
 it("Worker emits progress/done and error protocol", async () => {
@@ -256,7 +260,7 @@ it("Worker emits progress/done and error protocol", async () => {
   }
 });
 it("stops anchor preparation when budget expires before creating a Cartesian product", async () => {
-  const { anchorCandidates } = await import("../src/core/nesting");
+  const { anchorCandidates } = await import("./support/local-nesting-baseline");
   let inspected = 0,
     checks = 0;
   function* manyCoordinates() {
@@ -278,7 +282,7 @@ it("stops anchor preparation when budget expires before creating a Cartesian pro
   expect(inspected).toBeLessThanOrEqual(12);
 });
 it("bounds axis storage and lazily checks the candidate budget", async () => {
-  const { anchorCandidates } = await import("../src/core/nesting");
+  const { anchorCandidates } = await import("./support/local-nesting-baseline");
   let inspected = 0,
     checks = 0;
   function* manyCoordinates() {

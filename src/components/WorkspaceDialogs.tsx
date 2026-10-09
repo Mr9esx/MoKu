@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { MaterialSelect } from "./MaterialSelect";
 import { StockForm } from "./StockForm";
-import { useWorkbench, startSearch } from "../store";
+import { useWorkbench, startSearch, startRepairSearch } from "../store";
 import { NestPanel } from "./NestPanel";
 import { ImportPreview } from "./ImportPreview";
 import { validateLayout } from "../core/geometry";
@@ -136,7 +136,7 @@ export function WorkspaceDialogs({
           }}
         />
         <p className="hint">
-          利用率：优先尝试减少用板；加工：减少零件中心间空移；余料：保留更大的连续矩形。有限预算启发式搜索，不保证全局最优。
+          利用率：优先尝试减少用板；加工：减少零件中心间空移；余料：集中保留较大的连续矩形。搜索结束不代表已找到全局最优。
         </p>
       </>
     );
@@ -150,33 +150,51 @@ export function WorkspaceDialogs({
           : s.current;
     const issues =
       project && layout
-        ? validateLayout({ ...project, original: layout }, layout, s.settings)
+        ? validateLayout({ ...project, original: s.view === "original" ? layout : (s.current ?? layout) }, layout, s.settings)
         : [];
+    const geometric = issues.filter(v => ["gap", "overlap", "boundary"].includes(v.kind));
+    const blockers = issues.filter(v => !["gap", "overlap", "boundary"].includes(v.kind));
+    const automaticLabels = project?.parts.filter(p => p.labelAssociation === "notch") ?? [];
+    const canRepair = geometric.length > 0 && blockers.length === 0;
+    const currentIssues = s.project && s.current
+      ? validateLayout({ ...s.project, original: s.current }, s.current, s.settings) : [];
     content = (
       <>
-        <p>
-          {issues.length
-            ? `${issues.length} 项需要核对；拖动或应用候选时会再次独立验证。`
-            : "轮廓、板边、间距和板厚均通过检查。"}
-        </p>
-        <div className="issue-list">
-          {issues.map((v, i) => (
-            <button
-              key={i}
-              onClick={() => {
+        <section className="check-section">
+          <h3>几何检查</h3>
+          <p role="status">{issues.length
+            ? `${issues.length} 项需要处理，其中 ${geometric.length} 项可尝试自动修复。`
+            : "轮廓、板边、间距和板厚均通过检查。"}</p>
+          <div className="issue-list">
+            {issues.map((v, i) => (
+              <button key={i} onClick={() => {
                 if (v.partIds[0]) s.select(v.partIds[0]);
                 close();
-              }}
-            >
-              {v.message}
-            </button>
-          ))}
-        </div>
-        {s.project?.warnings.map((v, i) => (
-          <p className="warning" key={i}>
-            {v}
-          </p>
-        ))}
+              }}>{v.message}</button>
+            ))}
+          </div>
+          {canRepair && s.view === "original" && <>
+            <p className="hint">原始图纸用于对照，修复以当前排版为起点。</p>
+            <button onClick={() => s.setView("current")}>检查当前排版</button>
+          </>}
+          {canRepair && s.view !== "original" && <>
+            <p className="hint">按当前间距 {s.settings.gap} mm、边距 {s.settings.margin} mm，使用 SVGnest 先调整问题零件及相邻零件，无法修复时再扩大重排范围。同材质、同板厚可跨板调整，锁定零件保持原位；候选通过独立检查后再应用。</p>
+            <button className="primary" disabled={s.status === "searching" || s.importing || s.settings.iterations === 0}
+              onClick={() => { startRepairSearch(); close(); }}>生成修复候选</button>
+            {s.settings.iterations === 0 && <p className="warning">请在排版设置中将遗传代数设为大于 0。</p>}
+          </>}
+          {blockers.length > 0 && <p className="hint">请先处理板厚、材质、缺失零件或无效轮廓等问题，再生成候选。</p>}
+          {s.view === "candidate" && issues.length === 0 && currentIssues.length > 0 &&
+            <button className="primary" disabled={s.status === "searching"} onClick={() => { s.apply(); close(); }}>应用修复候选</button>}
+        </section>
+        {(automaticLabels.length > 0 || (project?.warnings.length ?? 0) > 0) &&
+          <section className="check-section">
+            <h3>图纸标注与导入提示</h3>
+            {automaticLabels.length > 0 && <p>{automaticLabels.map(p => p.name).join("、")} 的凹口标注已按唯一包围框一一关联，保留原文字位置。</p>}
+            {project?.warnings.map((v, i) => <p className="warning" key={i}>{v}</p>)}
+            {project?.parts.some(p => p.labelAssociation === "nearest") &&
+              <p className="hint">这类文字存在多个可能归属或位于零件包围框外，暂保留最近文字关联，需要核对编号。</p>}
+          </section>}
       </>
     );
   } else if (dialog === "help")
@@ -193,7 +211,7 @@ export function WorkspaceDialogs({
           适应全部板材。
         </p>
         <p>
-          <kbd>Alt</kbd> 拖动时暂时关闭 8 像素弱磁吸。
+          <kbd>Alt</kbd> 拖动时暂时关闭 8 像素磁吸。
         </p>
         <p>
           <kbd>Ctrl / ⌘ + Z</kbd> 撤销新增、移动或应用；<kbd>Esc</kbd>{" "}
@@ -414,8 +432,8 @@ export function WorkspaceDialogs({
         aria-label={titles[dialog]}
       >
         <div className="modal-title">
-          <h2>{titles[dialog]}</h2>
-          <button aria-label="关闭弹窗" title="关闭 · Esc" onClick={close}>
+          <h2 data-tooltip-overflow={titles[dialog]}>{titles[dialog]}</h2>
+          <button aria-label="关闭弹窗" data-tooltip="关闭 · Esc" onClick={close}>
             <X size={18} />
           </button>
         </div>

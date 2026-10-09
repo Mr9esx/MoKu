@@ -8,6 +8,7 @@ import {
   Square,
   Undo2,
   MoreHorizontal,
+  ChevronDown,
 } from "lucide-react";
 import { useWorkbench } from "./store";
 import { StockCanvas } from "./components/StockCanvas";
@@ -15,7 +16,11 @@ import { WorkspaceDialogs, type Dialog } from "./components/WorkspaceDialogs";
 import { LayoutAnalysis } from "./components/LayoutAnalysis";
 import { ResourcePanel } from "./components/ResourcePanel";
 import { ContextInspector } from "./components/ContextInspector";
+import { EmptyWorkbench } from "./components/EmptyWorkbench";
+import { SearchProgressLabel } from "./components/SearchProgressLabel";
+import { TooltipLayer } from "./components/TooltipLayer";
 import { editingLayout } from "./core/editing";
+import { modeLabels } from "./core/types";
 import { measureLayout, validateLayout } from "./core/geometry";
 export const formatPercent = (n: number) => `${(n * 100).toFixed(1)}%`;
 export default function App() {
@@ -81,81 +86,64 @@ export default function App() {
     placement = layout?.placements.find((v) => v.partId === s.selected);
   return (
     <main className="workspace">
+      <TooltipLayer />
       <header className="topbar floating">
         <div className="brand">
-          <span className="brand-mark">木</span>
-          <strong>木作</strong>
-          <span className="project-title" title={s.project?.name}>
+          <img className="brand-mark" src="/woodwork-logo.webp" alt="" />
+          <div className="brand-name">
+            <strong>木作</strong>
+            <small>WOODWORK</small>
+          </div>
+          <span className="project-title" data-tooltip-overflow={s.project?.name} tabIndex={0}>
             {s.project?.name ?? "未命名项目"}
           </span>
         </div>
-        <nav className="edit-tools" aria-label="编辑工具">
-          <button
-            title="选择 · V"
-            aria-label="选择工具"
-            className={tool === "select" ? "active" : ""}
-            onClick={() => setTool("select")}
-          >
-            <MousePointer2 size={16} />
-          </button>
-          <button
-            title="平移 · H"
-            aria-label="平移工具"
-            className={tool === "hand" ? "active" : ""}
-            onClick={() => setTool("hand")}
-          >
-            <Hand size={16} />
-          </button>
-          <button
-            title="弱磁吸 · Alt 暂时关闭"
-            aria-label="弱磁吸"
-            aria-pressed={magnet}
-            className={magnet ? "active" : ""}
-            onClick={() => setMagnet(!magnet)}
-          >
-            <Magnet size={16} />
-          </button>
-          <button
-            disabled={!s.history.length}
-            aria-label="撤销"
-            title="撤销 · Ctrl/⌘ Z"
-            onClick={s.undo}
-          >
-            <Undo2 size={16} />
-          </button>
-        </nav>
         <div className="top-actions">
-          <button
-            className="primary"
-            aria-label={s.status === "searching" ? "取消搜索" : "自动排版"}
-            title={
-              s.status === "searching"
-                ? "取消搜索，保留完整合法候选"
-                : "自动排版设置"
-            }
-            disabled={!s.project?.parts.length}
-            onClick={() =>
-              s.status === "searching" ? s.cancel() : setDialog("settings")
-            }
-          >
-            {s.status === "searching" ? (
-              <Square size={14} />
-            ) : (
-              <Play size={14} />
-            )}
-            <span>{s.status === "searching" ? "取消搜索" : "自动排版"}</span>
-          </button>
-          <button
-            aria-label="导出"
-            disabled={!s.project}
-            onClick={() => setDialog("export")}
-          >
-            <Download size={15} />
-            <span>导出</span>
-          </button>
+          {project && (
+            <>
+              <button
+                className="optimization-mode"
+                aria-label={`优化模式：${modeLabels[s.settings.mode]}`}
+                data-tooltip={`当前优化模式：${modeLabels[s.settings.mode]} · 点击调整`}
+                onClick={() => setDialog("settings")}
+              >
+                {modeLabels[s.settings.mode]}
+                <ChevronDown size={12} />
+              </button>
+              <button
+                className="primary"
+                aria-label={s.status === "searching" ? "取消搜索" : "自动排版"}
+                data-tooltip={
+                  s.status === "searching"
+                    ? "取消搜索，保留完整合法候选"
+                    : s.project?.parts.length ? "自动排版设置" : "请先导入或新增零件"
+                }
+                disabled={!s.project?.parts.length}
+                onClick={() =>
+                  s.status === "searching" ? s.cancel() : setDialog("settings")
+                }
+              >
+                {s.status === "searching" ? (
+                  <Square size={14} />
+                ) : (
+                  <Play size={14} />
+                )}
+                <span>{s.status === "searching" ? "取消搜索" : "自动排版"}</span>
+              </button>
+              <button
+                aria-label="导出"
+                data-tooltip="导出当前排版"
+                onClick={() => setDialog("export")}
+              >
+                <Download size={15} />
+                <span>导出</span>
+              </button>
+            </>
+          )}
           <div className="more-wrap">
             <button
               aria-label="更多"
+              data-tooltip="更多操作与帮助"
               aria-expanded={more}
               onClick={() => setMore(!more)}
             >
@@ -193,34 +181,40 @@ export default function App() {
           </div>
         </div>
       </header>
-      <nav className="mobile-navigation" aria-label="工作区区域">
-        {[
-          ["resources", "资源"],
-          ["canvas", "画布"],
-          ["info", "信息"],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            className={mobile === key ? "active" : ""}
-            onClick={() => setMobile(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      <div className={`workspace-surface mobile-${mobile}`}>
-        <ResourcePanel
-          project={project}
-          layout={layout}
-          open={(dialog, stockId) => {
-            setStockId(stockId);
-            setDialog(dialog);
-          }}
-          onSelect={() => {
-            setTool("select");
-            setMobile("info");
-          }}
-        />
+      {project && (
+        <nav className="mobile-navigation" aria-label="工作区区域">
+          {[
+            ["resources", "资源"],
+            ["canvas", "画布"],
+            ["info", "信息"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              className={mobile === key ? "active" : ""}
+              onClick={() => setMobile(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
+      <div
+        className={`workspace-surface mobile-${mobile}${project ? "" : " workspace-initial"}`}
+      >
+        {project && (
+          <ResourcePanel
+            project={project}
+            layout={layout}
+            open={(dialog, stockId) => {
+              setStockId(stockId);
+              setDialog(dialog);
+            }}
+            onSelect={() => {
+              setTool("select");
+              setMobile("info");
+            }}
+          />
+        )}
         <div className="canvas-region">
           {project && layout && metrics && canvasLayout?.sheets.length ? (
             <StockCanvas
@@ -232,28 +226,51 @@ export default function App() {
               interactionBlocked={!!dialog || more}
             />
           ) : (
-            <div className="empty-canvas" onClick={() => s.select(null)}>
-              <div>
-                <span className="empty-mark">木</span>
-                <h2>{project ? "零件已就绪，先准备板材" : "从一张图纸开始"}</h2>
-                <p>
-                  {project
-                    ? `${project.parts.length} 个零件待放置。新增兼容板材后拖入或自动排版。`
-                    : "导入整板排版或独立零件轮廓，在这里安排你的木作。"}
-                </p>
-                <button
-                  className="primary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDialog(project ? "stock" : "import");
-                  }}
-                >
-                  {project ? "新增板材" : "导入 DXF"}
-                </button>
-              </div>
-            </div>
+            <EmptyWorkbench
+              project={project}
+              open={setDialog}
+              onClear={() => s.select(null)}
+            />
           )}
-          <div className="view-switch floating">
+          {project && <nav className="edit-tools canvas-tools floating" aria-label="编辑工具">
+            <button
+              data-tooltip="选择 · V"
+              aria-label="选择工具"
+              aria-pressed={tool === "select"}
+              className={tool === "select" ? "active" : ""}
+              onClick={() => setTool("select")}
+            >
+              <MousePointer2 size={16} />
+            </button>
+            <button
+              data-tooltip="平移 · H"
+              aria-label="平移工具"
+              aria-pressed={tool === "hand"}
+              className={tool === "hand" ? "active" : ""}
+              onClick={() => setTool("hand")}
+            >
+              <Hand size={16} />
+            </button>
+            <button
+              data-tooltip="磁吸 · Alt 暂时关闭"
+              aria-label="磁吸"
+              aria-pressed={magnet}
+              className={magnet ? "active" : ""}
+              onClick={() => setMagnet(!magnet)}
+            >
+              <Magnet size={16} />
+            </button>
+            <span className="tool-divider" aria-hidden="true" />
+            <button
+              disabled={!s.history.length}
+              aria-label="撤销"
+              data-tooltip={s.history.length ? "撤销 · Ctrl/⌘ Z" : "没有可撤销的修改"}
+              onClick={s.undo}
+            >
+              <Undo2 size={16} />
+            </button>
+          </nav>}
+          {project && <div className="view-switch floating">
             {(
               [
                 ["original", "原始图纸"],
@@ -269,7 +286,7 @@ export default function App() {
                   (view === "original" && !s.source) ||
                   (view === "candidate" && !s.candidate?.layout)
                 }
-                title={
+                data-tooltip={
                   view === "candidate" && !s.candidate
                     ? "自动排版后可比较候选"
                     : ""
@@ -279,14 +296,15 @@ export default function App() {
                 {label}
               </button>
             ))}
-          </div>
+          </div>}
           {(s.candidate || s.status === "searching") && (
             <div className="candidate-bar floating">
               <span>
                 {s.status === "searching"
-                  ? `搜索 ${s.attempt}/${s.settings.iterations}`
-                  : `候选 ${s.candidate?.metrics?.sheetCount ?? 0} 张板 · ${formatPercent(s.candidate?.metrics?.utilization ?? 0)}`}
+                  ? <SearchProgressLabel />
+                  : `${modeLabels[s.settings.mode]} · ${s.candidate?.metrics?.sheetCount ?? 0} 张板 · ${formatPercent(s.candidate?.metrics?.utilization ?? 0)}`}
               </span>
+              {s.status === "searching" && <button onClick={s.cancel}>停止搜索</button>}
               {s.candidate && (
                 <>
                   <button
@@ -311,6 +329,7 @@ export default function App() {
           />
         ) : project && layout && metrics ? (
           <LayoutAnalysis
+            key={s.candidate ? "with-candidate" : "overview"}
             project={project}
             layout={layout}
             metrics={metrics}
@@ -318,52 +337,54 @@ export default function App() {
             currentProject={s.project}
             current={s.current}
             candidate={s.candidate?.layout ?? null}
+            searchResult={s.candidate}
             settings={s.settings}
             view={s.view}
             issues={issues}
             onCheck={() => setDialog("check")}
           />
-        ) : (
-          <aside className="analysis-panel floating">
+        ) : project ? (
+          <aside className="analysis-panel floating analysis-empty" aria-label="排版概览">
             <div className="panel-heading">
-              <strong>数据概览</strong>
+              <strong>排版概览</strong>
+              <span className="section-index">02</span>
             </div>
             <div className="analysis-body">
-              <p className="hint">导入后显示真实用板、利用率和待放置数量。</p>
-              <div className="utilization-summary">
-                <div>
-                  <span>轮廓利用率</span>
-                  <strong>—</strong>
-                </div>
-                <div>
-                  <span>使用板材</span>
-                  <strong>0</strong>
-                </div>
+              <div className="overview-empty-illustration" aria-hidden="true">
+                <svg viewBox="0 0 80 100">
+                  <path d="M15 7h36l16 17v68H15Z" fill="none" stroke="currentColor" />
+                  <path d="M51 7v17h16M26 41h29M26 50h23M26 59h29" fill="none" stroke="currentColor" strokeWidth=".8" />
+                  <path d="M23 80h31" stroke="var(--accent)" strokeWidth="2" />
+                </svg>
               </div>
+              <h3>等待你的第一张图纸</h3>
+              <p className="hint">导入后，这里会显示用板情况<br />和需要处理的问题。</p>
+              <button onClick={() => setDialog("help")}>操作说明 ↗</button>
             </div>
           </aside>
-        )}
+        ) : null}
       </div>
       <footer className="statusbar">
-        <span role="status">
-          {s.message ||
-            (!project
-              ? "等待导入图纸"
-              : s.view !== "current"
-                ? "只读视图 · 切换当前排版后编辑"
-                : "拖动零件 · Alt 暂停磁吸 · Esc 返回概览")}
-        </span>
         <button
           disabled={!project}
           className={issues.length ? "status-warning" : ""}
           onClick={() => setDialog("check")}
+          data-tooltip="查看当前视图的排版检查详情"
         >
           {!project
-            ? "尚未检查"
+            ? "等待导入图纸"
             : issues.length
-              ? `${issues.length} 项待核对`
-              : "轮廓与间距检查通过"}
+              ? `排版检查：${issues.length} 项待核对 · 详情 ↗`
+              : "排版检查：通过 · 详情 ↗"}
         </button>
+        <span role="status" data-tooltip-overflow="">
+          {s.message ||
+            (!project
+              ? "导入 DXF 或载入示例开始"
+              : s.view !== "current"
+                ? "只读视图 · 切换当前排版后编辑"
+                : "拖动零件 · Alt 暂停磁吸 · Esc 返回概览")}
+        </span>
       </footer>
       <WorkspaceDialogs
         dialog={dialog}

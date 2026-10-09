@@ -13,6 +13,7 @@ import type {
   NestSettings,
   NestResult,
   Placement,
+  SearchProgress,
 } from "./core/types";
 import {
   findInitialPlacement,
@@ -29,7 +30,8 @@ export const defaults: NestSettings = {
   allowRotation: true,
   minRemnantWidth: 100,
   minRemnantHeight: 100,
-  iterations: 24,
+  iterations: 100,
+  searchSeconds: 30,
 };
 type State = {
   project: Project | null;
@@ -59,6 +61,8 @@ type State = {
   status: "idle" | "searching" | "done" | "error";
   message: string;
   attempt: number;
+  searchProgress: SearchProgress | null;
+  searchStartedAt: number | null;
   run: number;
   importRun: number;
   importing: boolean;
@@ -75,14 +79,18 @@ type State = {
   setView: (v: State["view"]) => void;
   beginSearch: () => number;
   receiveResult: (id: number, r: NestResult) => void;
-  progress: (id: number, n: number, bestLayout?: Layout) => void;
+  progress: (id: number, n: number, bestLayout?: Layout, progress?: SearchProgress) => void;
+  finishSearchTimeout: (id: number) => void;
   cancel: () => void;
   apply: () => void;
   undo: () => void;
   reset: () => void;
 };
 let worker: Worker | null = null;
+let workerDeadline: ReturnType<typeof setTimeout> | null = null;
 export function stopWorker() {
+  if (workerDeadline !== null) clearTimeout(workerDeadline);
+  workerDeadline = null;
   worker?.terminate();
   worker = null;
 }
@@ -97,6 +105,8 @@ export function createWorkbenchStore() {
         view: "current" as const,
         message: "",
         attempt: 0,
+        searchProgress: null,
+        searchStartedAt: null,
       };
     };
     const snapshot = (): WorkspaceSnapshot =>
@@ -128,10 +138,12 @@ export function createWorkbenchStore() {
       candidate: null,
       history: [],
       selected: null,
-      settings: defaults,
+      settings: { ...defaults, stopRule: "patience", patienceGenerations: 50 },
       status: "idle",
       message: "",
       attempt: 0,
+      searchProgress: null,
+      searchStartedAt: null,
       run: 0,
       importRun: 0,
       importing: false,
@@ -616,6 +628,8 @@ export function createWorkbenchStore() {
           candidate: null,
           message: "正在寻找完整可行排版…",
           attempt: 0,
+          searchProgress: null,
+          searchStartedAt: Date.now(),
           view: "current",
         });
         return run;
@@ -638,13 +652,18 @@ export function createWorkbenchStore() {
           status: valid ? "done" : "error",
           message: r.message,
           attempt: r.attempts,
+          searchProgress: r.search?.curve && s.searchProgress
+            ? { ...s.searchProgress,phase:"finalizing",curve:r.search.curve,
+                patience:r.search.patienceLimit ? {limit:r.search.patienceLimit,unchanged:r.search.unchanged ?? 0} : undefined }
+            : null,
+          searchStartedAt: null,
           view: valid ? "candidate" : "current",
         });
       },
-      progress: (id, attempt, bestLayout) => {
+      progress: (id, attempt, bestLayout, progress) => {
         const s = get();
         if (id !== s.run || s.status !== "searching") return;
-        set({ attempt });
+        set({ attempt, ...(progress ? { searchProgress: progress } : {}) });
         if (
           !bestLayout ||
           !s.project ||
@@ -670,16 +689,37 @@ export function createWorkbenchStore() {
           },
         });
       },
+      finishSearchTimeout: (id) => {
+        const s = get();
+        if (id !== s.run || s.status !== "searching") return;
+        stopWorker();
+        set({ run:s.run+1, status:s.candidate ? "done" : "error",
+          view:s.candidate ? "candidate" : "current", searchProgress:null, searchStartedAt:null,
+          message:s.candidate ? "达到搜索时长，已停止计算，保留最佳已验证候选，尚未应用。"
+            : "达到搜索时长，未收到合法候选，当前排版保留。" });
+      },
       cancel: () => {
         stopWorker();
         const s = get();
+        const progress=s.searchProgress;
+        const candidate=s.candidate && progress?.curve ? {...s.candidate,
+          attempts:s.attempt,elapsedMs:s.searchStartedAt===null?0:Date.now()-s.searchStartedAt,
+          search:{...s.candidate.search,engine:"SVGnest · NFP + 遗传搜索",groups:progress.groups,
+            generations:s.attempt,evaluations:progress.evaluations ?? 0,restarts:progress.restarts ?? 0,
+            seconds:0,candidates:progress.evaluations ?? 0,candidateLimit:0,stoppedBy:"manual" as const,
+            patienceLimit:progress.patience?.limit,unchanged:progress.patience?.unchanged,
+            rounds:progress.rounds,curve:progress.curve},
+        } : s.candidate;
         set({
           run: s.run + 1,
+          candidate,
           status: "idle",
+          searchProgress: progress?.curve ? progress : null,
+          searchStartedAt: null,
           view: s.candidate ? "candidate" : "current",
           message: s.candidate
-            ? "搜索已取消，最佳合法候选已保留，尚未应用。"
-            : "搜索已取消，当前排版保留。",
+            ? "搜索已停止，最佳合法候选已保留，尚未应用。"
+            : "搜索已停止，当前排版保留。",
         });
       },
       apply: () => {
@@ -707,6 +747,7 @@ export function createWorkbenchStore() {
           ],
           current: structuredClone(s.candidate.layout),
           candidate: null,
+          searchProgress: null,
           view: "current",
           status: "idle",
           message: "候选排版已应用",
@@ -766,21 +807,34 @@ export function useWorkbench() {
   return useStore(workbench);
 }
 export function startSearch() {
+  runSearch(false);
+}
+export function startRepairSearch() {
+  runSearch(true);
+}
+function runSearch(repair: boolean) {
   const s = workbench.getState();
   if (!s.project || !s.current || s.importing) return;
   const run = s.beginSearch();
+  if (repair) workbench.setState({ message: "正在按当前间距生成修复候选…" });
   worker = new Worker(new URL("./core/nesting.worker.ts", import.meta.url), {
     type: "module",
   });
   worker.onmessage = (e) => {
     if (e.data.type === "progress")
-      workbench.getState().progress(run, e.data.attempt, e.data.bestLayout);
-    if (e.data.type === "done")
-      workbench.getState().receiveResult(run, e.data.result);
+      workbench.getState().progress(run, e.data.attempt, e.data.bestLayout, e.data.progress);
+    if (e.data.type === "done") {
+      const result: NestResult = e.data.result;
+      if (repair) result.message = result.layout
+        ? "修复候选已通过独立检查，应用后生效"
+        : `本次未找到合法修复方案，请检查锁定零件、可用板材或增加${s.settings.stopRule === "patience" ? "耐心代数" : "搜索时长"}`;
+      workbench.getState().receiveResult(run, result);
+    }
     if (e.data.type === "error" && workbench.getState().run === run) {
       stopWorker();
       workbench.setState({
         status: "error",
+        searchProgress: null, searchStartedAt: null,
         message: e.data.message,
         candidate: null,
       });
@@ -791,13 +845,18 @@ export function startSearch() {
       stopWorker();
       workbench.setState({
         status: "error",
+        searchProgress: null, searchStartedAt: null,
         message: "搜索线程发生错误，请重试。",
         candidate: null,
       });
     }
   };
+  if (s.settings.stopRule !== "patience")
+    workerDeadline = setTimeout(() => workbench.getState().finishSearchTimeout(run),
+      (s.settings.searchSeconds ?? 5) * 1000 + 3000);
   worker.postMessage({
     type: "start",
+    purpose: repair ? "repair" : undefined,
     project: { ...s.project, original: s.current },
     settings: s.settings,
   });

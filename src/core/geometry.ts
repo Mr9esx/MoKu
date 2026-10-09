@@ -434,7 +434,7 @@ export function measureLayout(
   const placedIds = new Set(layout.placements.map((p) => p.partId));
   const outlineArea = project.parts
       .filter((p) => placedIds.has(p.id))
-      .reduce((n, p) => n + p.area, 0),
+      .reduce((n, p) => n + polygonArea(p.outline), 0),
     stockArea = layout.sheets.reduce((n, s) => n + s.width * s.height, 0);
   return {
     sheetCount: layout.sheets.length,
@@ -445,4 +445,16 @@ export function measureLayout(
     remnants,
     reusableArea: remnants.reduce((n, r) => n + r.area, 0),
   };
+}
+
+/** Preserve one large usable rectangle per compatible thickness/material pool. */
+export function concentratedRemnantArea(project: Project, metrics: Pick<LayoutMetrics, "remnants">) {
+  const largest = new Map<string, number>();
+  for (const remnant of metrics.remnants) {
+    const stock = project.sheets.find(s => s.id === remnant.sheetId);
+    if (!stock) continue;
+    const group = JSON.stringify([stock.thickness, stock.material]);
+    largest.set(group, Math.max(largest.get(group) ?? 0, remnant.area));
+  }
+  return [...largest.values()].reduce((sum, area) => sum + area, 0);
 }
