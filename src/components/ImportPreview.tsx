@@ -35,13 +35,18 @@ export function ImportPreview({
           v.id,
           {
             thickness: v.thickness,
-            material: v.material === "未指定" ? "" : v.material,
+            material:
+              v.material === "未指定" || !v.material
+                ? sample
+                  ? "多层板"
+                  : ""
+                : v.material,
           },
         ]),
       ),
     );
     setError("");
-  }, [s.draft]);
+  }, [s.draft, sample]);
   const parse = (
     chosen: File | undefined,
     nextMode: "board" | "parts",
