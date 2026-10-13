@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import { Select } from "./Select";
 import { useWorkbench } from "../store";
 
 const materials = [
@@ -16,7 +17,7 @@ export function MaterialSelect({
   value,
   onChange,
   ...props
-}: Omit<ComponentProps<"select">, "value" | "onChange"> & {
+}: Omit<ComponentProps<typeof Select>, "value" | "onChange" | "options"> & {
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -29,17 +30,9 @@ export function MaterialSelect({
       value,
     ]),
   ].filter((v) => v && v !== "其他" && v !== "未指定");
-  return (
-    <select {...props} value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="" disabled>
-        请选择材质
-      </option>
-      {options.map((material) => (
-        <option key={material} value={material}>
-          {material}
-        </option>
-      ))}
-      <option value="其他">其他</option>
-    </select>
-  );
+  return <Select {...props} value={value} onChange={onChange} options={[
+    { value: "", label: "请选择材质", disabled: true },
+    ...options.map(material => ({ value: material, label: material })),
+    { value: "其他", label: "其他" },
+  ]} />;
 }

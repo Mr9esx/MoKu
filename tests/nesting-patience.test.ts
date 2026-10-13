@@ -4,7 +4,7 @@ import { PatienceTracker } from "../src/core/patience";
 import { validateLayout } from "../src/core/geometry";
 import { createWorkbenchStore, workbench, startSearch, stopWorker } from "../src/store";
 import type { Project, NestSettings, SearchProgress } from "../src/core/types";
-const settings: NestSettings = {mode:"remnant",gap:1,margin:1,allowRotation:true,minRemnantWidth:1,minRemnantHeight:1,
+const settings: NestSettings = {mode:"utilization",gap:1,margin:1,allowRotation:true,minRemnantWidth:1,minRemnantHeight:1,
   iterations:1,searchSeconds:1,stopRule:"patience",patienceGenerations:3};
 function fixture(groups=1): Project {
   const sheets=Array.from({length:groups},(_,i)=>({id:`s${i}`,name:`s${i}`,width:20,height:20,thickness:i?5:12,material:"wood"}));
@@ -31,12 +31,21 @@ it("does not invent utilization before the first feasible complete layout",()=>{
   expect(t.observe(2,0.6)).toBe(false);expect(t.unchanged).toBe(0);
   expect(t.observe(3,0.6)).toBe(false);expect(t.observe(4,0.6)).toBe(true);
 });
+it.each(["machining", "remnant"] as const)("continues %s search when its objective improves without a utilization gain", mode=>{
+  const p=fixture(), reports:SearchProgress[]=[];
+  const r=optimizeLayout(p,{...settings,mode},(_g,_m,_l,progress)=>{if(progress)reports.push(progress);});
+  expect(r.search?.curve.every(point=>point.efficiency===0.04)).toBe(true);
+  expect(reports.some(progress=>progress.rounds===1 && progress.patience?.unchanged===0)).toBe(true);
+  expect(r.search?.rounds).toBeGreaterThan(3);
+  expect(r.search?.unchanged).toBe(3);
+  expect(validateLayout(p,r.layout!,settings)).toEqual([]);
+});
 it("stops on efficiency plateau beyond the old time and generation ceilings",()=>{
   let now=0;vi.spyOn(performance,"now").mockImplementation(()=>now+=100);
   const p=fixture(), reports:SearchProgress[]=[];
   const r=optimizeLayout(p,settings,(_g,_m,_l,progress)=>{if(progress)reports.push(progress);});
   expect(r.search?.stoppedBy).toBe("plateau");expect(r.search?.rounds).toBe(3);
-  expect(r.search?.improved).toBe(true); // A better remnant must not reset efficiency patience.
+  expect(r.search?.improved).toBe(true); // Geometric tie-breakers must not reset efficiency patience.
   expect(r.attempts).toBe(3);expect(r.elapsedMs).toBeGreaterThan(1000);
   expect(r.search?.curve.at(-1)?.unchanged).toBe(3);
   expect(validateLayout(p,r.layout!,settings)).toEqual([]);
@@ -107,6 +116,19 @@ it("retains the final curve even when no independently legal candidate exists",(
 });
 it("defaults the website to a 50-generation plateau rule",()=>{
   const s=createWorkbenchStore().getState();expect(s.settings.stopRule).toBe("patience");expect(s.settings.patienceGenerations).toBe(50);
+});
+it.each(["machining", "remnant"] as const)("describes the recorded %s stopping objective without claiming an efficiency plateau", async mode=>{
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { LayoutAnalysis } = await import("../src/components/LayoutAnalysis");
+  const { measureLayout } = await import("../src/core/geometry");
+  const { modeGoals } = await import("../src/core/types");
+  const project=fixture(), result=optimizeLayout(project,{...settings,mode});
+  const html=renderToStaticMarkup(createElement(LayoutAnalysis,{project,layout:project.original,metrics:measureLayout(project,project.original,settings),source:project,currentProject:project,current:project.original,candidate:result.layout,searchResult:result,settings,view:"current",issues:[],onCheck:()=>{}}));
+  expect(html).toContain(`${modeGoals[mode].label}未改善`);
+  expect(html).toContain(modeGoals[mode].description);
+  expect(html).not.toContain("利用率平台期");
+  expect(html).not.toContain("只看最高利用率");
 });
 it("does not terminate a patience search at the old wall-time watchdog",()=>{
   vi.useFakeTimers();

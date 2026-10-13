@@ -6,6 +6,11 @@ export const modeLabels: Record<Mode, string> = {
   machining: "加工优先",
   remnant: "余料优先",
 };
+export const modeGoals: Record<Mode, { label: string; description: string }> = {
+  utilization: { label: "最高利用率", description: "以最高利用率是否提高为准。" },
+  machining: { label: "加工效果", description: "板数减少，或板数相同时预计空移缩短，视为改善。" },
+  remnant: { label: "余料保留", description: "板数减少，或板数相同时整块余料、前板填充、可用余料总量按优先级改善。" },
+};
 export type Stock = {
   id: string;
   name: string;
@@ -14,7 +19,7 @@ export type Stock = {
   thickness: number;
   material: string;
 };
-export type Pocket = { outline: Point[]; depth: number | null };
+export type Pocket = { outline: Point[]; depth: number | null; centerline?: Point[]; width?: number; boundaryClosedByUser?: boolean };
 export type Part = {
   id: string;
   name: string;
@@ -42,7 +47,15 @@ export type Placement = {
   locked?: boolean;
 };
 export type Layout = { sheets: Stock[]; placements: Placement[] };
+/** A finished placement attempt for live display; it may have unplaced pieces. */
+export type SearchTrial = {
+  layout: Layout; group: number; groups: number; generation: number; individual: number; evaluations: number; complete: boolean;
+};
 export type Project = {
+  /** Reviewed source geometry and confirmed semantics, retained separately from nesting coordinates. */
+  drawingSource?: import("./drawingTypes").DrawingDocument;
+  drawingMapping?: { space: string; layerRules: import("./drawingTypes").DrawingRules; shapeRules: import("./drawingTypes").DrawingRules };
+  importInfo?: { sourceUnit: string; scale: number; overridden: boolean };
   importedSource?: Project;
   sourceFiles?: Project[];
   name: string;
@@ -98,7 +111,7 @@ export type SearchProgress = {
   elapsedMs: number;
   timeLimitMs: number;
   scope?: "repair-nearby" | "repair-full";
-  patience?: { limit: number; unchanged: number };
+  patience?: { limit: number; unchanged: number; mode?: Mode };
   curve?: EfficiencyPoint[];
   rounds?: number;
   evaluations?: number;
@@ -125,6 +138,7 @@ export type NestResult = {
     candidateLimit: number;
     stoppedBy: "time" | "candidates" | "iterations" | "disabled" | "plateau" | "manual" | "exhausted";
     patienceLimit?: number;
+    patienceMode?: Mode;
     unchanged?: number;
     rounds?: number;
     curve?: EfficiencyPoint[];

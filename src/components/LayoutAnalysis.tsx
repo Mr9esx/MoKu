@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { EfficiencyChart } from "./EfficiencyChart";
 
 import { measureLayout, polygonArea, concentratedRemnantArea } from "../core/geometry";
-import { modeLabels } from "../core/types";
+import { modeLabels, modeGoals } from "../core/types";
 import type {
   Layout,
   LayoutIssue,
@@ -173,12 +173,11 @@ export function LayoutAnalysis({
             <strong>
               {missing > 0 ? `${missing} 个零件尚未放置` : `${issues.length} 项需要核对`}
             </strong>
-            <span>{issues.length} 项待核对 · 查看问题并定位 ↗</span>
+            <span>查看问题 ↗</span>
           </button>
         )}
         {showComparison ? (
           <>
-            <p className="comparison-intro">先核对变化，再决定是否应用。</p>
             <label className="comparison-baseline">
               比较基准
               <select
@@ -233,7 +232,7 @@ export function LayoutAnalysis({
               </table>
             </details>
             <p className="analysis-definition">
-              空移为零件中心访问估算，非 CNC 刀路。布局板面积可因紧凑排版减少；库存仍保留。余料为保守矩形近似。
+              空移为估算，非 CNC 刀路；余料按矩形近似计算。
             </p>
           </>
         ) : (
@@ -293,23 +292,15 @@ export function LayoutAnalysis({
             <dl className="analysis-stats">
               {searchResult.search.engine && <div><dt>排版引擎</dt><dd>{searchResult.search.engine}</dd></div>}
               {searchResult.search.improved !== undefined && <div><dt>本次结果</dt><dd>{searchResult.search.improved ? "找到更优完整排法" : "保留当前排版"}</dd></div>}
-              {searchResult.search.engine && <div><dt>遗传搜索</dt><dd>{searchResult.search.groups ?? 1} 组 · {searchResult.search.generations} 代 · {searchResult.search.evaluations} 个排列</dd></div>}
-              {searchResult.search.engine && <div><dt>已验证分组排列</dt><dd>{searchResult.search.feasible ?? 0} 个</dd></div>}
-              {searchResult.search.engine && <div><dt>独立种群重启</dt><dd>{searchResult.search.restarts} 次</dd></div>}
-              <div><dt>停止原因</dt><dd>{({time:"搜索时长限制",candidates:"搜索数量限制",iterations:"完成设定搜索",disabled:"未执行优化",plateau:"利用率平台期",manual:"手动停止",exhausted:"无可继续搜索的零件"})[searchResult.search.stoppedBy]}</dd></div>
+              {searchResult.search.engine && <div><dt>已尝试</dt><dd>{searchResult.search.groups ?? 1} 组 · {searchResult.search.generations} 轮 · {searchResult.search.evaluations} 个排列</dd></div>}
+              <div><dt data-tooltip="搜索停止不代表全局最优">停止原因</dt><dd>{({time:"达到时间上限",candidates:"达到数量上限",iterations:"达到搜索轮数",disabled:"未执行优化",plateau:"连续没有改善",manual:"手动停止",exhausted:"无可继续搜索的零件"})[searchResult.search.stoppedBy]}</dd></div>
               <div><dt>{searchResult.search.patienceLimit ? "实际用时" : "实际用时 / 时长上限"}</dt><dd>{(searchResult.elapsedMs/1000).toFixed(2)}{searchResult.search.patienceLimit ? "" : ` / ${searchResult.search.seconds}`} 秒</dd></div>
-              <div><dt>已完成代数</dt><dd>{searchResult.attempts}{searchResult.search.patienceLimit ? "" : ` / ${settings.iterations * (searchResult.search.groups ?? 1)}`} 代</dd></div>
-              {searchResult.search.patienceLimit && <div><dt>利用率未提高</dt><dd>{searchResult.search.unchanged}/{searchResult.search.patienceLimit} 代</dd></div>}
-              <div><dt>轮廓配对计算</dt><dd>{(searchResult.search.nfpPairs ?? 0).toLocaleString()} 组</dd></div>
+              <div><dt>已完成轮数</dt><dd>{searchResult.attempts}{searchResult.search.patienceLimit ? "" : ` / ${settings.iterations * (searchResult.search.groups ?? 1)}`} 轮</dd></div>
+              {searchResult.search.patienceLimit && <div><dt>{modeGoals[searchResult.search.patienceMode ?? settings.mode].label}未改善</dt><dd>{searchResult.search.unchanged}/{searchResult.search.patienceLimit} 轮</dd></div>}
             </dl>
-            <p className="analysis-definition">各板厚、材质组独立进行 SVGnest 搜索，总代数按组累计；完整排版通过原始轮廓校验后才保留候选。{searchResult.search.patienceLimit ? "每组完成一代才计一次耐心；只看最高利用率，余料形状改善不重置计数。平台期停止不代表全局最优。" : "搜索不保证全局最优；几何计算和校验可能使实际用时略超设置。"}</p>
+            <p className="analysis-definition">{searchResult.search.patienceLimit ? modeGoals[searchResult.search.patienceMode ?? settings.mode].description : "计算与校验可能使实际用时略超上限。"}</p>
           </details>
         )}
-      </div>
-      <div className="information-footer">
-        {showComparison
-          ? "应用 / 放弃在画布顶部 · 核对后再决定"
-          : `${labels[view]} · ${view === "current" ? "点击板材行查看规格与余料" : "只读视图"}`}
       </div>
     </aside>
   );

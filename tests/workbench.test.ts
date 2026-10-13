@@ -13,6 +13,7 @@ it("invalidates candidates on settings and rejects stale results", () => {
   const s = createWorkbenchStore();
   s.getState().importProject(project());
   const run = s.getState().beginSearch();
+  s.getState().cancel();
   s.getState().setSettings({ gap: 6 });
   s.getState().receiveResult(run, { layout: project().original } as any);
   expect(s.getState().candidate).toBeNull();

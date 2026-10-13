@@ -1,12 +1,13 @@
 import { optimizeLayout } from "./nesting";
 import { bounds, contourDistance, placedOutline, validateLayout } from "./geometry";
-import type { Layout, LayoutMetrics, NestResult, NestSettings, Project, SearchProgress } from "./types";
+import type { Layout, LayoutMetrics, NestResult, NestSettings, Project, SearchProgress, SearchTrial } from "./types";
 
 /** Both repair scopes use SVGnest; temporary obstacles never become user locks. */
 export function repairLayout(
   project: Project,
   settings: NestSettings,
   onProgress?: (generation: number, metrics: LayoutMetrics | null, layout?: Layout, progress?: SearchProgress) => void,
+  onTrial?: (trial: SearchTrial) => void,
 ): NestResult {
   const start = performance.now();
   const seconds = settings.searchSeconds ?? 5;
@@ -56,7 +57,7 @@ export function repairLayout(
       if (!restored || validateLayout(project, restored, settings).length === 0)
         onProgress?.(generation, metrics, restored, progress && { ...progress, scope: "repair-nearby",
           elapsedMs: performance.now()-start, timeLimitMs:settings.stopRule === "patience" ? 0 : seconds*1000 });
-    });
+    }, onTrial ? trial => onTrial({ ...trial, layout: restoreLocks(trial.layout) }) : undefined);
   if (first.layout) {
     const layout = restoreLocks(first.layout);
     if (validateLayout(project, layout, settings).length === 0)
@@ -66,7 +67,7 @@ export function repairLayout(
   if (remaining < 1 && settings.stopRule !== "patience") return { ...first, layout: null, metrics: null, issues, elapsedMs: performance.now() - start };
   const full = optimizeLayout(project, settings.stopRule === "patience" ? settings : { ...settings, searchSeconds: remaining },
     (generation, metrics, layout, progress) => onProgress?.(first.attempts + generation, metrics, layout,
-      progress && { ...progress, scope: "repair-full", elapsedMs:performance.now()-start, timeLimitMs:settings.stopRule === "patience" ? 0 : seconds*1000 }));
+      progress && { ...progress, scope: "repair-full", elapsedMs:performance.now()-start, timeLimitMs:settings.stopRule === "patience" ? 0 : seconds*1000 }), onTrial);
   return {
     ...full,
     attempts: first.attempts + full.attempts,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Upload, Plus, Search, Trash2 } from "lucide-react";
-import { useWorkbench } from "../store";
+import { useWorkbench, searchEditingReason } from "../store";
 import { Thumbnail } from "./Thumbnail";
 import type { Dialog } from "./WorkspaceDialogs";
 import type { Project, Layout } from "../core/types";
@@ -18,6 +18,9 @@ export function ResourcePanel({
   const s = useWorkbench(),
     [tab, setTab] = useState<"parts" | "stock">("parts"),
     [query, setQuery] = useState("");
+  const searching = s.status === "searching";
+  const drawingOnly = !project?.sheets.length;
+  const preview = searching && s.view === "current" && !!s.searchPreview;
   const items =
     project?.parts.filter((p) =>
       `${p.name} ${p.thickness} ${p.material ?? ""}`
@@ -33,11 +36,11 @@ export function ResourcePanel({
   return (
     <aside className="parts-panel floating" aria-label="资源">
       <div className="panel-heading">
-        <strong>用料清单</strong>
+        <strong>{drawingOnly ? "图纸内容" : "用料清单"}</strong>
         <span className="section-index">01</span>
       </div>
       <div className="resource-import">
-        <button className="wide" onClick={() => open("import")}>
+        <button className="wide" disabled={searching} data-tooltip={searching ? searchEditingReason : "导入 DXF"} onClick={() => open("import")}>
           <Upload size={15} />
           导入 DXF
         </button>
@@ -73,7 +76,8 @@ export function ResourcePanel({
           />
         </label>
         <button
-          data-tooltip={`新增${tab === "parts" ? "零件" : "板材"}`}
+          disabled={searching}
+          data-tooltip={searching ? searchEditingReason : `新增${tab === "parts" ? "零件" : "板材"}`}
           aria-label={`新增${tab === "parts" ? "零件" : "板材"}`}
           onClick={() => open(tab === "parts" ? "part" : "stock")}
         >
@@ -86,7 +90,7 @@ export function ResourcePanel({
               const placed = layout?.placements.find((v) => v.partId === p.id);
               return (
                 <button
-                  draggable={!placed && s.view === "current"}
+                  draggable={!placed && s.view === "current" && !searching}
                   onDragStart={(e) => {
                     e.dataTransfer.setData("application/x-wood-part", p.id);
                     e.dataTransfer.effectAllowed = "copy";
@@ -112,10 +116,10 @@ export function ResourcePanel({
                       {placed
                         ? project?.sheets.find((v) => v.id === placed.sheetId)
                             ?.name
-                        : "待放置"}
+                        : drawingOnly ? p.material ?? "未指定" : preview ? "本次未放置" : "待放置"}
                     </small>
                   </span>
-                  {!placed && <span className="pending-dot" data-tooltip="待放置" />}
+                  {!placed && !drawingOnly && <span className="pending-dot" data-tooltip="待放置" />}
                 </button>
               );
             })
@@ -134,15 +138,16 @@ export function ResourcePanel({
                   </small>
                   <div>
                     <button
-                      disabled={s.view !== "current"}
+                      disabled={s.view !== "current" || searching}
+                      data-tooltip={searching ? searchEditingReason : "编辑板材规格"}
                       onClick={() => open("stock-edit", v.id)}
                     >
                       设置
                     </button>
                     <button
                       aria-label={`删除 ${v.name}`}
-                      data-tooltip={s.view !== "current" ? "当前视图只读，切换当前排版后编辑" : count ? "先移走零件后才能删除板材" : "删除空板材，可撤销"}
-                      disabled={count > 0 || s.view !== "current"}
+                      data-tooltip={searching ? searchEditingReason : s.view !== "current" ? "当前视图只读，切换当前排版后编辑" : count ? "先移走零件后才能删除板材" : "删除空板材，可撤销"}
+                      disabled={count > 0 || s.view !== "current" || searching}
                       onClick={() => s.removeStock(v.id)}
                     >
                       <Trash2 size={13} />
@@ -157,24 +162,21 @@ export function ResourcePanel({
               {query
                 ? "没有匹配的资源"
                 : tab === "parts"
-                  ? "导入零件轮廓或新增零件"
-                  : "先新增板材，再放置零件"}
+                  ? "暂无零件"
+                  : "暂无板材"}
             </p>
-            <button onClick={() => open(tab === "parts" ? "import" : "stock")}>
+            <button disabled={searching} data-tooltip={searching ? searchEditingReason : "新增资源"} onClick={() => open(tab === "parts" ? "import" : "stock")}>
               {tab === "parts" ? "导入整板 / 零件" : "新增板材"}
             </button>
           </div>
         )}
       </div>
       <div className="panel-foot">
+        {preview && "当前试排 · "}
         {tab === "parts"
-          ? `已放置 ${layout?.placements.length ?? 0} / ${project?.parts.length ?? 0} · 待放置 ${(project?.parts.length ?? 0) - (layout?.placements.length ?? 0)}`
-          : `库存 ${project?.sheets.length ?? 0} 张 · 空板可删除`}
-        <span>
-          {s.view !== "current"
-            ? "当前视图只读"
-            : "拖动待放置零件到板材，或点选后放置"}
-        </span>
+          ? drawingOnly ? `${project?.parts.length ?? 0} 个零件 · mm` : `已放置 ${layout?.placements.length ?? 0} / ${project?.parts.length ?? 0} · 待放置 ${(project?.parts.length ?? 0) - (layout?.placements.length ?? 0)}`
+          : `库存 ${project?.sheets.length ?? 0} 张`}
+        {(searching || s.view !== "current") && <span>{searching ? "排版中，暂不可编辑" : "只读视图"}</span>}
       </div>
     </aside>
   );

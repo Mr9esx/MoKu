@@ -12,6 +12,7 @@ import type {
   Layout,
   Rotation,
   SearchProgress,
+  SearchTrial,
 } from "./types";
 
 const SCALE = 10000000; // SVGnest scale: 0.0000001 mm, within Clipper integer range.
@@ -126,6 +127,7 @@ type SearchControl = {
     onGeneration?: (generation: number) => void;
     onRound?: (round: number, stats: PoolStats & { groups: number; rounds: number }) => boolean;
     onStatus?: (progress: Omit<SearchProgress, "elapsedMs" | "timeLimitMs">) => void;
+    onTrial?: (trial: SearchTrial) => void;
   };
 
 /** SVGnest's Minkowski outer NFP and union/difference placement strategy,
@@ -506,7 +508,7 @@ function* searchPool(
     generation++
   ) {
     let improved = false;
-    for (const individual of ga.population) {
+    for (const [individualIndex, individual] of ga.population.entries()) {
       if (control.exhausted()) break;
       if (scores.has(individual)) continue;
       const placed = [...locked];
@@ -543,6 +545,7 @@ function* searchPool(
         : [Math.max(1, project.parts.length - placed.length + issues.filter(issue => issue.kind !== "missing").length),
           ...control.rank(layout)];
       scores.set(individual, score);
+      control.onTrial?.({ layout, group:1,groups:1,generation:generation+1,individual:individualIndex+1,evaluations:stats.evaluations,complete });
       if (complete) {
         stats.feasible++;
         control.onFeasible?.(layout);
@@ -633,6 +636,13 @@ export function searchSvgNest(project: Project, settings: NestSettings, control:
   });
   const ranks = incumbents.map(layout=>layout ? control.rank(layout) : undefined);
   const totals = {seed,groups:pools.length,generations:0,evaluations:0,restarts:0,nfpPairs:0,feasible:0};
+  const trialFor = (i: number) => control.onTrial ? (trial: SearchTrial) => {
+    const placements = pools.flatMap((pool,j) => (j === i ? trial.layout : incumbents[j] ?? pool.original).placements);
+    const used = new Set(placements.map(p => p.sheetId));
+    control.onTrial!({ ...trial, group:i+1,groups:pools.length,
+      complete:trial.complete && !incumbents.some((l,j) => j !== i && l === null),
+      layout:{sheets:project.sheets.filter(s=>used.has(s.id)),placements} });
+  } : undefined;
   const compare = (a:number[],b:number[]) => {
     for(let i=0;i<Math.max(a.length,b.length);i++) {
       const d=(a[i]??0)-(b[i]??0);
@@ -647,6 +657,7 @@ export function searchSvgNest(project: Project, settings: NestSettings, control:
     const active = pools.map(()=>true);
     const iterators = pools.map((pool,i)=>searchPool(pool,settings,{
       ...control,seed:states[i].seed,
+      onTrial: trialFor(i),
       onGeneration:g=>{
         control.onGeneration?.(states.reduce((sum,s,j)=>sum+(j===i?g:s.generations),0));
         report(pool,i+1,pools.length,g);
@@ -690,6 +701,7 @@ export function searchSvgNest(project: Project, settings: NestSettings, control:
     report(pools[i],i+1,pools.length,0);
     const stats = drainPool(searchPool(pools[i],settings,{
       ...control,seed:(seed+Math.imul(i,0x9e3779b9))>>>0,
+      onTrial: trialFor(i),
       onGeneration:g=>{control.onGeneration?.(totals.generations+g);report(pools[i],i+1,pools.length,g);},
       onFeasible: control.onFeasible ? layout=>{
         if(incumbents.some((l,j)=>j!==i && l===null))return;

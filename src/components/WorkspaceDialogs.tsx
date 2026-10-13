@@ -2,11 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { MaterialSelect } from "./MaterialSelect";
 import { StockForm } from "./StockForm";
-import { useWorkbench, startSearch, startRepairSearch } from "../store";
+import { useWorkbench, startSearch, startRepairSearch, displayedLayout, searchEditingReason } from "../store";
 import { NestPanel } from "./NestPanel";
 import { ImportPreview } from "./ImportPreview";
+import { JoineryPanel } from "./JoineryPanel";
+import { Select } from "./Select";
 import { validateLayout } from "../core/geometry";
-import { exportEligibility, exportCurrentSvg } from "../core/export";
+import { exportEligibility, exportCurrentSvg, exportPartSvg } from "../core/export";
 export type Dialog =
   | "settings"
   | "import"
@@ -16,8 +18,10 @@ export type Dialog =
   | "stock"
   | "stock-edit"
   | "export"
+  | "part-export"
   | "help"
   | "check"
+  | "joinery"
   | null;
 export function WorkspaceDialogs({
   dialog,
@@ -39,7 +43,8 @@ export function WorkspaceDialogs({
     [quantity, setQuantity] = useState(1),
     [place, setPlace] = useState(false),
     [error, setError] = useState(""),
-    [filename, setFilename] = useState("木作-排版");
+    [filename, setFilename] = useState("木作-排版"),
+    [exportPartId, setExportPartId] = useState("");
   useEffect(() => {
     if (!dialog) return;
     setError("");
@@ -51,6 +56,10 @@ export function WorkspaceDialogs({
     setName("新零件");
     setWidth(200);
     setHeight(100);
+    if (dialog === "part-export") {
+      const part = s.project?.parts.find(p => p.id === s.selected) ?? s.project?.parts[0];
+      setExportPartId(part?.id ?? ""); setFilename(part?.name ?? "木作-零件");
+    } else if (dialog === "export") setFilename("木作-排版");
     const previous = document.activeElement as HTMLElement;
     const focusFrame = requestAnimationFrame(() => {
       const target =
@@ -100,8 +109,10 @@ export function WorkspaceDialogs({
     "stock-edit":
       s.project?.sheets.find((v) => v.id === stockId)?.name ?? "编辑板材",
     export: "导出排版",
+    "part-export": "导出零件图纸",
     help: "操作帮助",
     check: "排版检查",
+    joinery: "清角/T骨",
   };
   const numeric = (
     label: string,
@@ -126,28 +137,19 @@ export function WorkspaceDialogs({
     </label>
   );
   let content: ReactNode;
-  if (dialog === "settings")
+  if (dialog === "joinery") content = <JoineryPanel close={close} />;
+  else if (dialog === "settings")
     content = (
-      <>
-        <NestPanel
-          onStart={() => {
-            startSearch();
-            close();
-          }}
-        />
-        <p className="hint">
-          利用率：优先尝试减少用板；加工：减少零件中心间空移；余料：集中保留较大的连续矩形。搜索结束不代表已找到全局最优。
-        </p>
-      </>
+      <NestPanel
+        onStart={() => {
+          startSearch();
+          close();
+        }}
+      />
     );
   else if (dialog === "check") {
     const project = s.view === "original" ? s.source : s.project;
-    const layout =
-      s.view === "original"
-        ? s.source?.original
-        : s.view === "candidate"
-          ? s.candidate?.layout
-          : s.current;
+    const layout = s.status === "searching" && s.view === "current" ? s.candidate?.layout ?? s.current : displayedLayout(s);
     const issues =
       project && layout
         ? validateLayout({ ...project, original: s.view === "original" ? layout : (s.current ?? layout) }, layout, s.settings)
@@ -162,6 +164,7 @@ export function WorkspaceDialogs({
       <>
         <section className="check-section">
           <h3>几何检查</h3>
+          {s.status === "searching" && s.view === "current" && <p className="hint">检查最佳完整方案。</p>}
           <p role="status">{issues.length
             ? `${issues.length} 项需要处理，其中 ${geometric.length} 项可尝试自动修复。`
             : "轮廓、板边、间距和板厚均通过检查。"}</p>
@@ -174,26 +177,25 @@ export function WorkspaceDialogs({
             ))}
           </div>
           {canRepair && s.view === "original" && <>
-            <p className="hint">原始图纸用于对照，修复以当前排版为起点。</p>
             <button onClick={() => s.setView("current")}>检查当前排版</button>
           </>}
           {canRepair && s.view !== "original" && <>
-            <p className="hint">按当前间距 {s.settings.gap} mm、边距 {s.settings.margin} mm，使用 SVGnest 先调整问题零件及相邻零件，无法修复时再扩大重排范围。同材质、同板厚可跨板调整，锁定零件保持原位；候选通过独立检查后再应用。</p>
-            <button className="primary" disabled={s.status === "searching" || s.importing || s.settings.iterations === 0}
+            <p className="hint">间距 {s.settings.gap} mm · 板边余量 {s.settings.margin} mm · 锁定零件不移动</p>
+            <button className="primary" data-tooltip="同材质、同板厚的零件可跨板调整；生成后需应用候选" disabled={s.status === "searching" || s.importing || s.settings.iterations === 0}
               onClick={() => { startRepairSearch(); close(); }}>生成修复候选</button>
-            {s.settings.iterations === 0 && <p className="warning">请在排版设置中将遗传代数设为大于 0。</p>}
+            {s.settings.iterations === 0 && <p className="warning">请在排版设置中将最多尝试次数设为大于 0。</p>}
           </>}
-          {blockers.length > 0 && <p className="hint">请先处理板厚、材质、缺失零件或无效轮廓等问题，再生成候选。</p>}
+          {blockers.length > 0 && <p className="hint">以上问题需先手动处理。</p>}
           {s.view === "candidate" && issues.length === 0 && currentIssues.length > 0 &&
             <button className="primary" disabled={s.status === "searching"} onClick={() => { s.apply(); close(); }}>应用修复候选</button>}
         </section>
         {(automaticLabels.length > 0 || (project?.warnings.length ?? 0) > 0) &&
           <section className="check-section">
             <h3>图纸标注与导入提示</h3>
-            {automaticLabels.length > 0 && <p>{automaticLabels.map(p => p.name).join("、")} 的凹口标注已按唯一包围框一一关联，保留原文字位置。</p>}
+            {automaticLabels.length > 0 && <p>已匹配凹口标注：{automaticLabels.map(p => p.name).join("、")}</p>}
             {project?.warnings.map((v, i) => <p className="warning" key={i}>{v}</p>)}
             {project?.parts.some(p => p.labelAssociation === "nearest") &&
-              <p className="hint">这类文字存在多个可能归属或位于零件包围框外，暂保留最近文字关联，需要核对编号。</p>}
+              <p className="hint">部分编号按最近文字匹配，请核对归属。</p>}
           </section>}
       </>
     );
@@ -241,13 +243,18 @@ export function WorkspaceDialogs({
         </button>
       </>
     );
-  else if (dialog === "export") {
+  else if (dialog === "export" || dialog === "part-export") {
+    const part = s.project?.parts.find(p => p.id === exportPartId);
     const eligibility =
-      s.project && s.current
+      dialog === "part-export" ? { allowed: !!part, reason: "毫米单位 · 当前零件图纸" } : s.project && s.current
         ? exportEligibility(s.project, s.current, s.settings)
         : { allowed: false, reason: "请先导入图纸" };
     content = (
       <>
+        {dialog === "part-export" && <label>零件<Select aria-label="导出零件" value={exportPartId}
+          options={s.project?.parts.map(p => ({ value: p.id, label: p.name })) ?? []} onChange={id => {
+            setExportPartId(id); setFilename(s.project?.parts.find(p => p.id === id)?.name ?? "木作-零件");
+          }} /></label>}
         <label>
           导出格式
           <select value="svg" onChange={() => {}}>
@@ -261,19 +268,17 @@ export function WorkspaceDialogs({
             onChange={(e) => setFilename(e.target.value)}
           />
         </label>
-        <p>
-          导出当前排版的真实轮廓、通孔、铣槽及板材信息。SVG 为二维参考图，不含
-          CNC 刀路。
-        </p>
-        <p className={!eligibility.allowed ? "warning" : "hint"} role="status">
+        <p>SVG 为二维参考图，不含 CNC 刀路。</p>
+        {!eligibility.allowed && <p className="warning" role="status">
           {eligibility.reason}
-        </p>
+        </p>}
         <button
           className="primary wide"
-          disabled={!eligibility.allowed || s.importing}
+          data-tooltip={s.status === "searching" ? searchEditingReason : eligibility.reason}
+          disabled={!eligibility.allowed || s.importing || s.status === "searching"}
           onClick={() => {
             try {
-              const text = exportCurrentSvg(s.project!, s.current!, s.settings);
+              const text = dialog === "part-export" ? exportPartSvg(part!) : exportCurrentSvg(s.project!, s.current!, s.settings);
               const url = URL.createObjectURL(
                 new Blob([text], { type: "image/svg+xml" }),
               );
@@ -391,11 +396,6 @@ export function WorkspaceDialogs({
             </span>
           </div>
         )}
-        <p className="hint">
-          {dialog === "part"
-            ? "加入待放置后，可拖入兼容板材或自动排版。勾选立即放置时会核对尺寸、板厚、材质与间距。"
-            : "请指定板厚和材质；新增板材立即加入真实库存。"}
-        </p>
         <button
           className="primary wide"
           onClick={() => {
@@ -417,16 +417,18 @@ export function WorkspaceDialogs({
         </button>
       </>
     );
+  if (s.status === "searching" && ["import","sample","restore","part","stock","stock-edit","joinery"].includes(dialog ?? ""))
+    content = <p className="hint">{searchEditingReason}</p>;
   return (
     <div
-      className={`modal-backdrop ${dialog === "export" ? "drawer-backdrop" : ""}`}
+      className={`modal-backdrop ${dialog === "export" || dialog === "part-export" ? "drawer-backdrop" : ""}`}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) close();
       }}
     >
       <div
         ref={ref}
-        className={`modal ${dialog === "export" ? "export-drawer" : dialog === "stock" || dialog === "stock-edit" ? "stock-modal" : ""}`}
+        className={`modal ${dialog === "joinery" ? "joinery-modal" : dialog === "export" || dialog === "part-export" ? "export-drawer" : dialog === "stock" || dialog === "stock-edit" ? "stock-modal" : dialog === "settings" ? "settings-modal" : dialog === "import" || dialog === "sample" ? "import-modal" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={titles[dialog]}

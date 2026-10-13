@@ -106,11 +106,9 @@ export function EmptyWorkbench({
       <div className="welcome-sheet">
         <div className="welcome-edition">
           <span>木作工作台 / WOODWORK STUDIO</span>
-          <span>从图纸，到实物。</span>
         </div>
         <div className="welcome-composition">
           <div className="welcome-copy">
-            <span className="welcome-kicker">把每一块木料，安排妥当。</span>
             <h1>
               {project ? (
                 <>
@@ -122,15 +120,12 @@ export function EmptyWorkbench({
                 <>
                   好木作，
                   <br />
-                  从好排版开始。
+                  从图纸开始。
                 </>
               )}
             </h1>
-            <p>
-              {project
-                ? `${project.parts.length} 个零件已就绪。添加合适的板材，开始安排你的木作。`
-                : "导入图纸，摆好零件，留住好料。\n让想法在一张张板材上成形。"}
-            </p>
+            {project && <p>{project.parts.length} 个零件待放置</p>}
+            {!project && <p>导入图纸，在图上调整细节，安排用料。</p>}
             <div className="welcome-actions">
               <button
                 className="primary"
@@ -163,8 +158,8 @@ export function EmptyWorkbench({
         </div>
         <div className="welcome-steps">
           {[
-            ["01", "导入图纸", "整板排版 / 独立零件"],
-            ["02", "安排用料", "手动摆放 / 自动排版"],
+            ["01", "导入图纸", "DXF / 毫米尺寸"],
+            ["02", "在图上编辑", "细节调整 / 用料安排"],
             ["03", "导出方案", "毫米尺寸 / SVG 图纸"],
           ].map(([n, title, text]) => (
             <div key={n}>

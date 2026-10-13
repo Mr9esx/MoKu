@@ -1,5 +1,57 @@
-import type { Layout, Project } from "./types";
+import type { Layout, Project, Stock, Part } from "./types";
 export type ImportTarget = "append" | "new";
+export type StockMetadata = Record<string, { thickness: number; material: string }>;
+export type PartMetadata = StockMetadata;
+export type ImportMetadata = { parts?: PartMetadata; thickness?: number; material?: string; quantity?: number; stocks?: StockMetadata };
+/** Call with an empty previous map when the source file or import mode changes. */
+export function reconcileStockMetadata(sheets: Stock[], previous: StockMetadata, sample: boolean): StockMetadata {
+  return Object.fromEntries(sheets.map(s => [s.id, (Object.hasOwn(previous, s.id) ? previous[s.id] : undefined) ?? {
+    thickness: s.thickness,
+    material: s.material && s.material !== "未指定" ? s.material : sample ? "多层板" : "",
+  }]));
+}
+/** Keep explicit mm values only for pending identifiers in the current file. */
+export function reconcilePartMetadata(parts: Part[], previous: PartMetadata): PartMetadata {
+  return Object.fromEntries(parts.filter(p => !p.stockId).map(p => [p.id,
+    (Object.hasOwn(previous, p.id) ? previous[p.id] : undefined) ?? {
+      thickness: p.thickness, material: p.material && p.material !== "未指定" ? p.material : "",
+    }]));
+}
+const partMetadata = (metadata: ImportMetadata, part: Part) =>
+  metadata.parts && Object.hasOwn(metadata.parts, part.id) ? metadata.parts[part.id] : undefined;
+export function importMetadataIssues(draft: Project, metadata: ImportMetadata): { field: string; message: string }[] {
+  const issues: { field: string; message: string }[] = [];
+  const check = (thickness: number, material: string, prefix: string, name: string) => {
+    if (!Number.isFinite(thickness) || thickness < 1 || thickness > 100)
+      issues.push({ field: `${prefix}thickness`, message: `${name}板厚需为 1–100 mm` });
+    if (!material.trim() || material.trim() === "未指定")
+      issues.push({ field: `${prefix}material`, message: `${name}请选择材质` });
+  };
+  if (draft.sheets.length) for (const s of draft.sheets) {
+    const value = metadata.stocks?.[s.id] ?? s;
+    check(value.thickness, value.material, `stock.${s.id}.`, `${s.name}：`);
+  } else {
+    if (draft.parts.some(p => !partMetadata(metadata, p))) check(metadata.thickness ?? 0, metadata.material ?? "", "", "零件：");
+    const quantity = metadata.quantity ?? 1;
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100 || quantity * draft.parts.length > 1000)
+      issues.push({ field: "quantity", message: "每种轮廓数量需为 1–100 的整数，总计不超过 1000 个零件" });
+  }
+  for (const part of draft.parts) {
+    const stock = draft.sheets.find(s => s.id === part.stockId);
+    const explicit = partMetadata(metadata, part);
+    const pending = !stock && (draft.sheets.length > 0 || !!explicit);
+    const value = explicit ?? (draft.sheets.length ? { thickness: 0, material: "" } : { thickness: metadata.thickness ?? 0, material: metadata.material ?? "" });
+    if (pending) check(value.thickness, value.material, `part.${part.id}.`, `${part.name}：`);
+    const thickness = stock ? (metadata.stocks?.[stock.id]?.thickness ?? stock.thickness) : value.thickness;
+    const thicknessField = stock ? `stock.${stock.id}.thickness` : pending ? `part.${part.id}.thickness` : "thickness";
+    for (const pocket of part.pockets) {
+      if (pocket.depth === null || !Number.isFinite(pocket.depth) || pocket.depth <= 0) issues.push({ field: "drawing", message: `${part.name}：槽深必须为大于 0 的有限数值，请在图纸中确认槽深` });
+      else if (Number.isFinite(thickness) && thickness >= 1 && pocket.depth >= thickness)
+        issues.push({ field: thicknessField, message: `${part.name}：槽深 ${pocket.depth} mm，板厚必须大于槽深` });
+    }
+  }
+  return issues;
+}
 export type WorkspaceSnapshot = {
   project: Project | null;
   source: Project | null;
@@ -105,57 +157,33 @@ export function mergeImport(
 /** Metadata is confirmed explicitly; this function never mutates preview geometry. */
 export function confirmMetadata(
   draft: Project,
-  metadata: {
-    thickness?: number;
-    material?: string;
-    quantity?: number;
-    stocks?: Record<string, { thickness: number; material: string }>;
-  },
+  metadata: ImportMetadata,
 ): Project {
+  const issues = importMetadataIssues(draft, metadata);
+  if (issues.length) throw Error(issues[0].message);
   const p = structuredClone(draft);
-  const valid = (t: number, m: string) =>
-    Number.isFinite(t) &&
-    t >= 1 &&
-    t <= 100 &&
-    !!m.trim() &&
-    m.trim() !== "未指定";
   if (p.sheets.length) {
     p.sheets = p.sheets.map((s) => ({ ...s, ...metadata.stocks?.[s.id] }));
-    if (p.sheets.some((s) => !valid(s.thickness, s.material)))
-      throw Error("请为每张板材填写 1–100 mm 板厚和材质");
     p.parts = p.parts.map((part) => {
-      const stock = p.sheets.find((s) => s.id === part.stockId)!;
-      return { ...part, thickness: stock.thickness, material: stock.material };
+      const stock = p.sheets.find((s) => s.id === part.stockId);
+      const value = stock ?? partMetadata(metadata, part)!;
+      return { ...part, thickness: value.thickness, material: value.material.trim() };
     });
     p.original.sheets = structuredClone(p.sheets);
   } else {
     const t = metadata.thickness ?? 0,
       m = metadata.material?.trim() ?? "",
       quantity = metadata.quantity ?? 1;
-    if (!valid(t, m)) throw Error("请输入 1–100 mm 板厚和材质");
-    if (
-      !Number.isInteger(quantity) ||
-      quantity < 1 ||
-      quantity > 100 ||
-      quantity * p.parts.length > 1000
-    )
-      throw Error("数量需为 1–100 的整数，最多 1000 个零件");
     p.parts = p.parts.flatMap((part) =>
       Array.from({ length: quantity }, (_, i) => ({
         ...structuredClone(part),
-        thickness: t,
-        material: m,
+        thickness: partMetadata(metadata, part)?.thickness ?? t,
+        material: partMetadata(metadata, part)?.material.trim() ?? m,
         id: quantity === 1 ? part.id : `${part.id}-copy-${i + 1}`,
         name: quantity === 1 ? part.name : `${part.name} · ${i + 1}`,
       })),
     );
   }
-  if (
-    p.parts.some((p) =>
-      p.pockets.some((v) => v.depth === null || v.depth >= p.thickness),
-    )
-  )
-    throw Error("槽深必须已知且小于板厚");
   p.warnings = p.warnings.filter(
     (w) => !w.includes("板厚未知") && !w.includes("请输入零件板厚"),
   );

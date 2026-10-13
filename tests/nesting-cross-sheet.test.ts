@@ -64,3 +64,16 @@ it("keeps the source when no search attempts are requested", () => {
   expect(result.layout?.placements).toEqual(project.original.placements);
   expect(result.metrics?.sheetCount).toBe(3);
 });
+
+it("does not lower utilization just to replace two small boards with one much larger board", () => {
+  const large={id:"large",name:"large",width:30,height:30,thickness:12,material:"wood"};
+  const sheets=[large,{...large,id:"small-a",width:10,height:10},{...large,id:"small-b",width:10,height:10}];
+  const parts=sheets.slice(1).map((s,i)=>({id:`p${i}`,name:`p${i}`,stockId:s.id,material:"wood",thickness:12,
+    width:8,height:8,area:64,layer:"",outline:[{x:0,y:0},{x:8,y:0},{x:8,y:8},{x:0,y:8}],holes:[],pockets:[],label:{x:4,y:4}}));
+  const project:Project={name:"mixed sizes",units:"mm",sheets,parts,warnings:[],original:{sheets:sheets.slice(1),
+    placements:parts.map(p=>({partId:p.id,sheetId:p.stockId,x:0,y:0,rotation:0}))}};
+  const result=optimizeLayout(project,settings);
+  expect(result.metrics?.stockArea).toBe(200);
+  expect(result.metrics?.utilization).toBe(0.64);
+  expect(validateLayout(project,result.layout!,settings)).toEqual([]);
+});

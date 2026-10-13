@@ -9,9 +9,14 @@ import {
   Undo2,
   MoreHorizontal,
   ChevronDown,
+  LoaderCircle,
+  LockKeyhole,
+  Drill,
 } from "lucide-react";
-import { useWorkbench } from "./store";
+import { useWorkbench, displayedLayout, searchEditingReason } from "./store";
 import { StockCanvas } from "./components/StockCanvas";
+import { PartCanvas } from "./components/PartCanvas";
+import { DrawingOverview } from "./components/DrawingOverview";
 import { WorkspaceDialogs, type Dialog } from "./components/WorkspaceDialogs";
 import { LayoutAnalysis } from "./components/LayoutAnalysis";
 import { ResourcePanel } from "./components/ResourcePanel";
@@ -46,6 +51,7 @@ export default function App() {
         return;
       }
       if (e.key === "Escape" && !e.defaultPrevented) s.select(null);
+      if (s.status === "searching") return;
       if (e.key.toLowerCase() === "v") setTool("select");
       if (e.key.toLowerCase() === "h") setTool("hand");
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -55,14 +61,12 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [dialog, more, s.undo]);
+  }, [dialog, more, s.undo, s.status]);
   const project = s.view === "original" ? (s.source ?? s.project) : s.project;
-  const layout =
-    s.view === "original"
-      ? project?.original
-      : s.view === "candidate"
-        ? s.candidate?.layout
-        : s.current;
+  const searching = s.status === "searching";
+  const hasStocks = !!project?.sheets.length;
+  const layout = displayedLayout(s);
+  const analysisLayout = searching && s.view === "current" ? s.candidate?.layout ?? s.current : layout;
   const canvasLayout = useMemo(
     () =>
       project && layout && s.view === "current"
@@ -72,15 +76,15 @@ export default function App() {
   );
   const metrics = useMemo(
     () =>
-      project && layout ? measureLayout(project, layout, s.settings) : null,
-    [project, layout, s.settings],
+      project && analysisLayout ? measureLayout(project, analysisLayout, s.settings) : null,
+    [project, analysisLayout, s.settings],
   );
   const issues = useMemo(
     () =>
-      project && layout
-        ? validateLayout({ ...project, original: layout }, layout, s.settings)
+      project && analysisLayout
+        ? validateLayout({ ...project, original: s.view === "original" ? analysisLayout : s.current ?? analysisLayout }, analysisLayout, s.settings)
         : [],
-    [project, layout, s.settings],
+    [project, analysisLayout, s.current, s.settings],
   );
   const part = project?.parts.find((v) => v.id === s.selected),
     placement = layout?.placements.find((v) => v.partId === s.selected);
@@ -101,17 +105,16 @@ export default function App() {
         <div className="top-actions">
           {project && (
             <>
-              <button
+              {hasStocks && <button
                 className="optimization-mode"
                 aria-label={`优化模式：${modeLabels[s.settings.mode]}`}
-                data-tooltip={`当前优化模式：${modeLabels[s.settings.mode]} · 点击调整`}
+                data-tooltip={`当前优化模式：${modeLabels[s.settings.mode]} · ${searching ? "点击查看，搜索中不可修改" : "点击调整"}`}
                 onClick={() => setDialog("settings")}
               >
                 {modeLabels[s.settings.mode]}
                 <ChevronDown size={12} />
-              </button>
-              <button
-                className="primary"
+              </button>}
+              {hasStocks ? <button
                 aria-label={s.status === "searching" ? "取消搜索" : "自动排版"}
                 data-tooltip={
                   s.status === "searching"
@@ -129,11 +132,13 @@ export default function App() {
                   <Play size={14} />
                 )}
                 <span>{s.status === "searching" ? "取消搜索" : "自动排版"}</span>
-              </button>
+              </button> : <button onClick={() => setDialog("stock")} disabled={searching}
+                data-tooltip="添加板材，开始用料排版"><Play size={14} /><span>安排用料</span></button>}
               <button
                 aria-label="导出"
-                data-tooltip="导出当前排版"
-                onClick={() => setDialog("export")}
+                disabled={searching}
+                data-tooltip={searching ? "停止搜索并应用候选后再导出" : "导出图纸"}
+                onClick={() => setDialog(s.current?.sheets.length ? "export" : "part-export")}
               >
                 <Download size={15} />
                 <span>导出</span>
@@ -152,7 +157,8 @@ export default function App() {
             {more && (
               <div className="more-menu floating">
                 <button
-                  disabled={!s.project}
+                  disabled={!s.project || searching}
+                  data-tooltip={searching ? searchEditingReason : "恢复导入位置"}
                   onClick={() => {
                     setDialog("restore");
                     setMore(false);
@@ -161,6 +167,8 @@ export default function App() {
                   恢复原图位置
                 </button>
                 <button
+                  disabled={searching}
+                  data-tooltip={searching ? searchEditingReason : "打开示例图纸"}
                   onClick={() => {
                     setDialog("sample");
                     setMore(false);
@@ -211,7 +219,7 @@ export default function App() {
             }}
             onSelect={() => {
               setTool("select");
-              setMobile("info");
+              setMobile("canvas");
             }}
           />
         )}
@@ -225,6 +233,8 @@ export default function App() {
               magnet={magnet}
               interactionBlocked={!!dialog || more}
             />
+          ) : project?.parts.length ? (
+            <PartCanvas project={project} selected={s.selected} select={s.select} />
           ) : (
             <EmptyWorkbench
               project={project}
@@ -232,9 +242,12 @@ export default function App() {
               onClear={() => s.select(null)}
             />
           )}
-          {project && <nav className="edit-tools canvas-tools floating" aria-label="编辑工具">
+          {project && <nav className={`edit-tools canvas-tools floating${searching ? " is-searching" : ""}`} aria-label="编辑工具" aria-disabled={searching}>
+            {searching && <span className="tools-lock"><LockKeyhole size={12} />排版中</span>}
+            {hasStocks && <>
             <button
-              data-tooltip="选择 · V"
+              disabled={searching}
+              data-tooltip={searching ? searchEditingReason : "选择 · V"}
               aria-label="选择工具"
               aria-pressed={tool === "select"}
               className={tool === "select" ? "active" : ""}
@@ -243,7 +256,8 @@ export default function App() {
               <MousePointer2 size={16} />
             </button>
             <button
-              data-tooltip="平移 · H"
+              disabled={searching}
+              data-tooltip={searching ? searchEditingReason : "平移 · H"}
               aria-label="平移工具"
               aria-pressed={tool === "hand"}
               className={tool === "hand" ? "active" : ""}
@@ -252,7 +266,8 @@ export default function App() {
               <Hand size={16} />
             </button>
             <button
-              data-tooltip="磁吸 · Alt 暂时关闭"
+              disabled={searching}
+              data-tooltip={searching ? searchEditingReason : "磁吸 · Alt 暂时关闭"}
               aria-label="磁吸"
               aria-pressed={magnet}
               className={magnet ? "active" : ""}
@@ -261,21 +276,31 @@ export default function App() {
               <Magnet size={16} />
             </button>
             <span className="tool-divider" aria-hidden="true" />
+            </>}
             <button
-              disabled={!s.history.length}
+              disabled={!s.history.length || searching}
               aria-label="撤销"
-              data-tooltip={s.history.length ? "撤销 · Ctrl/⌘ Z" : "没有可撤销的修改"}
+              data-tooltip={searching ? searchEditingReason : s.history.length ? "撤销 · Ctrl/⌘ Z" : "没有可撤销的修改"}
               onClick={s.undo}
             >
               <Undo2 size={16} />
             </button>
+            {part && <>
+              <span className="tool-divider" aria-hidden="true" />
+              <button className="corner-relief-tool" aria-label="清角/T骨" aria-haspopup="dialog"
+                disabled={searching || s.view !== "current"}
+                data-tooltip={searching ? searchEditingReason : s.view !== "current" ? `切换到${hasStocks ? "当前排版" : "当前图纸"}后编辑` : `修整 ${part.name} 的孔槽内角，为方角配件预留装配空间`}
+                onClick={() => setDialog("joinery")}>
+                <Drill size={16} /><span>清角/T骨</span>
+              </button>
+            </>}
           </nav>}
           {project && <div className="view-switch floating">
             {(
               [
                 ["original", "原始图纸"],
-                ["current", "当前排版"],
-                ["candidate", "候选方案"],
+                ["current", hasStocks ? "当前排版" : "当前图纸"],
+                ...(hasStocks ? [["candidate", "候选方案"]] as const : []),
               ] as const
             ).map(([view, label]) => (
               <button
@@ -284,10 +309,10 @@ export default function App() {
                 disabled={
                   !s.project ||
                   (view === "original" && !s.source) ||
-                  (view === "candidate" && !s.candidate?.layout)
+                  (view === "candidate" && (!s.candidate?.layout || searching))
                 }
                 data-tooltip={
-                  view === "candidate" && !s.candidate
+                  view === "candidate" && searching ? "搜索结果正在当前排版中实时预览" : view === "candidate" && !s.candidate
                     ? "自动排版后可比较候选"
                     : ""
                 }
@@ -298,14 +323,15 @@ export default function App() {
             ))}
           </div>}
           {(s.candidate || s.status === "searching") && (
-            <div className="candidate-bar floating">
+            <div className={`candidate-bar floating${searching ? " is-searching" : ""}`} role={searching ? "status" : undefined} aria-live="off">
               <span>
+                {searching && <strong className="search-heading"><LoaderCircle size={16} className="search-spinner" />正在排版</strong>}
                 {s.status === "searching"
                   ? <SearchProgressLabel />
                   : `${modeLabels[s.settings.mode]} · ${s.candidate?.metrics?.sheetCount ?? 0} 张板 · ${formatPercent(s.candidate?.metrics?.utilization ?? 0)}`}
               </span>
               {s.status === "searching" && <button onClick={s.cancel}>停止搜索</button>}
-              {s.candidate && (
+              {s.candidate && !searching && (
                 <>
                   <button
                     className="primary"
@@ -314,7 +340,7 @@ export default function App() {
                   >
                     应用候选
                   </button>
-                  <button onClick={s.discardCandidate}>放弃</button>
+                  <button disabled={searching} data-tooltip={searching ? "先停止搜索，再放弃候选" : "放弃候选"} onClick={s.discardCandidate}>放弃</button>
                 </>
               )}
             </div>
@@ -326,12 +352,15 @@ export default function App() {
             part={part}
             placement={placement}
             project={project}
+            onExportPart={() => setDialog("part-export")}
           />
+        ) : project && !hasStocks ? (
+          <DrawingOverview project={project} onStock={() => setDialog("stock")} />
         ) : project && layout && metrics ? (
           <LayoutAnalysis
             key={s.candidate ? "with-candidate" : "overview"}
             project={project}
-            layout={layout}
+            layout={analysisLayout ?? layout}
             metrics={metrics}
             source={s.source}
             currentProject={s.project}
@@ -357,8 +386,7 @@ export default function App() {
                   <path d="M23 80h31" stroke="var(--accent)" strokeWidth="2" />
                 </svg>
               </div>
-              <h3>等待你的第一张图纸</h3>
-              <p className="hint">导入后，这里会显示用板情况<br />和需要处理的问题。</p>
+              <h3>暂无排版数据</h3>
               <button onClick={() => setDialog("help")}>操作说明 ↗</button>
             </div>
           </aside>
@@ -366,13 +394,14 @@ export default function App() {
       </div>
       <footer className="statusbar">
         <button
-          disabled={!project}
-          className={issues.length ? "status-warning" : ""}
+          disabled={!project || !hasStocks}
+          className={hasStocks && issues.length ? "status-warning" : ""}
           onClick={() => setDialog("check")}
-          data-tooltip="查看当前视图的排版检查详情"
+          data-tooltip={searching && s.view === "current" ? "检查最佳完整方案，试排过程不作为最终结果" : "查看当前视图的排版检查详情"}
         >
           {!project
             ? "等待导入图纸"
+            : !hasStocks ? `${project.parts.length} 个零件 · mm`
             : issues.length
               ? `排版检查：${issues.length} 项待核对 · 详情 ↗`
               : "排版检查：通过 · 详情 ↗"}
@@ -380,7 +409,8 @@ export default function App() {
         <span role="status" data-tooltip-overflow="">
           {s.message ||
             (!project
-              ? "导入 DXF 或载入示例开始"
+              ? ""
+              : !hasStocks ? "选择零件，编辑榫槽或导出图纸"
               : s.view !== "current"
                 ? "只读视图 · 切换当前排版后编辑"
                 : "拖动零件 · Alt 暂停磁吸 · Esc 返回概览")}

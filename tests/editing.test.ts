@@ -92,6 +92,7 @@ describe("workspace editing", () => {
     });
     const p = st.getState().current!.placements[0];
     const run = st.getState().beginSearch();
+    st.getState().cancel();
     expect(st.getState().movePart({ ...p, x: 150, y: 150 })).toBe(true);
     expect(st.getState().run).toBeGreaterThan(run);
     expect(st.getState().candidate).toBe(null);
@@ -494,6 +495,7 @@ describe("stock removal", () => {
     const id = st.getState().project!.sheets[1].id;
     const run = st.getState().beginSearch();
     st.getState().progress(run, 1, st.getState().current!);
+    st.getState().cancel();
     expect(st.getState().removeStock(id)).toBe(true);
     expect(st.getState().current!.sheets.map((s) => s.id)).toEqual(["s"]);
     expect(st.getState().project!.sheets).toHaveLength(2);

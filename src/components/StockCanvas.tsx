@@ -5,7 +5,9 @@ import { transformPoints } from "../core/geometry";
 import { points, displayPoints } from "../core/export";
 import { settlePlacement, snapPlacement, type Guide } from "../core/editing";
 import { fitCanvasViewport } from "../core/canvasViewport";
+import { placementMotion } from "../core/layoutMotion";
 import type { Layout, LayoutMetrics, Placement, Project } from "../core/types";
+const startAnimation = (node: SVGAnimateTransformElement | null) => node?.beginElement();
 export function StockCanvas({
   layout,
   metrics,
@@ -24,6 +26,29 @@ export function StockCanvas({
   const s = useWorkbench(),
     project = provided ?? s.project!;
   const candidateVisible = !!s.candidate || s.status === "searching";
+  const searching = s.status === "searching";
+  const live = searching && s.view === "current" && !!s.searchPreview;
+  const [reducedMotion, setReducedMotion] = useState(false);
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(preference.matches);
+    update();
+    preference.addEventListener("change", update);
+    return () => preference.removeEventListener("change", update);
+  }, []);
+  // Retain a whole snapshot pair across incidental renders (zoom, resize, elapsed time).
+  const [frame, setFrame] = useState<{ layout: Layout; live: boolean; previous: Layout | null; sequence: number }>(
+    { layout, live, previous: null, sequence: 0 },
+  );
+  if (frame.layout !== layout || frame.live !== live) {
+    setFrame({ layout, live, previous: live && frame.live ? frame.layout : null, sequence: frame.sequence + 1 });
+  }
+  const previous = live && !reducedMotion ? frame.previous : null;
+  const oldPlacements = new Map(previous?.placements.map(p => [p.partId, p]));
+  const oldStocks = new Map(previous?.sheets.map((stock, i) => [stock.id, {
+    height: stock.height,
+    offset: previous.sheets.slice(0, i).reduce((n, v) => n + v.width + 160, 60),
+  }]));
   const [zoom, setZoom] = useState(1),
     [pan, setPan] = useState({ x: 0, y: 0 }),
     [ghost, setGhost] = useState<Placement | null>(null),
@@ -49,6 +74,7 @@ export function StockCanvas({
   useLayoutEffect(() => {
     const node = svg.current;
     if (!node) return;
+    const overlays = node.closest(".canvas-region")?.querySelectorAll(".candidate-bar, .view-switch") ?? [];
     const measure = () => {
       const rect = node.getBoundingClientRect(),
         style = getComputedStyle(node);
@@ -59,13 +85,14 @@ export function StockCanvas({
         height: rect.height,
         left: inset("left"),
         right: inset("right"),
-        top: inset("top"),
+        top: Math.max(inset("top"), ...Array.from(overlays).map(v => v.getBoundingClientRect().bottom - rect.top + 16)),
         bottom: inset("bottom"),
       });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(node);
+    overlays.forEach(v => observer.observe(v));
     return () => observer.disconnect();
   }, [candidateVisible]);
   const offsets = layout.sheets.map((_, i) =>
@@ -156,8 +183,8 @@ export function StockCanvas({
     return () => window.removeEventListener("keydown", key);
   }, [interactionBlocked]);
   useEffect(() => {
-    clear();
-  }, [layout]);
+    if (searching || interactionBlocked || !drag.current || drag.current.placement) clear();
+  }, [layout, searching, interactionBlocked]);
   useEffect(() => {
     const node = svg.current;
     if (!node) return;
@@ -166,7 +193,7 @@ export function StockCanvas({
     return () => node.removeEventListener("wheel", prevent);
   }, []);
   return (
-    <section className={`drawing tool-${tool}`}>
+    <section className={`drawing tool-${tool}${searching ? " is-searching" : ""}`}>
       <svg
         ref={svg}
         className="stock-svg"
@@ -174,7 +201,7 @@ export function StockCanvas({
         viewBox={`${fitted.x + pan.x} ${fitted.y + pan.y} ${fitted.width / zoom} ${fitted.height / zoom}`}
         onDragOver={(e) => {
           if (
-            s.view === "current" &&
+            s.view === "current" && s.status !== "searching" &&
             e.dataTransfer.types.includes("application/x-wood-part")
           ) {
             e.preventDefault();
@@ -183,7 +210,7 @@ export function StockCanvas({
         }}
         onDrop={(e) => {
           e.preventDefault();
-          if (s.view !== "current") return;
+          if (s.view !== "current" || s.status === "searching") return;
           const id = e.dataTransfer.getData("application/x-wood-part"),
             part = project.parts.find((p) => p.id === id);
           if (!part || layout.placements.some((p) => p.partId === id)) return;
@@ -231,6 +258,7 @@ export function StockCanvas({
           }
         }}
         onPointerDown={(e) => {
+          if (searching || interactionBlocked) return;
           if (!drag.current) {
             e.currentTarget.setPointerCapture(e.pointerId);
             drag.current = {
@@ -242,6 +270,7 @@ export function StockCanvas({
           }
         }}
         onPointerMove={(e) => {
+          if (searching || interactionBlocked) return;
           const d = drag.current;
           if (!d) return;
           d.moved ||=
@@ -272,6 +301,7 @@ export function StockCanvas({
           setGuides(snapped.guides);
         }}
         onPointerUp={(e) => {
+          if (searching || interactionBlocked) { clear(); return; }
           if (drag.current)
             drag.current.moved ||=
               Math.hypot(
@@ -334,7 +364,7 @@ export function StockCanvas({
               height={sheet.height}
               strokeWidth="2"
             />
-            {metrics.remnants
+            {!(s.status === "searching" && s.view === "current" && s.searchPreview) && metrics.remnants
               .filter((r) => r.sheetId === sheet.id)
               .map((r) => (
                 <rect
@@ -352,7 +382,7 @@ export function StockCanvas({
             {[
               ...layout.placements.filter((p) => p.sheetId === sheet.id),
               ...(ghost?.sheetId === sheet.id ? [ghost] : []),
-            ].map((p, index) => {
+            ].map((p) => {
               const part = project.parts.find((v) => v.id === p.partId);
               if (!part) return null;
               const isGhost = p === ghost,
@@ -368,17 +398,22 @@ export function StockCanvas({
                     sheet.height,
                   ),
                 );
+              const old = oldPlacements.get(p.partId), oldStock = old && oldStocks.get(old.sheetId);
+              const motion = !isGhost && old && oldStock
+                ? placementMotion(part, old, oldStock, p, { height: sheet.height, offset: offsets[i] }) : null;
+              const moving = motion && (motion.dx || motion.dy || motion.angle);
               return (
                 <g
-                  key={`${p.partId}-${index}`}
+                  key={`${p.partId}${isGhost ? "-ghost" : ""}`}
                   className={`part ${selected ? "selected" : ""}`}
                   opacity={isGhost ? 0.6 : ghost?.partId === part.id ? 0.35 : 1}
                   pointerEvents={isGhost ? "none" : undefined}
                   onPointerDown={(e) => {
+                    if (searching || interactionBlocked) { e.stopPropagation(); return; }
                     if (tool === "hand") return;
                     e.stopPropagation();
                     s.select(part.id);
-                    if (s.view !== "current") return;
+                    if (s.view !== "current" || s.status === "searching") return;
                     if (p.locked) return;
                     svg.current?.setPointerCapture(e.pointerId);
                     drag.current = {
@@ -393,6 +428,14 @@ export function StockCanvas({
                   }}
                 >
                   <title>{`${part.name} · ${part.width.toFixed(1)} × ${part.height.toFixed(1)} mm`}</title>
+                  <g key={live ? frame.sequence : "static"} className={live && !old && !reducedMotion ? "trial-part-enter" : undefined}>
+                    {moving ? <animateTransform ref={startAnimation} begin="indefinite" attributeName="transform" type="translate"
+                      from={`${motion.dx} ${motion.dy}`} to="0 0" dur="0.24s"
+                      calcMode="spline" keyTimes="0;1" keySplines="0.2 0 0.2 1" /> : null}
+                    <g>
+                      {moving && motion.angle ? <animateTransform ref={startAnimation} begin="indefinite" attributeName="transform" type="rotate"
+                        from={`${motion.angle} ${motion.cx} ${motion.cy}`} to={`0 ${motion.cx} ${motion.cy}`} dur="0.24s"
+                        calcMode="spline" keyTimes="0;1" keySplines="0.2 0 0.2 1" /> : null}
                   <polygon
                     className={`part-outline ${part.thickness > 5 ? "thick" : "thin"}`}
                     points={poly(part.outline)}
@@ -429,6 +472,8 @@ export function StockCanvas({
                       {p.locked ? " · L" : ""}
                     </text>
                   )}
+                    </g>
+                  </g>
                 </g>
               );
             })}

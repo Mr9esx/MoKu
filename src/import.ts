@@ -29,7 +29,7 @@ export async function importDrawing(file?: File, options: ImportOptions = {}) {
       w.terminate();
       if (importer === w) importer = null;
       if (e.data.error) workbench.getState().failImport(id, e.data.error);
-      else workbench.getState().previewImport(id, e.data.project);
+      else workbench.getState().previewDrawing(id, e.data.document);
     };
     w.onerror = () => {
       w.terminate();

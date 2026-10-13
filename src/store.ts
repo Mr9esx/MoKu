@@ -1,3 +1,4 @@
+import type { DrawingDocument } from "./core/drawingTypes";
 import {
   emptyProject,
   mergeImport,
@@ -5,6 +6,7 @@ import {
   type ImportTarget,
 } from "./core/importTransaction";
 import { createStore } from "zustand/vanilla";
+import { previewRelief, type ReliefInput } from "./core/joineryRelief";
 import { useStore } from "zustand";
 import { measureLayout, validateLayout } from "./core/geometry";
 import type {
@@ -14,6 +16,7 @@ import type {
   NestResult,
   Placement,
   SearchProgress,
+  SearchTrial,
 } from "./core/types";
 import {
   findInitialPlacement,
@@ -43,11 +46,14 @@ type State = {
   ) => boolean;
   removeStock: (id: string) => boolean;
   addPart: (input: PartInput) => boolean;
+  applyRelief: (partId: string, input: ReliefInput) => boolean;
   movePart: (p: Placement) => boolean;
   current: Layout | null;
   candidate: NestResult | null;
   history: WorkspaceSnapshot[];
   draft: Project | null;
+  drawingDraft: DrawingDocument | null;
+  previewDrawing: (id: number, doc: DrawingDocument) => void;
   previewImport: (id: number, p: Project) => void;
   cancelImport: () => void;
   confirmImport: (p: Project, target: ImportTarget) => void;
@@ -63,6 +69,8 @@ type State = {
   attempt: number;
   searchProgress: SearchProgress | null;
   searchStartedAt: number | null;
+  searchPreview: SearchTrial | null;
+  receivePreview: (run: number, trial: SearchTrial) => void;
   run: number;
   importRun: number;
   importing: boolean;
@@ -107,6 +115,7 @@ export function createWorkbenchStore() {
         attempt: 0,
         searchProgress: null,
         searchStartedAt: null,
+        searchPreview: null,
       };
     };
     const snapshot = (): WorkspaceSnapshot =>
@@ -115,7 +124,8 @@ export function createWorkbenchStore() {
         current: get().current,
         source: get().source,
       });
-    const load = (project: Project) =>
+    const load = (project: Project) => {
+      if (get().status === "searching") return;
       set({
         ...invalidate(),
         project: {
@@ -129,9 +139,12 @@ export function createWorkbenchStore() {
         selected: null,
         importing: false,
         importMessage: "",
+        draft: null, drawingDraft: null,
       });
+    };
     return {
       draft: null,
+          drawingDraft: null,
       project: null,
       source: null,
       current: null,
@@ -144,24 +157,40 @@ export function createWorkbenchStore() {
       attempt: 0,
       searchProgress: null,
       searchStartedAt: null,
+      searchPreview: null,
+      receivePreview: (run, trial) => {
+        const s = get();
+        if (s.run !== run || s.status !== "searching" || !s.project || !s.current || !trial.complete) return;
+        const issues = validateLayout({ ...s.project, original: s.current }, trial.layout, s.settings);
+        if (issues.length ||
+            new Set(trial.layout.placements.map(p => p.partId)).size !== trial.layout.placements.length) return;
+        set({ searchPreview: structuredClone(trial) });
+      },
       run: 0,
       importRun: 0,
       importing: false,
       importMessage: "",
       view: "current",
       importProject: load,
+      previewDrawing: (id, doc) => {
+        if (get().status === "searching" || id !== get().importRun) return;
+        set({ drawingDraft: doc, draft: null, importing: false, importMessage: "" });
+      },
       previewImport: (id, p) => {
+        if (get().status === "searching") return;
         if (id === get().importRun)
-          set({ draft: p, importing: false, importMessage: "" });
+          set({ draft: p, drawingDraft: null, importing: false, importMessage: "" });
       },
       cancelImport: () =>
         set({
           draft: null,
+          drawingDraft: null,
           importing: false,
           importMessage: "",
           importRun: get().importRun + 1,
         }),
       confirmImport: (p, target) => {
+        if (get().status === "searching") return;
         const s = get(),
           before = snapshot(),
           merged = mergeImport(before, p, target);
@@ -170,6 +199,7 @@ export function createWorkbenchStore() {
           ...merged,
           history: [...s.history, before],
           draft: null,
+          drawingDraft: null,
           importing: false,
           importMessage: "",
           selected: null,
@@ -180,12 +210,16 @@ export function createWorkbenchStore() {
               : "已打开新项目，可撤销恢复上一项目",
         });
       },
-      discardCandidate: () =>
-        set({ ...invalidate(), message: "已放弃候选，当前排版保留" }),
+      discardCandidate: () => {
+        if (get().status === "searching") return;
+        set({ ...invalidate(), message: "已放弃候选，当前排版保留" });
+      },
       beginImport: () => {
+        if (get().status === "searching") return get().importRun;
         const id = get().importRun + 1;
         set({
           draft: null,
+          drawingDraft: null,
           importRun: id,
           importing: true,
           importMessage: "",
@@ -193,6 +227,7 @@ export function createWorkbenchStore() {
         return id;
       },
       finishImport: (id, p) => {
+        if (get().status === "searching") return;
         if (id === get().importRun) load(p);
       },
       failImport: (id, message) => {
@@ -201,11 +236,15 @@ export function createWorkbenchStore() {
             importing: false,
             importMessage: message,
             draft: null,
+          drawingDraft: null,
           });
       },
-      setSettings: (s) =>
-        set({ ...invalidate(), settings: { ...get().settings, ...s } }),
+      setSettings: (s) => {
+        if (get().status === "searching") return;
+        set({ ...invalidate(), settings: { ...get().settings, ...s } });
+      },
       setThickness: (id, n) => {
+        if (get().status === "searching") return;
         if (!Number.isFinite(n) || n < 1 || n > 100) return;
         const p = get().project,
           c = get().current;
@@ -229,6 +268,7 @@ export function createWorkbenchStore() {
         });
       },
       toggleLock: (id) => {
+        if (get().status === "searching") return;
         const c = get().current;
         if (c)
           set({
@@ -242,7 +282,27 @@ export function createWorkbenchStore() {
             },
           });
       },
+      applyRelief: (partId, input) => {
+        const s = get();
+        if (s.status === "searching" || s.view !== "current" || !s.project || !s.current) return false;
+        const part = s.project.parts.find(p => p.id === partId);
+        if (!part) return false;
+        try {
+          const result = previewRelief(part, input);
+          set({
+            ...invalidate(),
+            history: [...s.history, snapshot()],
+            project: { ...s.project, parts: s.project.parts.map(p => p.id === partId ? result.part : p) },
+            message: `已添加 ${result.circles.length} 个${input.style === "dogbone" ? "狗骨" : "T 骨"}清角口，可撤销`,
+          });
+          return true;
+        } catch (error) {
+          set({ message: error instanceof Error ? error.message : "清角失败，请核对刀具与轮廓" });
+          return false;
+        }
+      },
       addStock: (input) => {
+        if (get().status === "searching") return false;
         const s = get();
         const project = s.project ?? emptyProject(),
           current = s.current ?? project.original;
@@ -295,6 +355,7 @@ export function createWorkbenchStore() {
         return true;
       },
       updateStock: (id, input) => {
+        if (get().status === "searching") return false;
         const s = get(),
           material = input.material.trim();
         const stock = s.project?.sheets.find((v) => v.id === id);
@@ -342,6 +403,7 @@ export function createWorkbenchStore() {
         return true;
       },
       removeStock: (id) => {
+        if (get().status === "searching") return false;
         const s = get();
         if (
           !s.project ||
@@ -391,6 +453,7 @@ export function createWorkbenchStore() {
         return true;
       },
       addPart: (input) => {
+        if (get().status === "searching") return false;
         const s = get(),
           project = s.project ?? emptyProject(),
           current = s.current ?? project.original;
@@ -462,6 +525,7 @@ export function createWorkbenchStore() {
         }
       },
       placePart: (id, sheetId) => {
+        if (get().status === "searching") return false;
         const s = get(),
           part = s.project?.parts.find((p) => p.id === id);
         if (!s.project || !s.current || !part) return false;
@@ -483,6 +547,7 @@ export function createWorkbenchStore() {
         return get().movePart(placement);
       },
       removePart: (id) => {
+        if (get().status === "searching") return false;
         const s = get();
         if (
           !s.project ||
@@ -513,6 +578,7 @@ export function createWorkbenchStore() {
         return true;
       },
       duplicatePart: (id, quantity) => {
+        if (get().status === "searching") return false;
         const s = get(),
           part = s.project?.parts.find((p) => p.id === id);
         if (
@@ -538,6 +604,7 @@ export function createWorkbenchStore() {
         return true;
       },
       setMaterial: (id, material) => {
+        if (get().status === "searching") return;
         const s = get();
         if (!s.project || !s.current || !material.trim()) return;
         const stock = s.project.sheets.find((v) => v.id === id);
@@ -564,6 +631,7 @@ export function createWorkbenchStore() {
         });
       },
       movePart: (p) => {
+        if (get().status === "searching") return false;
         const s = get();
         if (!s.project || !s.current) return false;
         const previous = s.current.placements.find(
@@ -611,6 +679,7 @@ export function createWorkbenchStore() {
       },
       select: (selected) => set({ selected }),
       setView: (view) => {
+        if (get().status === "searching" && view === "candidate") return;
         const p = view === "original" ? get().source : get().project;
         set({
           view,
@@ -620,6 +689,7 @@ export function createWorkbenchStore() {
         });
       },
       beginSearch: () => {
+        if (get().status === "searching" || get().importing) return get().run;
         const run = get().run + 1;
         stopWorker();
         set({
@@ -630,6 +700,7 @@ export function createWorkbenchStore() {
           attempt: 0,
           searchProgress: null,
           searchStartedAt: Date.now(),
+          searchPreview: null,
           view: "current",
         });
         return run;
@@ -649,12 +720,13 @@ export function createWorkbenchStore() {
           ).length === 0;
         set({
           candidate: valid ? r : null,
+          searchPreview: null,
           status: valid ? "done" : "error",
           message: r.message,
           attempt: r.attempts,
           searchProgress: r.search?.curve && s.searchProgress
             ? { ...s.searchProgress,phase:"finalizing",curve:r.search.curve,
-                patience:r.search.patienceLimit ? {limit:r.search.patienceLimit,unchanged:r.search.unchanged ?? 0} : undefined }
+                patience:r.search.patienceLimit ? {limit:r.search.patienceLimit,unchanged:r.search.unchanged ?? 0,mode:r.search.patienceMode} : undefined }
             : null,
           searchStartedAt: null,
           view: valid ? "candidate" : "current",
@@ -694,6 +766,7 @@ export function createWorkbenchStore() {
         if (id !== s.run || s.status !== "searching") return;
         stopWorker();
         set({ run:s.run+1, status:s.candidate ? "done" : "error",
+          searchPreview: null,
           view:s.candidate ? "candidate" : "current", searchProgress:null, searchStartedAt:null,
           message:s.candidate ? "达到搜索时长，已停止计算，保留最佳已验证候选，尚未应用。"
             : "达到搜索时长，未收到合法候选，当前排版保留。" });
@@ -707,12 +780,13 @@ export function createWorkbenchStore() {
           search:{...s.candidate.search,engine:"SVGnest · NFP + 遗传搜索",groups:progress.groups,
             generations:s.attempt,evaluations:progress.evaluations ?? 0,restarts:progress.restarts ?? 0,
             seconds:0,candidates:progress.evaluations ?? 0,candidateLimit:0,stoppedBy:"manual" as const,
-            patienceLimit:progress.patience?.limit,unchanged:progress.patience?.unchanged,
+            patienceLimit:progress.patience?.limit,patienceMode:progress.patience?.mode,unchanged:progress.patience?.unchanged,
             rounds:progress.rounds,curve:progress.curve},
         } : s.candidate;
         set({
           run: s.run + 1,
           candidate,
+          searchPreview: null,
           status: "idle",
           searchProgress: progress?.curve ? progress : null,
           searchStartedAt: null,
@@ -754,6 +828,7 @@ export function createWorkbenchStore() {
         });
       },
       undo: () => {
+        if (get().status === "searching") return;
         const s = get();
         if (s.history.length)
           set({
@@ -764,6 +839,7 @@ export function createWorkbenchStore() {
           });
       },
       reset: () => {
+        if (get().status === "searching") return;
         const s = get();
         if (s.project && s.current) {
           const available = new Set(s.project.sheets.map((v) => v.id));
@@ -784,14 +860,20 @@ export function createWorkbenchStore() {
             current: {
               ...structuredClone(s.current),
               sheets: structuredClone(s.project.sheets),
-              placements: s.current.placements.map((p) => {
-                const original = s.source?.original.placements.find(
-                  (v) => v.partId === p.partId,
-                );
-                return original && available.has(original.sheetId)
-                  ? { ...original, locked: p.locked }
-                  : p;
-              }),
+              placements: [
+                ...s.current.placements.filter(p =>
+                  !s.source?.parts.some(part => part.id === p.partId) ||
+                  s.source.original.placements.some(original => original.partId === p.partId),
+                ).map((p) => {
+                  const original = s.source?.original.placements.find(v => v.partId === p.partId);
+                  return original && available.has(original.sheetId) ? { ...original, locked: p.locked } : p;
+                }),
+                ...(s.source?.original.placements.filter(original =>
+                  available.has(original.sheetId) &&
+                  s.project!.parts.some(part => part.id === original.partId) &&
+                  !s.current!.placements.some(current => current.partId === original.partId),
+                ).map(original => ({ ...original })) ?? []),
+              ],
             },
             message: retained
               ? `已恢复可用原板位置；${retained} 个零件的原板已删除，保留当前位置`
@@ -803,6 +885,13 @@ export function createWorkbenchStore() {
   });
 }
 export const workbench = createWorkbenchStore();
+export const searchEditingReason = "排版搜索中，停止搜索后可修改";
+/** A live preview never changes the committed layout or undo history. */
+export function displayedLayout(s: Pick<State,"view"|"source"|"project"|"status"|"candidate"|"current"|"searchPreview">) {
+  if (s.view === "original") return (s.source ?? s.project)?.original;
+  if (s.view === "candidate") return s.candidate?.layout;
+  return s.status === "searching" ? s.searchPreview?.layout ?? s.candidate?.layout ?? s.current : s.current;
+}
 export function useWorkbench() {
   return useStore(workbench);
 }
@@ -814,13 +903,14 @@ export function startRepairSearch() {
 }
 function runSearch(repair: boolean) {
   const s = workbench.getState();
-  if (!s.project || !s.current || s.importing) return;
+  if (!s.project || !s.current || s.importing || s.status === "searching") return;
   const run = s.beginSearch();
   if (repair) workbench.setState({ message: "正在按当前间距生成修复候选…" });
   worker = new Worker(new URL("./core/nesting.worker.ts", import.meta.url), {
     type: "module",
   });
   worker.onmessage = (e) => {
+    if (e.data.type === "preview") workbench.getState().receivePreview(run, e.data.trial);
     if (e.data.type === "progress")
       workbench.getState().progress(run, e.data.attempt, e.data.bestLayout, e.data.progress);
     if (e.data.type === "done") {
@@ -834,6 +924,7 @@ function runSearch(repair: boolean) {
       stopWorker();
       workbench.setState({
         status: "error",
+        searchPreview: null,
         searchProgress: null, searchStartedAt: null,
         message: e.data.message,
         candidate: null,
@@ -845,6 +936,7 @@ function runSearch(repair: boolean) {
       stopWorker();
       workbench.setState({
         status: "error",
+        searchPreview: null,
         searchProgress: null, searchStartedAt: null,
         message: "搜索线程发生错误，请重试。",
         candidate: null,

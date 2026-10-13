@@ -47,6 +47,32 @@ const poly = (id: string, layer: string, points: number[][], closed = true) =>
         `10\n${x}\n20\n${y}\n${bulge === undefined ? "" : `42\n${bulge}\n`}`,
     )
     .join("");
+it.each(["board", "parts"] as const)("ignores layout viewports without changing %s machining geometry", mode => {
+  const viewport = "0\nVIEWPORT\n5\nview\n100\nAcDbEntity\n67\n1\n8\nLayout_View\n100\nAcDbViewport\n10\n150\n20\n100\n30\n50\n40\n200\n41\n150\n69\n2\n16\n0\n26\n0\n36\n1\n";
+  const stock = mode === "board" ? poly("s", "REF_STOCK", [[0, 0], [100, 0], [100, 200], [0, 200]]) : "";
+  const cut = poly("p", "CUT_12MM", [[10, 10], [50, 10], [50, 80], [10, 80]]);
+  const hole = "0\nCIRCLE\n5\nhole\n8\nHOLE\n10\n20\n20\n20\n40\n2\n";
+  const pocket = poly("pocket", "POCKET_DEPTH3", [[30, 30], [40, 30], [40, 40], [30, 40]]);
+  for (const content of [viewport + stock + cut + hole + pocket, stock + cut + viewport + hole + pocket]) {
+    const actual = parseDxf(dxf(content), "with-view", { mode });
+    expect(actual.parts).toHaveLength(1);
+    expect(actual.parts[0]).toMatchObject({ id: "p", width: 40, height: 70, area: 2800,
+      outline: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 70 }, { x: 0, y: 70 }] });
+    expect(actual.parts[0].holes).toHaveLength(1);
+    expect(actual.parts[0].holes[0][0]).toEqual({ x: 12, y: 10 });
+    expect(actual.parts[0].pockets).toEqual([{ depth: 3,
+      outline: [{ x: 20, y: 20 }, { x: 30, y: 20 }, { x: 30, y: 30 }, { x: 20, y: 30 }] }]);
+    expect(actual.original.placements).toEqual(mode === "board"
+      ? [{ partId: "p", sheetId: "s", x: 10, y: 10, rotation: 0 }] : []);
+    expect(actual.sheets).toEqual(mode === "board"
+      ? [{ id: "s", name: "板材 1", width: 100, height: 200, thickness: 12, material: "未指定" }] : []);
+  }
+});
+it("still rejects unsupported machining geometry in a drawing with a viewport", () => {
+  const viewport = "0\nVIEWPORT\n8\nLayout_View\n67\n1\n10\n0\n20\n0\n40\n100\n41\n100\n";
+  const solid = "0\n3DSOLID\n5\nsolid\n8\nCUT\n";
+  expect(() => parseDxf(dxf(viewport + solid), "solid", { mode: "parts" })).toThrow(/不支持实体 3DSOLID/);
+});
 it("normalizes a rotated stock with collinear vertices", () => {
   const p = parseDxf(
     dxf(
@@ -127,7 +153,7 @@ it("rejects open, self-intersecting and unsupported machining geometry", () => {
     ),
   ).toThrow(/自交|无效/);
   expect(() => parseDxf(dxf(stock + "0\nSPLINE\n8\nCUT_12MM\n"))).toThrow(
-    /不支持/,
+    /SPLINE.*无效/,
   );
 });
 it("reconstructs a closed line chain with original handles", () => {
@@ -152,7 +178,7 @@ it("reconstructs a closed line chain with original handles", () => {
   const p = parseDxf(dxf(stock + chain));
   expect(p.parts[0].id).toBe("L0+L1+L2+L3");
   expect(p.parts[0].area).toBe(400);
-  expect(() => parseDxf(dxf(stock + chain + chain))).toThrow(/分支/);
+  expect(() => parseDxf(dxf(stock + chain + chain))).toThrow(/分支|重复/);
 });
 it("rejects features whose edges cross a concave cutout despite contained vertices", () => {
   const stock = poly("s", "REF_STOCK", [

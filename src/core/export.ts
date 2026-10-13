@@ -1,4 +1,4 @@
-import type { Project, Layout, Point, NestSettings } from "./types";
+import type { Project, Layout, Point, NestSettings, Part } from "./types";
 import { transformPoints, validateLayout } from "./geometry";
 const esc = (s: string) =>
   s.replace(
@@ -16,6 +16,16 @@ const esc = (s: string) =>
 export const displayPoints = (p: Point[], sheetHeight: number) =>
   p.map((v) => ({ x: v.x, y: sheetHeight - v.y }));
 export const points = (p: Point[]) => p.map((v) => `${v.x},${v.y}`).join(" ");
+/** A part drawing can be exported before any stock or nesting is created. */
+export function exportPartSvg(part: Part) {
+  if (![part.width, part.height, part.thickness].every(v => Number.isFinite(v) && v > 0)
+    || [...part.outline, ...part.holes.flat(), ...part.pockets.flatMap(p => [...p.outline, ...(p.centerline ?? [])])]
+      .some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))
+    || part.pockets.some(p => p.depth !== null && (!Number.isFinite(p.depth) || p.depth <= 0)))
+    throw Error("无法导出含无效尺寸或坐标的零件");
+  const polygon = (contour: Point[], feature: string, fill: string) => `<polygon data-feature="${feature}" points="${points(displayPoints(contour, part.height))}" fill="${fill}" stroke="#2146b5" stroke-width="0.25"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${part.width}mm" height="${part.height}mm" viewBox="0 0 ${part.width} ${part.height}"><title>${esc(part.name)} — 零件图纸，单位 mm</title><g data-thickness-mm="${part.thickness}" data-material="${esc(part.material ?? "未指定")}">${polygon(part.outline, "outline", "#dfe6f8")}${part.pockets.map(p => `<g data-pocket-depth-mm="${p.depth ?? "unknown"}">${polygon(p.outline, "pocket", "#b4c8df")}${p.centerline ? `<polyline data-feature="pocket-centerline" points="${points(displayPoints(p.centerline, part.height))}" fill="none" stroke="#c44a24" stroke-width="0.25"/>` : ""}</g>`).join("")}${part.holes.map(h => polygon(h, "hole", "#fff")).join("")}</g></svg>`;
+}
 export function exportSvg(project: Project, layout: Layout) {
   if (
     !layout.sheets.length ||
@@ -29,7 +39,7 @@ export function exportSvg(project: Project, layout: Layout) {
       [
         ...p.outline,
         ...p.holes.flat(),
-        ...p.pockets.flatMap((v) => v.outline),
+        ...p.pockets.flatMap((v) => [...v.outline,...(v.centerline??[])]),
         p.label,
       ].some((v) => !Number.isFinite(v.x) || !Number.isFinite(v.y)),
     )
@@ -53,7 +63,7 @@ export function exportSvg(project: Project, layout: Layout) {
             transformPoints([part.label], part, p),
             s.height,
           )[0];
-          return `<g id="part-${esc(part.id)}" data-thickness-mm="${part.thickness}"><title>${esc(part.name)}</title>${path(part.outline, "outline", part.thickness > 5 ? "#ccb58e" : "#a4b69c")}${part.pockets.map((pocket) => `<g data-pocket-depth-mm="${pocket.depth ?? "unknown"}">${path(pocket.outline, "pocket", "#e6e8da")}</g>`).join("")}${part.holes.map((h) => path(h, "hole", "#a4c2d3")).join("")}<text x="${label.x}" y="${label.y}" text-anchor="middle" font-size="18">${esc(part.name)}</text></g>`;
+          return `<g id="part-${esc(part.id)}" data-thickness-mm="${part.thickness}"><title>${esc(part.name)}</title>${path(part.outline, "outline", part.thickness > 5 ? "#ccb58e" : "#a4b69c")}${part.pockets.map((pocket) => `<g data-pocket-depth-mm="${pocket.depth ?? "unknown"}"${pocket.width ? ` data-pocket-width-mm="${pocket.width}"` : ""}${pocket.boundaryClosedByUser ? ` data-boundary-closed-by-user="true"` : ""}>${path(pocket.outline, "pocket", "#e6e8da")}${pocket.centerline ? `<polyline data-feature="pocket-centerline" points="${points(displayPoints(transformPoints(pocket.centerline,part,p),s.height))}" fill="none" stroke="#c44a24" stroke-width="0.3"/>` : ""}</g>`).join("")}${part.holes.map((h) => path(h, "hole", "#a4c2d3")).join("")}<text x="${label.x}" y="${label.y}" text-anchor="middle" font-size="18">${esc(part.name)}</text></g>`;
         })
         .join("")}</g>`;
     })

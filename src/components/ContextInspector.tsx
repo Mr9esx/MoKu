@@ -1,21 +1,23 @@
 import { useState } from "react";
 import { ArrowLeft, Lock, Unlock, RotateCw, Copy, Trash2 } from "lucide-react";
-import { useWorkbench } from "../store";
+import { useWorkbench, searchEditingReason } from "../store";
 import { Thumbnail } from "./Thumbnail";
 import type { Part, Placement, Project, Rotation } from "../core/types";
 export function ContextInspector({
   part,
   placement,
   project,
+  onExportPart,
 }: {
   part: Part;
   placement?: Placement;
   project: Project;
+  onExportPart?: () => void;
 }) {
   const s = useWorkbench(),
     [target, setTarget] = useState(""),
     [quantity, setQuantity] = useState(1),
-    readonly = s.view !== "current";
+    readonly = s.view !== "current" || s.status === "searching";
   const compatible = project.sheets.filter(
     (v) =>
       v.thickness === part.thickness &&
@@ -49,15 +51,14 @@ export function ContextInspector({
           <span>{part.thickness} mm</span>
           <span>{part.material ?? project.sheets.find((v) => v.id === part.stockId)?.material ?? "未指定"}</span>
         </div>
-        <div className="part-location">
+        {project.sheets.length > 0 && <div className="part-location">
           <span>所在板材</span>
           <strong>{placement ? project.sheets.find((v) => v.id === placement.sheetId)?.name : "待放置"}</strong>
-        </div>
-        {readonly && <p className="inspector-readonly">原始图纸和候选方案只读。切换当前排版后编辑。</p>}
-        {!placement && (
+        </div>}
+        {readonly && <p className="inspector-readonly">{s.status === "searching" ? searchEditingReason : `当前视图只读。切换到${project.sheets.length ? "当前排版" : "当前图纸"}后编辑。`}</p>}
+        {!placement && project.sheets.length > 0 && (
           <div className="pending-placement">
             <strong>待放置</strong>
-            <p className="hint">拖入板材，或选择目标板自动寻找合法位置。</p>
             <label>
               目标板材
               <select
@@ -86,9 +87,10 @@ export function ContextInspector({
             )}
           </div>
         )}
-        <div className="inspector-actions">
+        {project.sheets.length > 0 && <div className="inspector-actions">
           <button
             disabled={readonly || !placement}
+            data-tooltip={s.status === "searching" ? searchEditingReason : "固定或释放零件位置"}
             onClick={() => s.toggleLock(part.id)}
           >
             {placement?.locked ? <Lock size={14} /> : <Unlock size={14} />}{" "}
@@ -112,18 +114,21 @@ export function ContextInspector({
             <RotateCw size={14} />
             旋转 90°
           </button>
-        </div>
+        </div>}
+        {onExportPart && <button className="wide joinery-inspector-action" disabled={readonly}
+          onClick={onExportPart} data-tooltip="按毫米尺寸导出这个零件的外轮廓、孔和槽">导出零件图纸</button>}
         <details className="panel-disclosure">
           <summary data-tooltip="查看通孔、铣槽、槽深、旋转角度与图纸来源" data-tooltip-collapsed>加工与来源</summary>
           <dl className="analysis-stats">
             <div><dt>通孔 / 铣槽</dt><dd>{part.holes.length} / {part.pockets.length}</dd></div>
             {part.pockets.length > 0 && <div><dt>槽深</dt><dd>{part.pockets.map((v) => v.depth ?? "未知").join(" / ")} mm</dd></div>}
+            {part.pockets.some(v => v.width !== undefined) && <div><dt>路径槽宽</dt><dd>{part.pockets.map(v => v.width === undefined ? "区域槽" : `${v.width} mm`).join(" / ")}</dd></div>}
             <div><dt>旋转</dt><dd>{placement?.rotation ?? 0}°</dd></div>
             <div><dt>来源</dt><dd className="source-name" data-tooltip-overflow={part.source ?? project.name} tabIndex={0}>{part.source ?? project.name}</dd></div>
           </dl>
         </details>
         <details className="panel-disclosure inspector-more">
-          <summary data-tooltip={readonly ? "当前视图只读，切换当前排版后可复制或删除零件" : "复制零件（1–100 个）或删除零件，操作可撤销"} data-tooltip-collapsed>更多操作</summary>
+          <summary data-tooltip={s.status === "searching" ? searchEditingReason : readonly ? "当前视图只读，切换当前排版后可复制或删除零件" : "复制零件（1–100 个）或删除零件，操作可撤销"} data-tooltip-collapsed>更多操作</summary>
           <div className="inspector-operations">
             <div className="duplicate-controls">
               <label>
@@ -149,9 +154,6 @@ export function ContextInspector({
           </div>
         </details>
       </div>
-      <p className="information-footer">
-        {readonly ? "只读视图 · Esc 返回概览" : "修改可撤销 · Esc 或空白短点击返回概览"}
-      </p>
     </aside>
   );
 }

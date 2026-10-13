@@ -172,9 +172,7 @@ export function StockForm({
             </span>
             <span>已放置 {count} 个零件</span>
           </div>
-        ) : (
-          <p className="stock-intro">新增一张空板材，用于放置零件。</p>
-        )}
+        ) : null}
         {!editing && field("name", "名称", false, true)}
         {!editing && (
           <div className="stock-size-grid">

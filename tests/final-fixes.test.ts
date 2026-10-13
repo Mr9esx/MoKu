@@ -116,7 +116,7 @@ it("retains a legal checkpoint on cancel and rejects invalid or stale checkpoint
   expect(s.getState().current).toEqual(layout);
 });
 it.each(["settings", "lock", "thickness", "import"])(
-  "clears checkpoints on %s mutation and rejects stale progress",
+  "clears checkpoints on %s mutation after stopping and rejects stale progress",
   (action) => {
     const s = createWorkbenchStore(),
       p = fixture();
@@ -124,6 +124,7 @@ it.each(["settings", "lock", "thickness", "import"])(
     const run = s.getState().beginSearch();
     s.getState().progress(run, 1, p.original);
     expect(s.getState().candidate?.layout).toEqual(p.original);
+    s.getState().cancel();
     if (action === "settings") s.getState().setSettings({ gap: 4 });
     if (action === "lock") s.getState().toggleLock("0");
     if (action === "thickness") s.getState().setThickness("s", 10);

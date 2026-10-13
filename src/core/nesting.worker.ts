@@ -1,3 +1,4 @@
+import { LatestTrialSampler } from "./trialSampler";
 import { repairLayout } from "./repair";
 import { optimizeLayout } from "./nesting";
 import type { Project, NestSettings } from "./types";
@@ -17,17 +18,23 @@ self.onmessage = (
     let lastPhase = "";
     let lastScope = "";
     let lastRound = -1;
+    const sampler = new LatestTrialSampler();
+    const emitPreview = (trial: ReturnType<LatestTrialSampler["flush"]>) => {
+      if (trial) self.postMessage({ type: "preview", trial });
+    };
     const result = (event.data.purpose === "repair" ? repairLayout : optimizeLayout)(
       event.data.project,
       event.data.settings,
       (attempt, best, bestLayout, progress) => {
         const now = performance.now();
+        emitPreview(sampler.flush(now));
         if (!bestLayout && now-lastSent < 200 && progress?.group===lastGroup &&
             progress.phase===lastPhase && (progress.scope ?? "")===lastScope &&
             progress.generation!==progress.generationLimit && (progress.rounds ?? -1)===lastRound) return;
         lastSent=now;lastGroup=progress?.group ?? -1;lastPhase=progress?.phase ?? "";lastScope=progress?.scope ?? "";lastRound=progress?.rounds ?? -1;
         self.postMessage({ type: "progress", attempt, best, bestLayout, progress });
       },
+      trial => emitPreview(sampler.offer(trial, performance.now())),
     );
     self.postMessage({ type: "done", result });
   } catch (error) {
