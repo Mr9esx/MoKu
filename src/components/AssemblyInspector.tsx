@@ -99,6 +99,7 @@ type Props = {
   selected: string | null;
   analysis: AssemblyAnalysis | null;
   pending: boolean;
+  guidancePending: boolean;
   blocked: boolean;
   candidates: PlacementCandidate[];
   candidateId: string | null;
@@ -387,7 +388,9 @@ export function AssemblyInspector(p: Props) {
                       </div>
                     ) : (
                       <p className="hint">
-                        尚无明确配合位置。可先移动零件，再选择装配规则建立配合关系。
+                        {p.guidancePending
+                          ? "正在核对可放置位置…"
+                          : "尚无明确配合位置。可先移动零件，再选择装配规则建立配合关系。"}
                       </p>
                     )}
                     {rejectedCount > 0 && (

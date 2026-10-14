@@ -9,7 +9,6 @@ import type {
   AssemblyStep,
 } from "../core/assemblyTypes";
 import type { Project } from "../core/types";
-import { placementCandidates } from "../core/assemblyGuidance";
 import { AssemblyCanvas, type AssemblyView } from "./AssemblyCanvas";
 import { AssemblyInspector } from "./AssemblyInspector";
 import { Thumbnail } from "./Thumbnail";
@@ -61,15 +60,8 @@ export default function AssemblyWorkspace({
         : assembly,
     [assembly, preview],
   );
-  const detection = useAssemblyAnalysis(project, actual);
-  const candidates = useMemo(() => {
-    if (!selected) return [];
-    try {
-      return placementCandidates(project, assembly, selected);
-    } catch {
-      return [];
-    }
-  }, [project.parts, assembly, selected]);
+  const detection = useAssemblyAnalysis(project, actual, assembly, selected);
+  const candidates = detection.candidates;
   const select = useCallback((id: string | null) => {
     setPreview(null);
     setInstallationPreview(null);
@@ -85,6 +77,7 @@ export default function AssemblyWorkspace({
   }, []);
   const commit = useCallback(
     (next: Assembly) => {
+      setInstallationPreview(null);
       const ok = s.updateAssembly(next);
       if (!ok) setError("未保存：请检查输入或解除装配锁定。");
       else setError("");
@@ -123,6 +116,12 @@ export default function AssemblyWorkspace({
   };
   const locate = (issue: AssemblyIssue) => {
     if (issue.partIds[0]) select(issue.partIds[0]);
+    if (issue.kind === "installation" && issue.movingPosition)
+      setInstallationPreview({
+        partId: issue.partIds[0],
+        position: issue.movingPosition,
+        collisionPositions: issue.collisionPositions,
+      });
     if (issue.kind === "collision" || issue.kind === "installation")
       setXray(true);
     setViewRequest((v) => ({
@@ -352,7 +351,8 @@ export default function AssemblyWorkspace({
           error: setError,
         }}
         pending={detection.pending}
-        error={error || detection.error}
+        guidancePending={detection.guidancePending}
+        error={error || detection.error || detection.guidanceError || ""}
         snapped={snapped}
         onTool={setTool}
         onMagnet={() => setMagnet((v) => !v)}
@@ -368,6 +368,7 @@ export default function AssemblyWorkspace({
         }}
         canUndo={!!s.history.length}
         viewRequest={viewRequest}
+        clearPreview={clearPreview}
       />
       <AssemblyInspector
         project={project}
@@ -377,6 +378,7 @@ export default function AssemblyWorkspace({
         pending={detection.pending}
         blocked={blocked}
         candidates={candidates}
+        guidancePending={detection.guidancePending}
         candidateId={sceneState.candidateId}
         setCandidate={setCandidateId}
         commit={commit}

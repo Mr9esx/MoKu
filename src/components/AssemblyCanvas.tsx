@@ -19,6 +19,7 @@ type Props = {
   state: SceneState;
   callbacks: SceneCallbacks;
   pending: boolean;
+  guidancePending: boolean;
   error: string;
   snapped: string | null;
   onTool: (tool: SceneState["tool"]) => void;
@@ -27,6 +28,7 @@ type Props = {
   onExplode: () => void;
   onUndo: () => void;
   canUndo: boolean;
+  clearPreview: () => void;
   viewRequest: { kind: AssemblyView; seq: number };
 };
 export function AssemblyCanvas(props: Props) {
@@ -70,6 +72,22 @@ export function AssemblyCanvas(props: Props) {
   const candidate = props.state.candidates.find(
     (c) => c.id === (props.snapped ?? props.state.candidateId),
   );
+  const feedback =
+    props.error ||
+    (props.state.exploded
+      ? "爆炸查看 · 检测仍使用原装配位置"
+      : props.state.installationPreview
+        ? "安装步骤预览 · 未修改装配"
+        : props.snapped
+          ? "已对齐 · 继续拖动可脱离"
+          : props.guidancePending
+            ? "正在核对可放置位置…"
+            : (candidate?.label ??
+              (props.pending
+                ? "检测中…"
+                : selected
+                  ? "拖动选中零件 · 黄色提示可配合位置"
+                  : "选择左侧零件，加入场景开始组装")));
   return (
     <section className="assembly-canvas" aria-label="3D 组装场景">
       <div className="assembly-scene-host" ref={container} />
@@ -91,19 +109,7 @@ export function AssemblyCanvas(props: Props) {
         </span>
       </div>
       <div className="assembly-scene-feedback" role="status" aria-live="polite">
-        {props.error ||
-          (props.state.exploded
-            ? "爆炸查看 · 检测仍使用原装配位置"
-            : props.state.installationPreview
-              ? "安装步骤预览 · 未修改装配"
-              : props.snapped
-                ? "已对齐 · 继续拖动可脱离"
-                : (candidate?.label ??
-                  (props.pending
-                    ? "检测中…"
-                    : selected
-                      ? "拖动选中零件 · 黄色提示可配合位置"
-                      : "选择左侧零件，加入场景开始组装")))}
+        {feedback}
       </div>
       <div className="assembly-view-buttons floating" aria-label="三维视图">
         {(["all", "selected", "front", "side", "top"] as const).map(
@@ -117,6 +123,21 @@ export function AssemblyCanvas(props: Props) {
             </button>
           ),
         )}
+      </div>
+      {props.state.installationPreview && (
+        <button
+          className="assembly-end-preview floating"
+          onClick={props.clearPreview}
+        >
+          返回最终装配
+        </button>
+      )}
+      <div className="assembly-dimension-errors">
+        {props.state.analysis?.issues
+          .filter((i) => i.kind === "dimension" && i.severity === "error")
+          .map((i) => (
+            <span key={i.id}>{i.message}</span>
+          ))}
       </div>
       <nav className="assembly-tools floating" aria-label="三维编辑工具">
         {(

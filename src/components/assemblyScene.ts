@@ -29,7 +29,11 @@ export type SceneState = {
   blocked: boolean;
   preview: AssemblyItem | null;
   candidateId: string | null;
-  installationPreview?: { partId: string; position: Vec3 } | null;
+  installationPreview?: {
+    partId: string;
+    position: Vec3;
+    collisionPositions?: number[];
+  } | null;
 };
 export type SceneCallbacks = {
   select: (id: string | null) => void;
@@ -165,7 +169,9 @@ export function createAssemblyScene(
     clear(ghosts);
     if (!state) return;
     if (!state.exploded)
-      for (const region of state.analysis?.collisions ?? []) {
+      for (const region of state.installationPreview?.collisionPositions
+        ? [{ positions: state.installationPreview.collisionPositions }]
+        : (state.analysis?.collisions ?? [])) {
         if (!region.positions.length) continue;
         const mesh = new THREE.Mesh(
           geometry(region.positions),
@@ -222,7 +228,7 @@ export function createAssemblyScene(
     const selectedPart = state.project.parts.find(
       (p) => p.id === state!.selected,
     );
-    if (!selectedPart || state.exploded) return;
+    if (!selectedPart || state.exploded || state.installationPreview) return;
     const model = buildAssemblyModel(
       selectedPart,
       state.assembly.pocketFaces[selectedPart.id],
@@ -345,6 +351,38 @@ export function createAssemblyScene(
       }
     }
   }
+  function addDimensionMarks() {
+    if (!state?.analysis?.bounds || state.exploded || state.installationPreview)
+      return;
+    const { min, max } = state.analysis.bounds;
+    for (const issue of state.analysis.issues) {
+      if (issue.kind !== "dimension" || issue.severity !== "error") continue;
+      const axis = issue.message.startsWith("宽")
+        ? "x"
+        : issue.message.startsWith("深")
+          ? "y"
+          : issue.message.startsWith("高")
+            ? "z"
+            : null;
+      if (!axis) continue;
+      const start = { ...min },
+        end = { ...min };
+      if (axis === "x") {
+        start.y -= 12;
+        end.y -= 12;
+      } else {
+        start.x -= 12;
+        end.x -= 12;
+      }
+      end[axis] = max[axis];
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([vector(start), vector(end)]),
+        new THREE.LineBasicMaterial({ color: "#d83032", depthTest: false }),
+      );
+      line.renderOrder = 10;
+      overlays.add(line);
+    }
+  }
   function fit(kind: "all" | "selected" | "front" | "side" | "top" = "all") {
     const box = new THREE.Box3();
     if (kind === "selected" && state?.selected) {
@@ -363,7 +401,7 @@ export function createAssemblyScene(
       distance =
         (radius /
           (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * aspect)) *
-        1.5;
+        1.9;
     const direction =
       kind === "front"
         ? new THREE.Vector3(0, -1, 0.00001)
@@ -481,6 +519,7 @@ export function createAssemblyScene(
       controls.setRotationSnap(alt ? null : Math.PI / 2);
     } else controls.detach();
     updateOverlays();
+    addDimensionMarks();
     if (!fitOnce && entries.size) {
       fitOnce = true;
       fit();

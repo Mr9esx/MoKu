@@ -829,3 +829,24 @@
   padding: 10px 0;
   text-align: left;
 }
+
+.assembly-end-preview {
+  position: absolute;
+  right: 14px;
+  top: 80px;
+  font-size: 11px;
+  padding: 7px 10px;
+}
+.assembly-dimension-errors {
+  position: absolute;
+  bottom: 138px;
+  left: 14px;
+  right: 14px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: #bc2e32;
+  font-size: 11px;
+  pointer-events: none;
+}
