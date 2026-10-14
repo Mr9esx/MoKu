@@ -1,0 +1,723 @@
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
+import {
+  buildAssemblyModel,
+  geometrySignature,
+  transformPoint,
+} from "../core/assemblyGeometry";
+import { weakSnap } from "../core/assemblyGuidance";
+import type {
+  Assembly,
+  AssemblyAnalysis,
+  AssemblyItem,
+  PlacementCandidate,
+  Vec3,
+} from "../core/assemblyTypes";
+import type { Project } from "../core/types";
+
+export type SceneState = {
+  project: Project;
+  assembly: Assembly;
+  selected: string | null;
+  candidates: PlacementCandidate[];
+  analysis: AssemblyAnalysis | null;
+  tool: "select" | "translate" | "rotate";
+  magnet: boolean;
+  xray: boolean;
+  exploded: boolean;
+  blocked: boolean;
+  preview: AssemblyItem | null;
+  candidateId: string | null;
+  installationPreview?: { partId: string; position: Vec3 } | null;
+};
+export type SceneCallbacks = {
+  select: (id: string | null) => void;
+  preview: (pose: AssemblyItem | null) => void;
+  commit: (pose: AssemblyItem) => void;
+  snap: (id: string | null) => void;
+  error: (message: string) => void;
+};
+type Entry = {
+  group: THREE.Group;
+  mesh: THREE.Mesh;
+  edge: THREE.LineSegments;
+  key: string;
+};
+type DirectDrag = {
+  id: string;
+  original: AssemblyItem;
+  start: { x: number; y: number };
+  point: THREE.Vector3;
+  plane: THREE.Plane;
+  moved: boolean;
+  pointerId: number;
+};
+const vector = (v: Vec3) => new THREE.Vector3(v.x, v.y, v.z);
+const poseOf = (group: THREE.Group, id: string): AssemblyItem => ({
+  partId: id,
+  position: { x: group.position.x, y: group.position.y, z: group.position.z },
+  rotation: {
+    x: group.quaternion.x,
+    y: group.quaternion.y,
+    z: group.quaternion.z,
+    w: group.quaternion.w,
+  },
+});
+const geometry = (positions: number[]) => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  g.computeVertexNormals();
+  return g;
+};
+const disposeObject = (group: THREE.Object3D) =>
+  group.traverse((obj) => {
+    if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
+      obj.geometry.dispose();
+      const ms = Array.isArray(obj.material) ? obj.material : [obj.material];
+      ms.forEach((m) => m.dispose());
+    }
+  });
+export function createAssemblyScene(
+  container: HTMLDivElement,
+  callbacks: SceneCallbacks,
+) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setClearColor("#f7f5ed");
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  container.appendChild(renderer.domElement);
+  renderer.domElement.setAttribute("aria-label", "三维装配场景");
+  renderer.domElement.tabIndex = 0;
+  const scene = new THREE.Scene(),
+    camera = new THREE.PerspectiveCamera(38, 1, 0.1, 1000000);
+  camera.up.set(0, 0, 1);
+  camera.position.set(240, -300, 220);
+  scene.add(new THREE.HemisphereLight("#fffdf4", "#9aa0b0", 2.5));
+  const light = new THREE.DirectionalLight("#ffffff", 2.8);
+  light.position.set(120, -150, 300);
+  scene.add(light);
+  const orbit = new OrbitControls(camera, renderer.domElement);
+  orbit.target.set(60, 60, 25);
+  orbit.enableDamping = false;
+  const controls = new TransformControls(camera, renderer.domElement);
+  controls.setSpace("world");
+  controls.setSize(0.85);
+  controls.setColors("#3861b4", "#658774", "#7e879b", "#dfb322");
+  scene.add(controls.getHelper());
+  const grid = new THREE.GridHelper(2000, 80, "#bac1cf", "#e3e4e4");
+  grid.rotation.x = Math.PI / 2;
+  grid.position.z = -0.15;
+  scene.add(grid);
+  const axes = new THREE.AxesHelper(50);
+  axes.setColors("#3861b4", "#658774", "#7e879b");
+  scene.add(axes);
+  const entries = new Map<string, Entry>(),
+    overlays = new THREE.Group(),
+    ghosts = new THREE.Group();
+  scene.add(overlays, ghosts);
+  let state: SceneState | null = null,
+    disposed = false,
+    frame = 0,
+    direct: DirectDrag | null = null,
+    gizmoOriginal: AssemblyItem | null = null;
+  let held: string | null = null,
+    alt = false,
+    applyingSnap = false,
+    fitOnce = false;
+  const ray = new THREE.Raycaster(),
+    mouse = new THREE.Vector2();
+  const render = () => {
+    if (disposed || frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      renderer.render(scene, camera);
+    });
+  };
+  const projectPoint = (p: Vec3) => {
+    const q = vector(p).project(camera),
+      r = renderer.domElement.getBoundingClientRect();
+    return { x: ((q.x + 1) * r.width) / 2, y: ((1 - q.y) * r.height) / 2 };
+  };
+  const setRay = (e: PointerEvent) => {
+    const r = renderer.domElement.getBoundingClientRect();
+    mouse.set(
+      ((e.clientX - r.left) / r.width) * 2 - 1,
+      (-(e.clientY - r.top) / r.height) * 2 + 1,
+    );
+    ray.setFromCamera(mouse, camera);
+  };
+  const pick = (e: PointerEvent) => {
+    setRay(e);
+    return ray.intersectObjects(
+      [...entries.values()].map((v) => v.mesh),
+      false,
+    )[0];
+  };
+  const clear = (group: THREE.Group) => {
+    for (const child of [...group.children]) {
+      group.remove(child);
+      disposeObject(child);
+    }
+  };
+  function updateOverlays() {
+    clear(overlays);
+    clear(ghosts);
+    if (!state) return;
+    if (!state.exploded)
+      for (const region of state.analysis?.collisions ?? []) {
+        if (!region.positions.length) continue;
+        const mesh = new THREE.Mesh(
+          geometry(region.positions),
+          new THREE.MeshBasicMaterial({
+            color: "#e73a39",
+            transparent: true,
+            opacity: 0.78,
+            side: THREE.DoubleSide,
+            depthTest: !state.xray,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+          }),
+        );
+        mesh.renderOrder = 8;
+        overlays.add(mesh);
+        const border = new THREE.LineSegments(
+          new THREE.EdgesGeometry(mesh.geometry, 25),
+          new THREE.LineBasicMaterial({
+            color: "#ad171d",
+            depthTest: !state.xray,
+          }),
+        );
+        border.renderOrder = 9;
+        overlays.add(border);
+      }
+    // Errors on specific features get a precise contour, not a whole-object red fill.
+    for (const issue of state.analysis?.issues ?? []) {
+      if (issue.kind === "collision" || issue.severity !== "error") continue;
+      const fit = issue.constraintId
+        ? state.assembly.fits.find((f) => f.id === issue.constraintId)
+        : undefined;
+      if (!fit) continue;
+      const part = state.project.parts.find((p) => p.id === fit.receiverId),
+        item = state.assembly.items.find((i) => i.partId === fit.receiverId);
+      if (!part || !item) continue;
+      const contour =
+        fit.feature.kind === "pocket"
+          ? part.pockets[fit.feature.index]?.outline
+          : part.holes[fit.feature.index];
+      if (!contour) continue;
+      const points = [...contour, contour[0]].map((p) =>
+        vector(transformPoint({ ...p, z: part.thickness + 0.05 }, item)),
+      );
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(points),
+        new THREE.LineBasicMaterial({
+          color: "#d83032",
+          depthTest: !state.xray,
+        }),
+      );
+      line.renderOrder = 7;
+      overlays.add(line);
+    }
+    const selectedPart = state.project.parts.find(
+      (p) => p.id === state!.selected,
+    );
+    if (!selectedPart || state.exploded) return;
+    const model = buildAssemblyModel(
+      selectedPart,
+      state.assembly.pocketFaces[selectedPart.id],
+    );
+    const visible = state.candidates
+      .filter((c) => c.status !== "invalid")
+      .slice(0, 10);
+    for (const candidate of visible) {
+      const active = candidate.id === (held ?? state.candidateId),
+        valid = candidate.status === "valid";
+      const group = new THREE.Group();
+      group.position.copy(vector(candidate.pose.position));
+      group.quaternion.set(
+        candidate.pose.rotation.x,
+        candidate.pose.rotation.y,
+        candidate.pose.rotation.z,
+        candidate.pose.rotation.w,
+      );
+      const g = geometry(model.positions);
+      if (active) {
+        const mesh = new THREE.Mesh(
+          g,
+          new THREE.MeshBasicMaterial({
+            color: valid ? "#f3c934" : "#8793a9",
+            transparent: true,
+            opacity: valid ? 0.32 : 0.12,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          }),
+        );
+        group.add(mesh);
+      }
+      const edge = new THREE.LineSegments(
+        new THREE.EdgesGeometry(g, 25),
+        valid
+          ? new THREE.LineBasicMaterial({
+              color: "#cd9e04",
+              transparent: true,
+              opacity: active ? 1 : 0.5,
+              depthTest: false,
+            })
+          : new THREE.LineDashedMaterial({
+              color: "#9aa6b4",
+              dashSize: 2,
+              gapSize: 2,
+              transparent: true,
+              opacity: active ? 1 : 0.5,
+              depthTest: false,
+            }),
+      );
+      edge.computeLineDistances();
+      edge.renderOrder = 5;
+      group.add(edge);
+      if (!active) g.dispose();
+      ghosts.add(group);
+      if (candidate.feature) {
+        const receiver = state.project.parts.find(
+            (p) => p.id === candidate.receiverId,
+          ),
+          host = state.assembly.items.find(
+            (i) => i.partId === candidate.receiverId,
+          );
+        const contour =
+          candidate.feature.kind === "pocket"
+            ? receiver?.pockets[candidate.feature.index]?.outline
+            : receiver?.holes[candidate.feature.index];
+        if (receiver && host && contour) {
+          const config = state.assembly.pocketFaces[receiver.id],
+            face =
+              candidate.feature.kind === "pocket"
+                ? config?.faces[candidate.feature.index]
+                : "front";
+          const z = face === "back" ? -0.05 : receiver.thickness + 0.05;
+          const points = [...contour, contour[0]].map((p) =>
+            vector(transformPoint({ ...p, z }, host)),
+          );
+          const line = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(points),
+            valid
+              ? new THREE.LineBasicMaterial({
+                  color: "#e3af08",
+                  depthTest: false,
+                })
+              : new THREE.LineDashedMaterial({
+                  color: "#9aa6b4",
+                  dashSize: 2,
+                  gapSize: 2,
+                  depthTest: false,
+                }),
+          );
+          line.computeLineDistances();
+          line.renderOrder = 7;
+          ghosts.add(line);
+        }
+      }
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(3, 4.2, 28),
+        new THREE.MeshBasicMaterial({
+          color: valid ? "#f3bc1f" : "#9aa6b4",
+          side: THREE.DoubleSide,
+          depthTest: false,
+        }),
+      );
+      ring.position.copy(vector(candidate.target));
+      ring.renderOrder = 6;
+      ghosts.add(ring);
+    }
+    if (held && state.preview) {
+      const c = state.candidates.find((c) => c.id === held);
+      if (c) {
+        const line = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([
+            vector(state.preview.position),
+            vector(c.pose.position),
+          ]),
+          new THREE.LineBasicMaterial({ color: "#d4a418", depthTest: false }),
+        );
+        line.renderOrder = 10;
+        overlays.add(line);
+      }
+    }
+  }
+  function fit(kind: "all" | "selected" | "front" | "side" | "top" = "all") {
+    const box = new THREE.Box3();
+    if (kind === "selected" && state?.selected) {
+      const e = entries.get(state.selected);
+      if (e) box.setFromObject(e.group);
+    } else entries.forEach((e) => box.expandByObject(e.group));
+    if (box.isEmpty())
+      box.setFromCenterAndSize(
+        new THREE.Vector3(50, 50, 0),
+        new THREE.Vector3(120, 120, 60),
+      );
+    const center = box.getCenter(new THREE.Vector3()),
+      size = box.getSize(new THREE.Vector3()),
+      radius = Math.max(size.x, size.y, size.z, 60);
+    const aspect = Math.min(camera.aspect, 1),
+      distance =
+        (radius /
+          (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * aspect)) *
+        1.5;
+    const direction =
+      kind === "front"
+        ? new THREE.Vector3(0, -1, 0.00001)
+        : kind === "side"
+          ? new THREE.Vector3(1, 0, 0.00001)
+          : kind === "top"
+            ? new THREE.Vector3(0, -0.00001, 1)
+            : new THREE.Vector3(1, -1.4, 1).normalize();
+    camera.position.copy(center).addScaledVector(direction, distance);
+    camera.near = Math.max(0.05, distance / 10000);
+    camera.far = Math.max(10000, distance * 100);
+    camera.updateProjectionMatrix();
+    orbit.target.copy(center);
+    orbit.update();
+    render();
+  }
+  function update(next: SceneState) {
+    if (next.blocked && (direct || gizmoOriginal)) cancelDrag();
+    state = next;
+    const wanted = new Set(next.assembly.items.map((i) => i.partId));
+    for (const [id, e] of entries)
+      if (!wanted.has(id)) {
+        scene.remove(e.group);
+        disposeObject(e.group);
+        entries.delete(id);
+      }
+    next.assembly.items.forEach((item, index) => {
+      const part = next.project.parts.find((p) => p.id === item.partId);
+      if (!part) return;
+      const key =
+        geometrySignature(part) +
+        JSON.stringify(next.assembly.pocketFaces[part.id] ?? {});
+      let entry = entries.get(part.id);
+      if (!entry || entry.key !== key) {
+        if (entry) {
+          scene.remove(entry.group);
+          disposeObject(entry.group);
+        }
+        const model = buildAssemblyModel(
+          part,
+          next.assembly.pocketFaces[part.id],
+        );
+        const group = new THREE.Group(),
+          mesh = new THREE.Mesh(
+            geometry(model.positions),
+            new THREE.MeshStandardMaterial({
+              color: "#d8bd91",
+              roughness: 0.85,
+              metalness: 0,
+              side: THREE.DoubleSide,
+            }),
+          );
+        mesh.userData.partId = part.id;
+        const edge = new THREE.LineSegments(
+          new THREE.EdgesGeometry(mesh.geometry, 30),
+          new THREE.LineBasicMaterial({
+            color: "#a18a63",
+            transparent: true,
+            opacity: 0.65,
+          }),
+        );
+        group.add(mesh, edge);
+        scene.add(group);
+        entry = { group, mesh, edge, key };
+        entries.set(part.id, entry);
+      }
+      if (!(
+        direct?.id === item.partId || gizmoOriginal?.partId === item.partId
+      )) {
+        const pose = next.preview?.partId === item.partId ? next.preview : item;
+        entry.group.position.copy(vector(pose.position));
+        entry.group.quaternion.set(
+          pose.rotation.x,
+          pose.rotation.y,
+          pose.rotation.z,
+          pose.rotation.w,
+        );
+        if (next.exploded)
+          entry.group.position.add(
+            new THREE.Vector3(
+              index * part.thickness * 3,
+              0,
+              index * part.thickness * 1.5,
+            ),
+          );
+        if (next.installationPreview?.partId === item.partId)
+          entry.group.position.copy(vector(next.installationPreview.position));
+      }
+      const selected = next.selected === part.id,
+        material = entry.mesh.material as THREE.MeshStandardMaterial;
+      material.color.set(selected ? "#c8aa78" : "#dfc89f");
+      material.transparent = next.xray;
+      material.opacity = next.xray ? 0.35 : 1;
+      material.depthWrite = !next.xray;
+      (entry.edge.material as THREE.LineBasicMaterial).color.set(
+        selected ? "#2146b5" : "#a18a63",
+      );
+      (entry.edge.material as THREE.LineBasicMaterial).opacity = selected
+        ? 0.95
+        : 0.55;
+    });
+    const item = next.assembly.items.find((i) => i.partId === next.selected),
+      entry = next.selected ? entries.get(next.selected) : null;
+    if (
+      entry &&
+      item &&
+      !item.locked &&
+      !next.blocked &&
+      !next.exploded &&
+      !next.installationPreview &&
+      next.tool !== "select"
+    ) {
+      if (controls.object !== entry.group) controls.attach(entry.group);
+      controls.setMode(next.tool);
+      controls.setRotationSnap(alt ? null : Math.PI / 2);
+    } else controls.detach();
+    updateOverlays();
+    if (!fitOnce && entries.size) {
+      fitOnce = true;
+      fit();
+    }
+    render();
+  }
+  function snapPose(raw: AssemblyItem, axes = "XYZ") {
+    if (!state) return raw;
+    const snapped = weakSnap(raw, state.candidates, {
+      enabled: state.magnet,
+      suspended: alt,
+      heldId: held,
+      axes,
+      project: projectPoint,
+    });
+    held = snapped.candidateId;
+    callbacks.snap(held);
+    return snapped.pose;
+  }
+  const onObjectChange = () => {
+    if (!state || !gizmoOriginal || applyingSnap || !controls.object) return;
+    const group = controls.object as THREE.Group;
+    let pose = poseOf(group, gizmoOriginal.partId);
+    if (controls.mode === "translate")
+      pose = snapPose(pose, controls.axis ?? "XYZ");
+    applyingSnap = true;
+    group.position.copy(vector(pose.position));
+    applyingSnap = false;
+    callbacks.preview(pose);
+    render();
+  };
+  controls.addEventListener("objectChange", onObjectChange);
+  controls.addEventListener("mouseDown", () => {
+    if (!state?.selected) return;
+    const item = state.assembly.items.find((i) => i.partId === state!.selected);
+    if (item) {
+      gizmoOriginal = structuredClone(item);
+      held = null;
+      orbit.enabled = false;
+    }
+  });
+  controls.addEventListener("mouseUp", () => {
+    if (!gizmoOriginal) return;
+    const entry = entries.get(gizmoOriginal.partId);
+    const original = gizmoOriginal;
+    gizmoOriginal = null;
+    held = null;
+    orbit.enabled = true;
+    if (entry) {
+      const pose = poseOf(entry.group, original.partId);
+      callbacks.preview(null);
+      callbacks.snap(null);
+      callbacks.commit(pose);
+    }
+    render();
+  });
+  const onDown = (event: PointerEvent) => {
+    if (
+      event.button !== 0 ||
+      !state ||
+      state.blocked ||
+      state.exploded ||
+      state.installationPreview
+    )
+      return;
+    const hit = pick(event);
+    const id = hit?.object.userData.partId as string | undefined;
+    const item = state.assembly.items.find((i) => i.partId === id);
+    if (
+      !hit ||
+      !item ||
+      state.tool !== "translate" ||
+      id !== state.selected ||
+      item.locked ||
+      controls.axis
+    )
+      return;
+    direct = {
+      id: item.partId,
+      original: structuredClone(item),
+      start: { x: event.clientX, y: event.clientY },
+      point: hit.point.clone(),
+      plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), -hit.point.z),
+      moved: false,
+      pointerId: event.pointerId,
+    };
+    orbit.enabled = false;
+    renderer.domElement.setPointerCapture(event.pointerId);
+    event.stopImmediatePropagation();
+  };
+  let clickStart: { x: number; y: number } | null = null;
+  const onCapture = (event: PointerEvent) => {
+    clickStart = { x: event.clientX, y: event.clientY };
+    onDown(event);
+  };
+  const onMove = (event: PointerEvent) => {
+    if (!direct) return;
+    event.stopImmediatePropagation();
+    setRay(event);
+    if (
+      !direct.moved &&
+      Math.hypot(
+        event.clientX - direct.start.x,
+        event.clientY - direct.start.y,
+      ) < 4
+    )
+      return;
+    direct.moved = true;
+    const point = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(direct.plane, point)) return;
+    const delta = point.sub(direct.point),
+      raw = {
+        ...direct.original,
+        position: {
+          x: direct.original.position.x + delta.x,
+          y: direct.original.position.y + delta.y,
+          z: direct.original.position.z,
+        },
+      };
+    const pose = snapPose(raw, "XY"),
+      entry = entries.get(direct.id);
+    if (entry) entry.group.position.copy(vector(pose.position));
+    callbacks.preview(pose);
+    render();
+  };
+  const onUp = (event: PointerEvent) => {
+    if (direct) {
+      event.stopImmediatePropagation();
+      const drag = direct;
+      direct = null;
+      orbit.enabled = true;
+      held = null;
+      if (renderer.domElement.hasPointerCapture(event.pointerId))
+        renderer.domElement.releasePointerCapture(event.pointerId);
+      const entry = entries.get(drag.id);
+      if (drag.moved && entry) {
+        callbacks.preview(null);
+        callbacks.snap(null);
+        callbacks.commit(poseOf(entry.group, drag.id));
+      } else callbacks.select(drag.id);
+      render();
+      return;
+    }
+    if (gizmoOriginal || controls.dragging || controls.axis) return;
+    if (
+      clickStart &&
+      Math.hypot(event.clientX - clickStart.x, event.clientY - clickStart.y) <=
+        4
+    )
+      callbacks.select(pick(event)?.object.userData.partId ?? null);
+  };
+  function cancelDrag() {
+    const original = direct?.original ?? gizmoOriginal;
+    if (!original) return false;
+    if (controls.dragging) controls.reset();
+    const entry = entries.get(original.partId);
+    if (entry) {
+      entry.group.position.copy(vector(original.position));
+      entry.group.quaternion.set(
+        original.rotation.x,
+        original.rotation.y,
+        original.rotation.z,
+        original.rotation.w,
+      );
+    }
+    direct = null;
+    gizmoOriginal = null;
+    held = null;
+    orbit.enabled = true;
+    callbacks.preview(null);
+    callbacks.snap(null);
+    render();
+    return true;
+  }
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key === "Alt") {
+      alt = event.type === "keydown";
+      controls.setRotationSnap(alt ? null : Math.PI / 2);
+    }
+    if (event.key === "Escape" && event.type === "keydown" && cancelDrag()) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  };
+  const onBlur = () => {
+    alt = false;
+    cancelDrag();
+  };
+  renderer.domElement.addEventListener("pointerdown", onCapture, true);
+  renderer.domElement.addEventListener("pointermove", onMove, true);
+  renderer.domElement.addEventListener("pointerup", onUp, true);
+  renderer.domElement.addEventListener("pointercancel", cancelDrag);
+  window.addEventListener("keydown", onKey, true);
+  window.addEventListener("keyup", onKey, true);
+  window.addEventListener("blur", onBlur);
+  orbit.addEventListener("change", render);
+  controls.addEventListener("change", render);
+  const resize = () => {
+    const r = container.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    renderer.setSize(r.width, r.height);
+    camera.aspect = r.width / r.height;
+    camera.updateProjectionMatrix();
+    render();
+  };
+  const observer = new ResizeObserver(resize);
+  observer.observe(container);
+  resize();
+  render();
+  return {
+    update,
+    fit,
+    cancelDrag,
+    dispose() {
+      disposed = true;
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", onCapture, true);
+      renderer.domElement.removeEventListener("pointermove", onMove, true);
+      renderer.domElement.removeEventListener("pointerup", onUp, true);
+      renderer.domElement.removeEventListener("pointercancel", cancelDrag);
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keyup", onKey, true);
+      window.removeEventListener("blur", onBlur);
+      controls.dispose();
+      orbit.dispose();
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
+          obj.geometry.dispose();
+          (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(
+            (m) => m.dispose(),
+          );
+        }
+      });
+      renderer.dispose();
+      renderer.forceContextLoss();
+      renderer.domElement.remove();
+    },
+  };
+}

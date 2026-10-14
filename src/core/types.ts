@@ -52,6 +52,8 @@ export type SearchTrial = {
   layout: Layout; group: number; groups: number; generation: number; individual: number; evaluations: number; complete: boolean;
 };
 export type Project = {
+  /** Final product assembly is independent from 2D nesting and imported source. */
+  assembly?: import("./assemblyTypes").Assembly;
   /** Reviewed source geometry and confirmed semantics, retained separately from nesting coordinates. */
   drawingSource?: import("./drawingTypes").DrawingDocument;
   drawingMapping?: { space: string; layerRules: import("./drawingTypes").DrawingRules; shapeRules: import("./drawingTypes").DrawingRules };

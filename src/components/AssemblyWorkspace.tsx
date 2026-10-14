@@ -1,0 +1,407 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Upload, Plus, Search, Package, ChevronRight } from "lucide-react";
+import { useWorkbench } from "../store";
+import { emptyAssembly } from "../core/assemblyTypes";
+import type {
+  Assembly,
+  AssemblyItem,
+  AssemblyIssue,
+  AssemblyStep,
+} from "../core/assemblyTypes";
+import type { Project } from "../core/types";
+import { placementCandidates } from "../core/assemblyGuidance";
+import { AssemblyCanvas, type AssemblyView } from "./AssemblyCanvas";
+import { AssemblyInspector } from "./AssemblyInspector";
+import { Thumbnail } from "./Thumbnail";
+import { useAssemblyAnalysis } from "./useAssemblyAnalysis";
+import type { SceneState } from "./assemblyScene";
+import type { Dialog } from "./WorkspaceDialogs";
+import "./assembly.css";
+const EMPTY = emptyAssembly();
+export default function AssemblyWorkspace({
+  project,
+  active,
+  open,
+  interactionBlocked,
+}: {
+  project: Project;
+  active: boolean;
+  interactionBlocked: boolean;
+  open: (dialog: Dialog) => void;
+}) {
+  const s = useWorkbench(),
+    assembly = project.assembly ?? EMPTY;
+  const [selected, setSelected] = useState<string | null>(null),
+    [query, setQuery] = useState(""),
+    [mobile, setMobile] = useState("canvas");
+  const [tool, setTool] = useState<SceneState["tool"]>("translate"),
+    [magnet, setMagnet] = useState(true),
+    [xray, setXray] = useState(false),
+    [exploded, setExploded] = useState(false);
+  const [preview, setPreview] = useState<AssemblyItem | null>(null),
+    [snapped, setSnapped] = useState<string | null>(null),
+    [candidateId, setCandidateId] = useState<string | null>(null);
+  const [viewRequest, setViewRequest] = useState<{
+    kind: AssemblyView;
+    seq: number;
+  }>({ kind: "all", seq: 0 });
+  const [installationPreview, setInstallationPreview] =
+      useState<SceneState["installationPreview"]>(null),
+    [error, setError] = useState("");
+  const blocked = s.status === "searching" || !active || interactionBlocked;
+  const actual = useMemo(
+    () =>
+      preview
+        ? {
+            ...assembly,
+            items: assembly.items.map((i) =>
+              i.partId === preview.partId ? preview : i,
+            ),
+          }
+        : assembly,
+    [assembly, preview],
+  );
+  const detection = useAssemblyAnalysis(project, actual);
+  const candidates = useMemo(() => {
+    if (!selected) return [];
+    try {
+      return placementCandidates(project, assembly, selected);
+    } catch {
+      return [];
+    }
+  }, [project.parts, assembly, selected]);
+  const select = useCallback((id: string | null) => {
+    setPreview(null);
+    setInstallationPreview(null);
+    setExploded(false);
+    setSelected(id);
+    setSnapped(null);
+    setCandidateId(null);
+    setMobile("canvas");
+  }, []);
+  const clearPreview = useCallback(() => {
+    setInstallationPreview(null);
+    setPreview(null);
+  }, []);
+  const commit = useCallback(
+    (next: Assembly) => {
+      const ok = s.updateAssembly(next);
+      if (!ok) setError("未保存：请检查输入或解除装配锁定。");
+      else setError("");
+      return ok;
+    },
+    [s.updateAssembly],
+  );
+  const commitPose = (pose: AssemblyItem) => {
+    setPreview(null);
+    setSnapped(null);
+    commit({
+      ...assembly,
+      items: assembly.items.map((i) =>
+        i.partId === pose.partId ? { ...pose, locked: i.locked } : i,
+      ),
+    });
+  };
+  const add = (id: string) => {
+    if (assembly.items.some((i) => i.partId === id)) return;
+    const maxX = detection.analysis?.bounds?.max.x ?? 0;
+    const next = {
+      partId: id,
+      position: { x: assembly.items.length ? maxX + 30 : 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0, w: 1 },
+    };
+    if (
+      commit({
+        ...assembly,
+        items: [...assembly.items, next],
+        sparePartIds: assembly.sparePartIds.filter((v) => v !== id),
+      })
+    ) {
+      select(id);
+      setViewRequest((v) => ({ kind: "all", seq: v.seq + 1 }));
+    }
+  };
+  const locate = (issue: AssemblyIssue) => {
+    if (issue.partIds[0]) select(issue.partIds[0]);
+    if (issue.kind === "collision" || issue.kind === "installation")
+      setXray(true);
+    setViewRequest((v) => ({
+      kind: issue.partIds.length ? "selected" : "all",
+      seq: v.seq + 1,
+    }));
+  };
+  const previewStep = (step: AssemblyStep | null, progress: number) => {
+    if (!step) {
+      setInstallationPreview(null);
+      return;
+    }
+    const item = assembly.items.find((i) => i.partId === step.partId);
+    if (!item) return;
+    const magnitude =
+      Math.hypot(step.direction.x, step.direction.y, step.direction.z) || 1;
+    const offset = (step.distance * (1 - progress)) / magnitude;
+    setPreview(null);
+    setExploded(false);
+    setInstallationPreview({
+      partId: step.partId,
+      position: {
+        x: item.position.x - step.direction.x * offset,
+        y: item.position.y - step.direction.y * offset,
+        z: item.position.z - step.direction.z * offset,
+      },
+    });
+  };
+  useEffect(() => {
+    if (selected && !project.parts.some((p) => p.id === selected)) select(null);
+  }, [project.parts, selected, select]);
+  useEffect(() => {
+    if (!active) {
+      setPreview(null);
+      setSnapped(null);
+      setInstallationPreview(null);
+    }
+  }, [active]);
+  useEffect(() => {
+    if (!active) return;
+    const key = (e: KeyboardEvent) => {
+      if (interactionBlocked) return;
+      if (
+        (e.target as HTMLElement).closest(
+          "input,textarea,select,[contenteditable=true]",
+        )
+      )
+        return;
+      if (e.key === "Escape") {
+        setPreview(null);
+        setInstallationPreview(null);
+        setSelected(null);
+        e.preventDefault();
+      }
+      if (blocked) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        s.undo();
+        return;
+      }
+      if (e.key.toLowerCase() === "v") setTool("select");
+      if (e.key.toLowerCase() === "g") setTool("translate");
+      if (e.key.toLowerCase() === "r") setTool("rotate");
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [active, blocked, interactionBlocked, s.undo]);
+  const visible = project.parts.filter((p) =>
+    (p.name + " " + p.material + " " + p.thickness)
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
+  const errors =
+    detection.analysis?.issues.filter((i) => i.severity === "error").length ??
+    0;
+  const sceneState: SceneState = {
+    project,
+    assembly: actual,
+    selected,
+    candidates,
+    analysis: detection.analysis,
+    tool,
+    magnet,
+    xray,
+    exploded,
+    blocked,
+    preview,
+    candidateId:
+      candidateId ?? candidates.find((c) => c.status === "valid")?.id ?? null,
+    installationPreview,
+  };
+  return (
+    <div className={"assembly-workspace mobile-" + mobile} hidden={!active}>
+      <nav
+        className="assembly-mobile-navigation floating"
+        aria-label="组装工作区区域"
+      >
+        {[
+          ["resources", "零件"],
+          ["canvas", "场景"],
+          ["info", "信息"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            className={mobile === key ? "active" : ""}
+            onClick={() => setMobile(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <aside className="assembly-resources floating" aria-label="组装零件库">
+        <div className="panel-heading">
+          <strong>组装零件库</strong>
+          <span className="section-index">01</span>
+        </div>
+        <div className="assembly-resource-actions">
+          <button
+            className="wide"
+            disabled={blocked}
+            onClick={() => open("import")}
+          >
+            <Upload size={15} />
+            导入 DXF
+          </button>
+          <button
+            aria-label="新增组装零件"
+            disabled={blocked}
+            onClick={() => open("part")}
+            data-tooltip="新增矩形或圆形板件"
+          >
+            <Plus size={15} />
+          </button>
+        </div>
+        <label className="component-search">
+          <Search size={14} />
+          <input
+            aria-label="搜索组装零件"
+            placeholder="名称、材质或板厚"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+        <div className="assembly-resource-count">
+          <span>{assembly.items.length} 已加入</span>
+          <span>{assembly.sparePartIds.length} 备用</span>
+        </div>
+        <div className="assembly-parts-list">
+          {visible.map((part) => {
+            const placed = assembly.items.some((i) => i.partId === part.id),
+              spare = assembly.sparePartIds.includes(part.id);
+            return (
+              <article
+                className={
+                  "assembly-resource-item" +
+                  (part.id === selected ? " selected" : "")
+                }
+                key={part.id}
+              >
+                <button
+                  className="assembly-resource-select"
+                  aria-label={"选择组装零件 " + part.name}
+                  aria-pressed={part.id === selected}
+                  onClick={() => select(part.id)}
+                >
+                  <div className="assembly-resource-thumb">
+                    <Thumbnail part={part} />
+                  </div>
+                  <span>
+                    <strong data-tooltip-overflow={part.name}>
+                      {part.name}
+                    </strong>
+                    <small>
+                      {Math.round(part.width * 100) / 100} ×{" "}
+                      {Math.round(part.height * 100) / 100} · {part.thickness}{" "}
+                      mm
+                    </small>
+                    <em>
+                      {placed ? "已加入成品" : spare ? "备用件" : "尚未加入"}
+                    </em>
+                  </span>
+                  <ChevronRight size={14} />
+                </button>
+                {!placed && (
+                  <div className="assembly-resource-item-actions">
+                    <button disabled={blocked} onClick={() => add(part.id)}>
+                      <Plus size={12} />
+                      加入组装
+                    </button>
+                    <button
+                      disabled={blocked}
+                      onClick={() =>
+                        commit({
+                          ...assembly,
+                          sparePartIds: spare
+                            ? assembly.sparePartIds.filter(
+                                (id) => id !== part.id,
+                              )
+                            : [...assembly.sparePartIds, part.id],
+                        })
+                      }
+                    >
+                      {spare ? "取消备用" : "标为备用"}
+                    </button>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+        <div className="assembly-resource-footer">
+          <Package size={14} />
+          <span>
+            每个零件可加入一次
+            <br />
+            更多数量请使用二维零件复制
+          </span>
+        </div>
+      </aside>
+      <AssemblyCanvas
+        state={sceneState}
+        callbacks={{
+          select,
+          preview: setPreview,
+          commit: commitPose,
+          snap: setSnapped,
+          error: setError,
+        }}
+        pending={detection.pending}
+        error={error || detection.error}
+        snapped={snapped}
+        onTool={setTool}
+        onMagnet={() => setMagnet((v) => !v)}
+        onXray={() => setXray((v) => !v)}
+        onExplode={() => {
+          setInstallationPreview(null);
+          setExploded((v) => !v);
+        }}
+        onUndo={() => {
+          setPreview(null);
+          setInstallationPreview(null);
+          s.undo();
+        }}
+        canUndo={!!s.history.length}
+        viewRequest={viewRequest}
+      />
+      <AssemblyInspector
+        project={project}
+        assembly={assembly}
+        selected={selected}
+        analysis={detection.analysis}
+        pending={detection.pending}
+        blocked={blocked}
+        candidates={candidates}
+        candidateId={sceneState.candidateId}
+        setCandidate={setCandidateId}
+        commit={commit}
+        select={(id) => select(id)}
+        add={add}
+        locate={locate}
+        previewStep={previewStep}
+        clearPreview={clearPreview}
+      />
+      <div className="assembly-statusbar">
+        <span>
+          {detection.pending
+            ? "检测中"
+            : errors
+              ? "装配检查：" + errors + " 项需要调整"
+              : detection.analysis?.complete
+                ? "装配检查：已设置项目通过"
+                : "装配检查：尚未完成"}
+        </span>
+        <span>
+          {blocked
+            ? "当前装配只读"
+            : error || "G 移动 · R 旋转 · Alt 暂停磁吸 · Esc 取消"}
+        </span>
+      </div>
+    </div>
+  );
+}

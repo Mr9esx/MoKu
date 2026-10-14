@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   Download,
   MousePointer2,
@@ -12,6 +12,8 @@ import {
   LoaderCircle,
   LockKeyhole,
   Drill,
+  Box,
+  DraftingCompass,
 } from "lucide-react";
 import { useWorkbench, displayedLayout, searchEditingReason } from "./store";
 import { StockCanvas } from "./components/StockCanvas";
@@ -27,6 +29,7 @@ import { TooltipLayer } from "./components/TooltipLayer";
 import { editingLayout } from "./core/editing";
 import { modeLabels } from "./core/types";
 import { measureLayout, validateLayout } from "./core/geometry";
+const AssemblyWorkspace = lazy(() => import("./components/AssemblyWorkspace"));
 export const formatPercent = (n: number) => `${(n * 100).toFixed(1)}%`;
 export default function App() {
   const s = useWorkbench(),
@@ -35,7 +38,16 @@ export default function App() {
     [tool, setTool] = useState<"select" | "hand">("select"),
     [magnet, setMagnet] = useState(true),
     [more, setMore] = useState(false),
-    [mobile, setMobile] = useState("canvas");
+    [mobile, setMobile] = useState("canvas"),
+    [workspaceMode, setWorkspaceMode] = useState<"drawing" | "assembly">("drawing"),
+    [assemblyVisited, setAssemblyVisited] = useState(false);
+  const lastDrawingView = useRef(s.view);
+  const switchWorkspace = (mode: "drawing" | "assembly") => {
+    if (mode === workspaceMode) return;
+    if (mode === "assembly") { lastDrawingView.current = s.view; s.setView("current"); setAssemblyVisited(true); }
+    else s.setView(lastDrawingView.current === "candidate" && !s.candidate ? "current" : lastDrawingView.current);
+    setWorkspaceMode(mode);
+  };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (
@@ -50,6 +62,7 @@ export default function App() {
         e.preventDefault();
         return;
       }
+      if (workspaceMode === "assembly") return;
       if (e.key === "Escape" && !e.defaultPrevented) s.select(null);
       if (s.status === "searching") return;
       if (e.key.toLowerCase() === "v") setTool("select");
@@ -61,7 +74,7 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [dialog, more, s.undo, s.status]);
+  }, [dialog, more, s.undo, s.status, workspaceMode]);
   const project = s.view === "original" ? (s.source ?? s.project) : s.project;
   const searching = s.status === "searching";
   const hasStocks = !!project?.sheets.length;
@@ -103,9 +116,13 @@ export default function App() {
           </span>
         </div>
         <div className="top-actions">
+          {!!s.project?.parts.length && <nav className="workspace-mode-switch" aria-label="二维和三维工作区">
+            <button aria-label="二维图纸" aria-pressed={workspaceMode === "drawing"} className={workspaceMode === "drawing" ? "active" : ""} onClick={() => switchWorkspace("drawing")}><DraftingCompass size={15}/><span>二维图纸</span></button>
+            <button aria-label="3D 组装" aria-pressed={workspaceMode === "assembly"} className={workspaceMode === "assembly" ? "active" : ""} onClick={() => switchWorkspace("assembly")}><Box size={15}/><span>3D 组装</span></button>
+          </nav>}
           {project && (
             <>
-              {hasStocks && <button
+              {workspaceMode === "drawing" && hasStocks && <button
                 className="optimization-mode"
                 aria-label={`优化模式：${modeLabels[s.settings.mode]}`}
                 data-tooltip={`当前优化模式：${modeLabels[s.settings.mode]} · ${searching ? "点击查看，搜索中不可修改" : "点击调整"}`}
@@ -114,7 +131,7 @@ export default function App() {
                 {modeLabels[s.settings.mode]}
                 <ChevronDown size={12} />
               </button>}
-              {hasStocks ? <button
+              {workspaceMode === "drawing" && (hasStocks ? <button
                 aria-label={s.status === "searching" ? "取消搜索" : "自动排版"}
                 data-tooltip={
                   s.status === "searching"
@@ -133,11 +150,11 @@ export default function App() {
                 )}
                 <span>{s.status === "searching" ? "取消搜索" : "自动排版"}</span>
               </button> : <button onClick={() => setDialog("stock")} disabled={searching}
-                data-tooltip="添加板材，开始用料排版"><Play size={14} /><span>安排用料</span></button>}
+                data-tooltip="添加板材，开始用料排版"><Play size={14} /><span>安排用料</span></button>)}
               <button
                 aria-label="导出"
                 disabled={searching}
-                data-tooltip={searching ? "停止搜索并应用候选后再导出" : "导出图纸"}
+                data-tooltip={searching ? "停止搜索并应用候选后再导出" : "导出二维图纸"}
                 onClick={() => setDialog(s.current?.sheets.length ? "export" : "part-export")}
               >
                 <Download size={15} />
@@ -176,6 +193,11 @@ export default function App() {
                 >
                   打开示例图纸…
                 </button>
+                <button disabled={searching} onClick={async () => {
+                  const { createAssemblyDemo } = await import("./core/assemblyDemo");
+                  s.confirmImport(createAssemblyDemo(), "append");
+                  setMore(false); switchWorkspace("assembly");
+                }}>添加组装示例…</button>
                 <button
                   onClick={() => {
                     setDialog("help");
@@ -189,7 +211,7 @@ export default function App() {
           </div>
         </div>
       </header>
-      {project && (
+      {project && workspaceMode === "drawing" && (
         <nav className="mobile-navigation" aria-label="工作区区域">
           {[
             ["resources", "资源"],
@@ -207,6 +229,7 @@ export default function App() {
         </nav>
       )}
       <div
+        style={{ display: workspaceMode === "assembly" ? "none" : undefined }}
         className={`workspace-surface mobile-${mobile}${project ? "" : " workspace-initial"}`}
       >
         {project && (
@@ -392,7 +415,10 @@ export default function App() {
           </aside>
         ) : null}
       </div>
-      <footer className="statusbar">
+      {assemblyVisited && s.project && <Suspense fallback={<div className="assembly-loading">正在打开 3D 组装…</div>}>
+        <AssemblyWorkspace project={s.project} active={workspaceMode === "assembly"} interactionBlocked={!!dialog || more} open={setDialog}/>
+      </Suspense>}
+      <footer className="statusbar" style={{ display: workspaceMode === "assembly" ? "none" : undefined }}>
         <button
           disabled={!project || !hasStocks}
           className={hasStocks && issues.length ? "status-warning" : ""}

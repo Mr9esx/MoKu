@@ -1,3 +1,5 @@
+import type { Assembly } from "./core/assemblyTypes";
+import { validateAssemblyEdit, reconcileAssembly } from "./core/assemblyEditing";
 import type { DrawingDocument } from "./core/drawingTypes";
 import {
   emptyProject,
@@ -38,6 +40,7 @@ export const defaults: NestSettings = {
 };
 type State = {
   project: Project | null;
+  updateAssembly: (assembly: Assembly) => boolean;
   source: Project | null;
   addStock: (input: StockInput) => boolean;
   updateStock: (
@@ -126,13 +129,15 @@ export function createWorkbenchStore() {
       });
     const load = (project: Project) => {
       if (get().status === "searching") return;
+      const imported = structuredClone(project);
+      delete imported.assembly;
       set({
         ...invalidate(),
         project: {
           ...structuredClone(project),
-          importedSource: structuredClone(project),
+          importedSource: structuredClone(imported),
         },
-        source: structuredClone(project),
+        source: imported,
         view: "current",
         current: structuredClone(project.original),
         history: [],
@@ -172,6 +177,17 @@ export function createWorkbenchStore() {
       importMessage: "",
       view: "current",
       importProject: load,
+      updateAssembly: (assembly) => {
+        const s = get();
+        if (!s.project || s.status === "searching" || s.view !== "current") return false;
+        const error = validateAssemblyEdit(s.project, assembly);
+        if (error) { set({ message: error }); return false; }
+        if (JSON.stringify(s.project.assembly) === JSON.stringify(assembly)) return true;
+        set({ project: { ...s.project, assembly: structuredClone(assembly) },
+          history: [...s.history, { ...snapshot(), scope: "assembly" }],
+          message: "已保存装配，可撤销" });
+        return true;
+      },
       previewDrawing: (id, doc) => {
         if (get().status === "searching" || id !== get().importRun) return;
         set({ drawingDraft: doc, draft: null, importing: false, importMessage: "" });
@@ -558,7 +574,7 @@ export function createWorkbenchStore() {
         set({
           ...invalidate(),
           history: [...s.history, snapshot()],
-          project: {
+          project: reconcileAssembly({
             ...s.project,
             parts: s.project.parts.filter((p) => p.id !== id),
             original: {
@@ -567,7 +583,7 @@ export function createWorkbenchStore() {
                 (p) => p.partId !== id,
               ),
             },
-          },
+          }),
           current: {
             ...s.current,
             placements: s.current.placements.filter((p) => p.partId !== id),
@@ -830,13 +846,15 @@ export function createWorkbenchStore() {
       undo: () => {
         if (get().status === "searching") return;
         const s = get();
-        if (s.history.length)
+        if (s.history.length) {
+          const previous = s.history.at(-1)!;
           set({
-            ...invalidate(),
-            ...s.history.at(-1)!,
+            ...(previous.scope === "assembly" ? {} : invalidate()),
+            project: previous.project, current: previous.current, source: previous.source,
             selected: null,
             history: s.history.slice(0, -1),
           });
+        }
       },
       reset: () => {
         if (get().status === "searching") return;

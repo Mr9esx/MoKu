@@ -1,3 +1,4 @@
+import type { Assembly } from "./assemblyTypes";
 import type { Layout, Project, Stock, Part } from "./types";
 export type ImportTarget = "append" | "new";
 export type StockMetadata = Record<string, { thickness: number; material: string }>;
@@ -53,6 +54,7 @@ export function importMetadataIssues(draft: Project, metadata: ImportMetadata): 
   return issues;
 }
 export type WorkspaceSnapshot = {
+  scope?: "assembly";
   project: Project | null;
   source: Project | null;
   current: Layout | null;
@@ -77,12 +79,15 @@ export function mergeImport(
 ): WorkspaceSnapshot {
   const draft = structuredClone(incoming);
   delete draft.importedSource;
+  const incomingAssembly = draft.assembly;
+  delete draft.assembly;
   const used = new Set(
     [
       ...(before.project?.parts ?? []),
       ...(before.project?.sheets ?? []),
       ...(before.source?.parts ?? []),
       ...(before.source?.sheets ?? []),
+      ...(before.project?.assembly?.fits ?? []),
     ].map((v) => v.id),
   );
   const id = (base: string) => {
@@ -142,6 +147,25 @@ export function mergeImport(
     draft,
   ];
   const project = join(base.project, structuredClone(remapped));
+  if (incomingAssembly) {
+    const remapPart = (partId: string) => parts.get(partId) ?? partId;
+    const incoming: Assembly = {
+      ...incomingAssembly,
+      items: incomingAssembly.items.map(item => ({ ...item, partId: remapPart(item.partId) })),
+      pocketFaces: Object.fromEntries(Object.entries(incomingAssembly.pocketFaces).map(([partId, faces]) => [remapPart(partId), faces])),
+      fits: incomingAssembly.fits.map(fit => ({ ...fit, id: id(fit.id), partId: remapPart(fit.partId), receiverId: remapPart(fit.receiverId) })),
+      steps: incomingAssembly.steps.map(step => ({ ...step, partId: remapPart(step.partId) })),
+      sparePartIds: incomingAssembly.sparePartIds.map(remapPart),
+    };
+    const previous = base.project?.assembly;
+    project.assembly = previous ? { ...previous,
+      items: [...previous.items, ...incoming.items],
+      pocketFaces: { ...previous.pocketFaces, ...incoming.pocketFaces },
+      fits: [...previous.fits, ...incoming.fits],
+      steps: [...previous.steps, ...incoming.steps],
+      sparePartIds: [...previous.sparePartIds, ...incoming.sparePartIds],
+    } : incoming;
+  }
   project.importedSource = structuredClone(source);
   const current = base.current
     ? {
