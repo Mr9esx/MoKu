@@ -1,0 +1,29 @@
+import { describe, expect, it } from 'vitest';
+import { emptyAssembly } from '../src/core/assemblyTypes';
+import type { PlacementCandidate } from '../src/core/assemblyTypes';
+import { placementCandidates,weakSnap } from '../src/core/assemblyGuidance';
+import { geometrySignature } from '../src/core/assemblyGeometry';
+import type { Part,Project } from '../src/core/types';
+import type { AssemblyItem } from '../src/core/assemblyTypes';
+const project=(parts:Part[]):Project=>({name:'test',units:'mm',parts,sheets:[],original:{sheets:[],placements:[]},warnings:[]});
+const pose=(partId:string,x=0,y=0,z=0):AssemblyItem=>({partId,position:{x,y,z},rotation:{x:0,y:0,z:0,w:1}});
+
+const rect=(x:number,y:number,w:number,h:number)=>[{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}];
+const plate=(id='a',w=100,h=80,t=12):Part=>({id,name:id,stockId:'s',layer:'CUT',thickness:t,width:w,height:h,area:w*h,outline:rect(0,0,w,h),holes:[],pockets:[],label:{x:w/2,y:h/2}});
+
+const candidate=(x:number,status:PlacementCandidate['status']='valid'):PlacementCandidate=>({id:'c',partId:'a',receiverId:'b',pose:pose('a',x),target:{x,y:0,z:0},label:'contact',status});
+const options={enabled:true,project:(p:{x:number;y:number})=>({x:p.x,y:p.y})};
+describe('weak snap and explainable guidance',()=>{
+ it('enters at 8px only within 5mm and leaves at over 12px or 8mm',()=>{expect(weakSnap(pose('a'),[candidate(5)],options).candidateId).toBe('c');expect(weakSnap(pose('a'),[candidate(5.001)],options).candidateId).toBeNull();expect(weakSnap(pose('a'),[candidate(4)],{...options,project:p=>({x:p.x*2.01,y:p.y})}).candidateId).toBeNull();expect(weakSnap(pose('a'),[candidate(8)],{...options,heldId:'c'}).candidateId).toBe('c');expect(weakSnap(pose('a'),[candidate(8.001)],{...options,heldId:'c'}).candidateId).toBeNull();expect(weakSnap(pose('a'),[candidate(7)],{...options,heldId:'c',project:p=>({x:p.x*2,y:p.y})}).candidateId).toBeNull();});
+ it('suspends for Alt/toggle, rejects invalid/incomplete candidates and respects active axes',()=>{for(const c of [candidate(2,'invalid'),candidate(2,'incomplete')])expect(weakSnap(pose('a'),[c],options).candidateId).toBeNull();expect(weakSnap(pose('a'),[candidate(2)],{...options,suspended:true}).candidateId).toBeNull();expect(weakSnap(pose('a'),[candidate(2)],{...options,enabled:false}).candidateId).toBeNull();expect(weakSnap(pose('a'),[candidate(2)],{...options,axes:'y'}).candidateId).toBeNull();});
+ it('never mutates rotation or snaps an explicit align candidate',()=>{const c=candidate(2);c.pose.rotation={x:1,y:0,z:0,w:0};const p=pose('a');expect(weakSnap(p,[c],options).candidateId).toBeNull();expect(p.rotation).toEqual({x:0,y:0,z:0,w:1});});
+ it('generates an oriented, collision-free declared rectangular front-slot pose',()=>{const receiver=plate('r');receiver.pockets=[{outline:rect(20,20,20,10),depth:3}];const male=plate('a',20,30,10);const a=emptyAssembly();a.items=[pose('r'),pose('a',200)];a.pocketFaces.r={signature:geometrySignature(receiver),faces:{0:'front'}};a.fits=[{id:'fit',partId:'a',receiverId:'r',feature:{kind:'pocket',index:0},maleEdge:0,insertionDepth:3,minClearance:0,maxClearance:1,partSignature:geometrySignature(male),receiverSignature:geometrySignature(receiver)}];const c=placementCandidates(project([receiver,male]),a,'a').find(c=>c.feature?.kind==='pocket');expect(c).toBeDefined();expect(c!.status).toBe('valid');expect(Math.abs(c!.pose.rotation.x)).toBeGreaterThan(0.1);});
+ it('keeps unconfirmed pocket candidates neutral',()=>{const receiver=plate('r');receiver.pockets=[{outline:rect(20,20,20,10),depth:3}];const a=emptyAssembly();a.items=[pose('r'),pose('a',200)];const c=placementCandidates(project([receiver,plate('a',20,30,10)]),a,'a').filter(c=>c.feature);expect(c.every(c=>c.status==='incomplete')).toBe(true);});
+});
+it('preserves the compatible Y=-90 orientation of a length-matched demo slot',()=>{
+ const receiver=plate('r',120,120,12);receiver.pockets=[{outline:rect(53.8,20,12.4,80),depth:6}];
+ const male=plate('a',60,80,12);const a=emptyAssembly();a.items=[pose('r'),{...pose('a',70.4,20,6),rotation:{x:0,y:-Math.SQRT1_2,z:0,w:Math.SQRT1_2}}];a.pocketFaces.r={signature:geometrySignature(receiver),faces:{0:'front'}};
+ a.fits=[{id:'f',partId:'a',receiverId:'r',feature:{kind:'pocket',index:0},maleEdge:3,insertionDepth:6,minClearance:0.2,maxClearance:0.6,partSignature:geometrySignature(male),receiverSignature:geometrySignature(receiver)}];
+ const c=placementCandidates(project([receiver,male]),a,'a').find(c=>c.feature);expect(c?.status).toBe('valid');expect(c!.pose.position.x).toBeCloseTo(66);expect(c!.pose.position.y).toBeCloseTo(20);expect(c!.pose.position.z).toBeCloseTo(6);expect(weakSnap(a.items[1],[c!],{...options,axes:'xy'}).candidateId).toBe(c!.id);
+});
+it('keeps invalid dimension declarations pending and future undersize neutral',()=>{const a=emptyAssembly();a.items=[pose('r'),pose('a',200)];const p=project([plate('r'),plate('a',10,10,2)]);a.targets={width:NaN,tolerance:0.5};expect(placementCandidates(p,a,'a').filter(c=>c.status==='valid')).toHaveLength(0);a.targets={width:1000,tolerance:0.5};expect(placementCandidates(p,a,'a').some(c=>c.status==='valid')).toBe(true);});
