@@ -55,7 +55,7 @@ function boundarySupport(cell:ConvexCell,direction:Vec3):boolean {
   const maximum=projection(cell,direction).max,facePlanes=planes(cell);
   return cell.vertices.every((v,index)=>{
     if(maximum-dot(v,direction)>1e-7)return true;
-    const normals=cell.faces.flatMap((face,i)=>cell.boundaryFaces![i]&&face.includes(index)?[facePlanes[i].normal]:[]);
+    const normals=cell.boundaryNormals?.[index]??cell.faces.flatMap((face,i)=>cell.boundaryFaces![i]&&face.includes(index)?[facePlanes[i].normal]:[]);
     return inNormalCone(direction,normals);
   });
 }

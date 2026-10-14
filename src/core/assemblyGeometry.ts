@@ -5,11 +5,12 @@ import type { AssemblyItem, AssemblyModel, Bounds3, ConvexCell, PocketFaces, Rot
 import { pointInPolygon, pointSegmentDistance, signedArea, validContour } from './geometry';
 const SCALE=10000;
 const CACHE_LIMIT=64;
+const CACHE_COORDINATE_LIMIT=2_000_000;
 const VERTEX_LIMIT=20000;
 const CELL_LIMIT=20000;
 const cache=new Map<string,AssemblyModel>();
 let cacheWeight=0;
-const weight=(model:AssemblyModel)=>model.positions.length+model.cells.length*36;
+const weight=(model:AssemblyModel)=>model.positions.length+model.cells.reduce((n,c)=>n+36+(c.boundaryNormals?.reduce((v,ns)=>v+ns.length*3,0)??0),0);
 export function geometrySignature(part:Part):string {
   // Exact source serialization makes face declarations stale after any geometric edit.
   return JSON.stringify([part.thickness,part.outline,part.holes,part.pockets]);
@@ -39,7 +40,11 @@ export function vectorBounds(points:Vec3[]):Bounds3 {
   for(const p of points)for(const k of ['x','y','z'] as const){b.min[k]=Math.min(b.min[k],p[k]);b.max[k]=Math.max(b.max[k],p[k]);}
   return points.length?b:{min:{x:0,y:0,z:0},max:{x:0,y:0,z:0}};
 }
-export function transformCell(cell:ConvexCell,item:AssemblyItem):ConvexCell {return {vertices:cell.vertices.map(v=>transformPoint(v,item)),faces:cell.faces,boundaryFaces:cell.boundaryFaces};}
+export function transformCell(cell:ConvexCell,item:AssemblyItem):ConvexCell {
+  const q=quaternion(item.rotation);
+  const boundaryNormals=cell.boundaryNormals?.map(normals=>normals.map(n=>{const v=new Vector3(n.x,n.y,n.z).applyQuaternion(q);return {x:v.x,y:v.y,z:v.z};}));
+  return {vertices:cell.vertices.map(v=>transformPoint(v,item)),faces:cell.faces,boundaryFaces:cell.boundaryFaces,boundaryNormals};
+}
 type Region={outer:Point[];holes:Point[][]};
 function path(poly:Point[],positive=true):ClipperLib.Path {
   const p=poly.map(v=>({X:Math.round(v.x*SCALE),Y:Math.round(v.y*SCALE)}));
@@ -76,6 +81,24 @@ function cap(out:number[],regions:Region[],z:number,up:boolean) {
 }
 function prism(points:Point[],z0:number,z1:number,boundaryFaces:boolean[]):ConvexCell {
   return {vertices:[...points.map(v=>({...v,z:z0})),...points.map(v=>({...v,z:z1}))],faces:[[2,1,0],[3,4,5],[0,1,4,3],[1,2,5,4],[2,0,3,5]],boundaryFaces};
+}
+/** A real outer corner/edge can belong to several decomposition cells.
+ * Complete its normal cone using every incident actual boundary face before
+ * cells are transformed; never add a normal from an internal seam. */
+function shareBoundaryNormals(cells:ConvexCell[]) {
+  const key=(v:Vec3)=>`${Math.round(v.x*SCALE)},${Math.round(v.y*SCALE)},${v.z}`;
+  const shared=new Map<string,Vec3[]>();
+  for(const cell of cells)for(let i=0;i<cell.faces.length;i++){
+    if(!cell.boundaryFaces?.[i])continue;
+    const face=cell.faces[i],a=cell.vertices[face[0]],b=cell.vertices[face[1]],c=cell.vertices[face[2]];
+    const ab=new Vector3(b.x-a.x,b.y-a.y,b.z-a.z),ac=new Vector3(c.x-a.x,c.y-a.y,c.z-a.z);
+    const normal=ab.cross(ac).normalize(),n={x:normal.x,y:normal.y,z:normal.z};
+    for(const index of face){const vertexKey=key(cell.vertices[index]),normals=shared.get(vertexKey)??[];
+      if(!normals.some(v=>v.x*n.x+v.y*n.y+v.z*n.z>1-1e-9))normals.push(n);
+      shared.set(vertexKey,normals);
+    }
+  }
+  for(const cell of cells)cell.boundaryNormals=cell.vertices.map(v=>shared.get(key(v))??[]);
 }
 export function buildAssemblyModel(part:Part,faces?:PocketFaces):AssemblyModel {
   const key=part.id+geometrySignature(part)+JSON.stringify(faces);
@@ -129,11 +152,12 @@ export function buildAssemblyModel(part:Part,faces?:PocketFaces):AssemblyModel {
         }
         if(model.cells.length>CELL_LIMIT)throw new Error('实体单元超过检测资源上限');
       }
+      shareBoundaryNormals(model.cells);
       model.bounds=vectorBounds(model.cells.flatMap(c=>c.vertices));
       if(!model.cells.length)incomplete('加工后零件没有可检测的实体材料');
     }catch(error){incomplete(error instanceof Error?error.message:'无法构建实体');model.positions=[];model.cells=[];}
   }
   const size=weight(model);
-  while(cache.size&&(cache.size>=CACHE_LIMIT||cacheWeight+size>500_000)){const oldest=cache.keys().next().value!;cacheWeight-=weight(cache.get(oldest)!);cache.delete(oldest);}
-  if(size<=500_000){cache.set(key,model);cacheWeight+=size;}return model;
+  while(cache.size&&(cache.size>=CACHE_LIMIT||cacheWeight+size>CACHE_COORDINATE_LIMIT)){const oldest=cache.keys().next().value!;cacheWeight-=weight(cache.get(oldest)!);cache.delete(oldest);}
+  if(size<=CACHE_COORDINATE_LIMIT){cache.set(key,model);cacheWeight+=size;}return model;
 }
