@@ -60,14 +60,14 @@ Store exports existing `useWorkbench` plus `updateAssembly(assembly: Assembly): 
 
 **Interfaces:** All core contracts above; worker requests `{revision:number,project:Project,assembly:Assembly}` and responds `{revision:number,analysis:AssemblyAnalysis}` or `{revision:number,error:string}`.
 
-- [ ] Write hand-derived tests before implementation. Rectangle 100x80x12 has volume 96000; 20x10 through-hole subtracts 2400; same 20x10 pocket at depth 3 subtracts 600. Unknown pocket face must be incomplete. Include front/back pockets, concave shapes, rotated touching vs colliding and fully contained parts.
-- [ ] Run focused tests and observe missing feature failures.
-- [ ] Implement depth layers with Clipper difference and ShapeUtils triangulation. Keep only external horizontal faces and slab boundary walls. Build convex triangular prisms from the same material regions. Use normalized quaternions and bounded geometry caches.
-- [ ] Implement broad-phase bounds and convex SAT; compute actual collision-region triangles by clipping one convex polyhedron against the other's face planes. Test true overlapping volume, holes and containment separately; epsilon contact is allowed.
-- [ ] Implement target bounds checks, unavailable/backup inventory state, signature-aware declared rectangular slot fit checks (width/thickness, depth, direction, alignment and real geometry), and continuous swept SAT along user-declared fixed-rotation straight-line installation order. Unknown or unsupported rules produce pending results, never success.
-- [ ] Generate finite, explainable placement candidates from confirmed rectangular slots and explicit face contact. Check candidate final geometry and declared fits; keep useful incomplete candidates neutral. Generate oriented preview poses even when an explicit align action is needed, but weakSnap only translates compatible orientations and respects axes.
-- [ ] Test snap entry/exit literals, world cap, zoom projection, Alt, invalid candidates, axis constraint and no rotation mutation. Run focused tests and TypeScript build when integration exists.
-- [ ] Record tests and review in this plan's progress ledger; report changed files and concerns without committing unrelated work.
+- [x] Write hand-derived tests before implementation. Rectangle 100x80x12 has volume 96000; 20x10 through-hole subtracts 2400; same 20x10 pocket at depth 3 subtracts 600. Unknown pocket face must be incomplete. Include front/back pockets, concave shapes, rotated touching vs colliding and fully contained parts.
+- [x] Run focused tests and observe missing feature failures.
+- [x] Implement depth layers with Clipper difference and ShapeUtils triangulation. Keep only external horizontal faces and slab boundary walls. Build convex triangular prisms from the same material regions. Use normalized quaternions and bounded geometry caches.
+- [x] Implement broad-phase bounds and convex SAT; compute actual collision-region triangles by clipping one convex polyhedron against the other's face planes. Test true overlapping volume, holes and containment separately; epsilon contact is allowed.
+- [x] Implement target bounds checks, unavailable/backup inventory state, signature-aware declared rectangular slot fit checks (width/thickness, depth, direction, alignment and real geometry), and continuous swept SAT along user-declared fixed-rotation straight-line installation order. Unknown or unsupported rules produce pending results, never success.
+- [x] Generate finite, explainable placement candidates from confirmed rectangular slots and explicit face contact. Check candidate final geometry and declared fits; keep useful incomplete candidates neutral. Generate oriented preview poses even when an explicit align action is needed, but weakSnap only translates compatible orientations and respects axes.
+- [x] Test snap entry/exit literals, world cap, zoom projection, Alt, invalid candidates, axis constraint and no rotation mutation. Run focused tests and TypeScript build when integration exists.
+- [x] Record tests and review in this plan's progress ledger; report changed files and concerns without committing unrelated work.
 
 ### Task 2: Project transactions and inventory integration
 
@@ -75,10 +75,10 @@ Store exports existing `useWorkbench` plus `updateAssembly(assembly: Assembly): 
 
 **Interfaces:** Project.assembly and updateAssembly as above; `validateAssemblyEdit(project:Project,assembly:Assembly): string|null`, `reconcileAssembly(project:Project): Project` preserve invalidated fit references for diagnostics.
 
-- [ ] Test independently constructed assembly actions preserve 2D current/source/candidate, write one history snapshot, undo restores exact state, reject NaN/quaternion zero/duplicate items/unknown inventory and search-locked edits.
-- [ ] Verify failures before adding the store action; implement validated assembly-only transaction without nesting invalidate.
-- [ ] Test deletion/undo removes/restores instance, duplicate remains unassembled, append retains assembly and new project resets it. Update deletion and import remapping only where needed, leaving source geometry independent.
-- [ ] Run assembly-store and existing editing/import tests; record results.
+- [x] Test independently constructed assembly actions preserve 2D current/source/candidate, write one history snapshot, undo restores exact state, reject NaN/quaternion zero/duplicate items/unknown inventory and search-locked edits.
+- [x] Verify failures before adding the store action; implement validated assembly-only transaction without nesting invalidate.
+- [x] Test deletion/undo removes/restores instance, duplicate remains unassembled, append retains assembly and new project resets it. Update deletion and import remapping only where needed, leaving source geometry independent.
+- [x] Run assembly-store and existing editing/import tests; record results.
 
 ### Task 3: 3D workbench and red/yellow interactions
 
@@ -86,18 +86,24 @@ Store exports existing `useWorkbench` plus `updateAssembly(assembly: Assembly): 
 
 **Interfaces:** AssemblyCanvas receives working project, selected id, optional preview pose, current analysis/candidates, tool/magnet/display state, selection/preview/commit callbacks. Scene uses shared model positions and collision-region positions; inspector edits immutable assembly through the store action.
 
-- [ ] Implement a lazy-loaded full workspace that replaces the 2D surface when selected, keeping the top header/dialogs and current feature visual tokens. Add 2D/3D toggle only for projects with parts. Disable edits during search and show why. Preserve 2D view across switching.
-- [ ] Render physical slab/holes/pockets in a Z-up Three scene with axes/grid, orbit/zoom/pan, part raycast selection, transform gizmos and direct selected-part plane drag with a 4px threshold. Suspend orbit while dragging; dispose WebGL and listeners on unmount.
-- [ ] Use worker revisions for live analysis. Render exact red collision regions, yellow valid ghosts and target highlights, neutral pending ghosts; show nearest candidate and magnetic guides. Apply weakSnap to the unsnapped pose and commit once on release. Esc restores; Alt/toolbar switch disable snapping. Selected locked parts cannot move.
-- [ ] Add fit-all/selected and front/side/top views, explosion and X-ray viewing without changing detected geometry. Offer candidate buttons and explicit align action, numeric XYZ/angles, machining face confirmation, assembly lock, remove-from-assembly and spare inventory designation.
-- [ ] Build target dimension, fit relationship (slot/edge/depth/clearance), ordered installation direction/distance and step-preview controls, errors and click-to-locate issues. Use real values and incomplete statuses; provide touch alternatives and responsive resource/scene/info switching.
-- [ ] Use an explicit built-in assembly demonstration via a user-clicked button, independent from the existing DXF sample; include a host slotted board and insert, correct/incorrect placement and path for practical UI verification.
-- [ ] Run build, focused checks and real browser interaction including clear yellow placement, weak snap/release, local red overlap, no red on valid insertion, undo and 2D return. Record screenshots and limitations.
+- [x] Implement a lazy-loaded full workspace that replaces the 2D surface when selected, keeping the top header/dialogs and current feature visual tokens. Add 2D/3D toggle only for projects with parts. Disable edits during search and show why. Preserve 2D view across switching.
+- [x] Render physical slab/holes/pockets in a Z-up Three scene with axes/grid, orbit/zoom/pan, part raycast selection, transform gizmos and direct selected-part plane drag with a 4px threshold. Suspend orbit while dragging; dispose WebGL and listeners on unmount.
+- [x] Use worker revisions for live analysis. Render exact red collision regions, yellow valid ghosts and target highlights, neutral pending ghosts; show nearest candidate and magnetic guides. Apply weakSnap to the unsnapped pose and commit once on release. Esc restores; Alt/toolbar switch disable snapping. Selected locked parts cannot move.
+- [x] Add fit-all/selected and front/side/top views, explosion and X-ray viewing without changing detected geometry. Offer candidate buttons and explicit align action, numeric XYZ/angles, machining face confirmation, assembly lock, remove-from-assembly and spare inventory designation.
+- [x] Build target dimension, fit relationship (slot/edge/depth/clearance), ordered installation direction/distance and step-preview controls, errors and click-to-locate issues. Use real values and incomplete statuses; provide touch alternatives and responsive resource/scene/info switching.
+- [x] Use an explicit built-in assembly demonstration via a user-clicked button, independent from the existing DXF sample; include a host slotted board and insert, correct/incorrect placement and path for practical UI verification.
+- [x] Run build, focused checks and real browser interaction including clear yellow placement, weak snap/release, local red overlap, no red on valid insertion, undo and 2D return. Record screenshots and limitations.
 
 ### Task 4: Review and final verification
 
 **Files:** README.md, docs/analysis/2026-10-14-assembly-verification.md, this plan and approved spec.
 
-- [ ] Review core and integrated diff against the approved design, correct defects with reproductions and targeted tests. Check missing/unsupported semantics cannot become a passing status.
-- [ ] Run all meaningful new tests, existing full suite with controlled workers, production build and git diff --check. Investigate pre-existing timing failures separately from new failures; do not loosen geometry assertions.
-- [ ] Record exact observed validation and remaining physical/CAD/path limits. Mark delivered plan steps complete only with evidence. Keep user work intact and show the local preview in Codex.
+- [x] Review core and integrated diff against the approved design, correct defects with reproductions and targeted tests. Check missing/unsupported semantics cannot become a passing status.
+- [x] Run all meaningful new tests, existing full suite with controlled workers, production build and git diff --check. Investigate pre-existing timing failures separately from new failures; do not loosen geometry assertions.
+- [x] Record exact observed validation and remaining physical/CAD/path limits. Mark delivered plan steps complete only with evidence. Keep user work intact and show the local preview in Codex.
+
+## Completion evidence — 2026-10-14
+
+All four tasks delivered. Final full regression:37files571tests; production build passed. Browser verifies red/yellow, weak snap and undo, dimensions, installation blockage and playback cancellation, explicit references, face highlights, hidden parts and356px responsive views. Scoped final compliance/quality review passed after repairing its findings. See `docs/analysis/2026-10-14-assembly-verification.md` for exact evidence and supported geometry/path/persistence limits. User joinery edits remain outside assembly commits.
+
+Worker contract now includes independent `analysis` and `guidance` request kinds and revisions, with compact project payload and per-kind latest-successor backpressure. Convex cells carry real boundary metadata; installation issues additionally carry blocked movingPosition/collisionPositions for truthful preview rendering. These additions implement the original physical/cancellation requirements.

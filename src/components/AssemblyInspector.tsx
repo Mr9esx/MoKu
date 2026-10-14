@@ -30,6 +30,7 @@ import { Thumbnail } from "./Thumbnail";
 import {
   alignReferences,
   referencePoints,
+  referencePreviewIssue,
   type AssemblyReference,
 } from "./assemblySceneUtils";
 
@@ -1033,11 +1034,10 @@ function ReferenceEditor(p: Props & { part: Part; item: AssemblyItem }) {
     p.clearPreview();
     setPreviewing(false);
   };
-  const uncertain = p.analysis?.issues.some(
-    (i) =>
-      (i.kind === "geometry" || i.kind === "collision" || i.kind === "fit") &&
-      i.partIds.some((id) => id === p.item.partId || id === receiverId),
-  );
+  const previewIssue = p.analysis
+    ? referencePreviewIssue(p.analysis, [p.item.partId, receiverId])
+    : undefined;
+  const uncertain = !!previewIssue;
   return (
     <section className="assembly-reference-editor">
       <h3>参考对齐</h3>
@@ -1145,7 +1145,7 @@ function ReferenceEditor(p: Props & { part: Part; item: AssemblyItem }) {
             {p.pending
               ? "正在检查预览位置…"
               : uncertain
-                ? "此对齐仍有冲突或几何待确认，请调整参考。"
+                ? (previewIssue?.message ?? "此对齐仍需确认，请调整参考。")
                 : "当前参考位置可应用；安装路径仍按装配规则检查。"}
           </p>
           <button onClick={reset}>取消参考预览</button>

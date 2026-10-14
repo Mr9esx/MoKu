@@ -5,6 +5,7 @@ import {
   visibleSnapTarget,
   referencePoints,
   alignReferences,
+  referencePreviewIssue,
 } from "../src/components/assemblySceneUtils";
 import { createAssemblyDemo } from "../src/core/assemblyDemo";
 import {
@@ -107,5 +108,61 @@ describe("explicit assembly references", () => {
     expect(transformPoint(source.position, pose)).toEqual(
       transformPoint(target.position, receiver),
     );
+  });
+});
+
+describe("reference preview validation", () => {
+  it("blocks a preview when global geometry or dimension evidence is unverified", () => {
+    const issue = {
+      id: "resource-limit",
+      kind: "geometry" as const,
+      severity: "pending" as const,
+      message: "检查未完成",
+      partIds: [],
+    };
+    const analysis = {
+      issues: [issue],
+      collisions: [],
+      bounds: null,
+      complete: false,
+      checkedPairs: 0,
+    };
+    expect(referencePreviewIssue(analysis, ["moving", "host"])).toBe(issue);
+    const dimension = {
+      ...issue,
+      id: "dimension:x",
+      kind: "dimension" as const,
+      severity: "error" as const,
+    };
+    expect(
+      referencePreviewIssue({ ...analysis, issues: [dimension] }, [
+        "moving",
+        "host",
+      ]),
+    ).toBe(dimension);
+  });
+  it("preserves independent physical reference checks when only the overall basis or another part needs attention", () => {
+    const issue = {
+      id: "basis:missing",
+      kind: "dimension" as const,
+      severity: "pending" as const,
+      message: "尚未设置检测依据",
+      partIds: [],
+    };
+    const otherCollision = {
+      ...issue,
+      id: "collision:other",
+      kind: "collision" as const,
+      severity: "error" as const,
+      partIds: ["other", "third"],
+    };
+    const analysis = {
+      issues: [issue, otherCollision],
+      collisions: [],
+      bounds: null,
+      complete: false,
+      checkedPairs: 0,
+    };
+    expect(referencePreviewIssue(analysis, ["moving", "host"])).toBeUndefined();
   });
 });

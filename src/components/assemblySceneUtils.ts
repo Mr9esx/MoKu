@@ -1,5 +1,9 @@
 import * as THREE from "three";
-import type { AssemblyItem, Vec3 } from "../core/assemblyTypes";
+import type {
+  AssemblyItem,
+  AssemblyAnalysis,
+  Vec3,
+} from "../core/assemblyTypes";
 import type { Part } from "../core/types";
 import { transformPoint } from "../core/assemblyGeometry";
 
@@ -163,4 +167,20 @@ export function alignReferences(
     rotation:
       a && b ? { x: q.x, y: q.y, z: q.z, w: q.w } : { ...source.rotation },
   };
+}
+
+export function referencePreviewIssue(
+  analysis: AssemblyAnalysis,
+  partIds: string[],
+) {
+  return analysis.issues.find(
+    (issue) =>
+      issue.id !== "basis:missing" &&
+      (issue.kind === "dimension" ||
+        (issue.kind === "geometry" &&
+          (!issue.partIds.length ||
+            issue.partIds.some((id) => partIds.includes(id)))) ||
+        ((issue.kind === "collision" || issue.kind === "fit") &&
+          issue.partIds.some((id) => partIds.includes(id)))),
+  );
 }

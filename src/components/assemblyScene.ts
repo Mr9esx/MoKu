@@ -391,6 +391,9 @@ export function createAssemblyScene(
           5,
           3,
         );
+        (arrow.line.material as THREE.LineBasicMaterial).depthTest = false;
+        (arrow.cone.material as THREE.MeshBasicMaterial).depthTest = false;
+        arrow.line.renderOrder = arrow.cone.renderOrder = 12;
         overlays.add(arrow);
       }
     }
@@ -410,6 +413,8 @@ export function createAssemblyScene(
       Math.min(25, Math.max(part.width, part.height) / 3),
     );
     axes.setColors("#3861b4", "#658774", "#7e879b");
+    (axes.material as THREE.LineBasicMaterial).depthTest = false;
+    axes.renderOrder = 12;
     local.add(axes);
     if (state.machiningFace) {
       const model = buildAssemblyModel(
@@ -447,6 +452,9 @@ export function createAssemblyScene(
         6,
         3,
       );
+      (arrow.line.material as THREE.LineBasicMaterial).depthTest = false;
+      (arrow.cone.material as THREE.MeshBasicMaterial).depthTest = false;
+      arrow.line.renderOrder = arrow.cone.renderOrder = 12;
       local.add(arrow);
     }
     overlays.add(local);

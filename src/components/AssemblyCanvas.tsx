@@ -78,16 +78,18 @@ export function AssemblyCanvas(props: Props) {
       ? "爆炸查看 · 检测仍使用原装配位置"
       : props.state.installationPreview
         ? "安装步骤预览 · 未修改装配"
-        : props.snapped
-          ? "已对齐 · 继续拖动可脱离"
-          : props.guidancePending
-            ? "正在核对可放置位置…"
-            : (candidate?.label ??
-              (props.pending
-                ? "检测中…"
-                : selected
-                  ? "拖动选中零件 · 黄色提示可配合位置"
-                  : "选择左侧零件，加入场景开始组装")));
+        : props.state.referenceMarkers?.length && props.state.preview
+          ? "参考对齐预览 · 未修改装配"
+          : props.snapped
+            ? "已对齐 · 继续拖动可脱离"
+            : props.guidancePending
+              ? "正在核对可放置位置…"
+              : (candidate?.label ??
+                (props.pending
+                  ? "检测中…"
+                  : selected
+                    ? "拖动选中零件 · 黄色提示可配合位置"
+                    : "选择左侧零件，加入场景开始组装")));
   return (
     <section className="assembly-canvas" aria-label="3D 组装场景">
       <div className="assembly-scene-host" ref={container} />
