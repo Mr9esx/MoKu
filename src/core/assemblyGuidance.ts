@@ -2,7 +2,7 @@ import { Matrix4, Quaternion, Vector3 } from 'three';
 import type { Part, Project } from './types';
 import type { Assembly, AssemblyItem, FitConstraint, PlacementCandidate, Vec3 } from './assemblyTypes';
 import { buildAssemblyModel, geometrySignature, quaternion, transformPoint } from './assemblyGeometry';
-import { add, analyzeAssembly, cross, dot, length, normalize, rectangularSlot, scale, subtract } from './assemblyChecks';
+import { MISSING_CHECK_BASIS_ID, add, analyzeAssembly, cross, dot, length, normalize, rectangularSlot, scale, subtract } from './assemblyChecks';
 import { signedArea } from './geometry';
 function slotPose(male:Part,receiver:Part,host:AssemblyItem,assembly:Assembly,feature:{kind:'pocket'|'hole';index:number},fit?:FitConstraint):AssemblyItem|null {
   const outline=feature.kind==='pocket'?receiver.pockets[feature.index]?.outline:receiver.holes[feature.index];
@@ -30,7 +30,7 @@ function candidateStatus(project:Project,assembly:Assembly,pose:AssemblyItem):Pi
   const trial={...assembly,items:assembly.items.map(i=>i.partId===pose.partId?pose:i)};
   const analysis=analyzeAssembly(project,trial);
   // Inventory and installation describe the whole build; candidate colour describes this pose.
-  const relevant=analysis.issues.filter(i=>i.partIds.includes(pose.partId)||i.kind==='dimension'&&i.severity==='pending'||i.kind==='geometry'&&i.severity==='pending');
+  const relevant=analysis.issues.filter(i=>i.partIds.includes(pose.partId)||i.kind==='dimension'&&i.severity==='pending'&&i.id!==MISSING_CHECK_BASIS_ID||i.kind==='geometry'&&i.severity==='pending');
   const uncertainGeometry=relevant.find(i=>i.kind==='geometry'&&i.severity==='pending');if(uncertainGeometry)return {status:'incomplete',message:uncertainGeometry.message};
   const bad=relevant.find(i=>i.severity==='error'&&i.kind!=='missing');if(bad)return {status:'invalid',message:bad.message};
   const pending=relevant.find(i=>i.severity==='pending');if(pending)return {status:'incomplete',message:pending.message};

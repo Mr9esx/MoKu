@@ -165,21 +165,24 @@ export function declaredFitIssue(project:Project,assembly:Assembly,fit:FitConstr
   if(!buildAssemblyModel(male,assembly.pocketFaces[male.id]).complete||!buildAssemblyModel(receiver,assembly.pocketFaces[receiver.id]).complete)return issue('pending','配合实体几何不完整');
   return null;
 }
+export const MISSING_CHECK_BASIS_ID='basis:missing';
 export function analyzeAssembly(project:Project,assembly:Assembly,options:{installation?:boolean}={}):AssemblyAnalysis {
   const result:AssemblyAnalysis={issues:[],collisions:[],bounds:null,complete:true,checkedPairs:0};
   const addIssue=(kind:AssemblyIssue['kind'],severity:AssemblyIssue['severity'],message:string,partIds:string[],id=kind+':'+result.issues.length)=>result.issues.push({id,kind,severity,message,partIds});
-  const solids:{item:AssemblyItem;cells:ConvexCell[];bounds:Bounds3}[]=[];
+  const solids:{item:AssemblyItem;cells:ConvexCell[];bounds:Bounds3;complete:boolean}[]=[];
   const seen=new Set<string>();
   for(const item of assembly.items){
     const part=project.parts.find(p=>p.id===item.partId);
     if(!part){addIssue('missing','error','装配引用了不存在的零件',[item.partId]);continue;}
     if(seen.has(item.partId)){addIssue('missing','error','同一库存零件重复装配',[item.partId]);continue;}seen.add(item.partId);
     if(assembly.sparePartIds.includes(item.partId)){addIssue('missing','error','备用零件不能同时参与装配',[item.partId]);continue;}
-    if(!finite(item.position)||!finite(item.rotation)||!Number.isFinite(item.rotation.w)||length(item.rotation)+Math.abs(item.rotation.w)<1e-12){addIssue('geometry','pending','零件位置或旋转无效',[part.id]);continue;}
+    if(!finite(item.position)||!finite(item.rotation)||!Number.isFinite(item.rotation.w)||length(item.rotation)+Math.abs(item.rotation.w)<1e-12){addIssue('geometry','pending','零件位置或旋转无效',[part.id]);solids.push({item,cells:[],bounds:vectorBounds(finite(item.position)?[item.position]:[]),complete:false});continue;}
     const model=buildAssemblyModel(part,assembly.pocketFaces[part.id]);
     for(const message of model.issues)addIssue('geometry','pending',message,[part.id]);
-    const cells=model.cells.map(c=>transformCell(c,item));if(!cells.length)continue;
-    solids.push({item,cells,bounds:vectorBounds(cells.flatMap(c=>c.vertices))});
+    // Fallback solids remain useful for display bounds, but cannot establish
+    // either material interference or a verified straight installation path.
+    const displayCells=model.cells.map(c=>transformCell(c,item));
+    solids.push({item,cells:model.complete?displayCells:[],bounds:vectorBounds(displayCells.length?displayCells.flatMap(c=>c.vertices):[item.position]),complete:model.complete});
   }
   for(const part of project.parts)if(!seen.has(part.id)&&!assembly.sparePartIds.includes(part.id))addIssue('missing','error',`${part.name} 尚未参与装配或标记为备用`,[part.id]);
   for(const id of assembly.sparePartIds)if(!project.parts.some(p=>p.id===id))addIssue('missing','error','备用声明引用了不存在的零件',[id]);
@@ -188,7 +191,9 @@ export function analyzeAssembly(project:Project,assembly:Assembly,options:{insta
   const budget=()=>{if(++work>200000){exhausted=true;return false;}return true;};
   pairLoop:for(let i=0;i<solids.length;i++)for(let j=i+1;j<solids.length;j++){
     if(!budget())break pairLoop;
-    const a=solids[i],b=solids[j];result.checkedPairs++;
+    const a=solids[i],b=solids[j];
+    if(!a.complete||!b.complete){addIssue('collision','pending','零件实体几何未确认，干涉尚未完整检测',[a.item.partId,b.item.partId]);continue;}
+    result.checkedPairs++;
     if(!broadOverlap(a.bounds,b.bounds))continue;
     const positions:number[]=[];let collision=false;
     for(const ca of a.cells)for(const cb of b.cells){
@@ -199,10 +204,14 @@ export function analyzeAssembly(project:Project,assembly:Assembly,options:{insta
     }
     if(collision){result.collisions.push({partIds:[a.item.partId,b.item.partId],positions});addIssue('collision','error','实体材料发生干涉',[a.item.partId,b.item.partId]);}
   }
+  const hasTargets=(['width','depth','height'] as const).some(name=>assembly.targets[name]!==undefined);
+  if(!hasTargets&&!assembly.fits.length)addIssue('dimension','pending','尚未设置检测依据：可设置目标尺寸或适用的配合规则',[],MISSING_CHECK_BASIS_ID);
+  const dimensionsKnown=solids.every(s=>s.complete);
+  if(hasTargets&&!dimensionsKnown)addIssue('dimension','pending','零件实体几何未确认，目标尺寸尚未完整检测',[]);
   if(result.bounds){
     const tolerance=assembly.targets.tolerance;
     if(!Number.isFinite(tolerance)||tolerance<0)addIssue('dimension','pending','目标尺寸公差无效',[]);
-    for(const [name,axis] of [['width','x'],['depth','y'],['height','z']] as const){const target=assembly.targets[name];if(target===undefined)continue;if(!Number.isFinite(target)||target<=0){addIssue('dimension','pending','目标尺寸无效',[]);continue;}const actual=result.bounds.max[axis]-result.bounds.min[axis];if(Math.abs(actual-target)>tolerance+1e-7)addIssue('dimension','error',`${({width:'宽',depth:'深',height:'高'})[name]} 实际 ${actual.toFixed(2)} mm，目标 ${target} ± ${tolerance} mm`,[]);}
+    for(const [name,axis] of [['width','x'],['depth','y'],['height','z']] as const){const target=assembly.targets[name];if(target===undefined)continue;if(!Number.isFinite(target)||target<=0){addIssue('dimension','pending','目标尺寸无效',[]);continue;}if(!dimensionsKnown)continue;const actual=result.bounds.max[axis]-result.bounds.min[axis];if(Math.abs(actual-target)>tolerance+1e-7)addIssue('dimension','error',`${({width:'宽',depth:'深',height:'高'})[name]} 实际 ${actual.toFixed(2)} mm，目标 ${target} ± ${tolerance} mm`,[]);}
   }
   for(const fit of assembly.fits){const issue=declaredFitIssue(project,assembly,fit);if(issue)result.issues.push(issue);}
   if(options.installation){
@@ -210,12 +219,14 @@ export function analyzeAssembly(project:Project,assembly:Assembly,options:{insta
     sweepLoop:for(const step of assembly.steps){
       const s=solids.find(s=>s.item.partId===step.partId);
       if(!s||stepsSeen.has(step.partId)){addIssue('installation','pending','安装顺序包含不存在或重复的零件',[step.partId]);continue;}stepsSeen.add(step.partId);
+      if(!s.complete){addIssue('installation','pending','零件实体几何未确认，安装行程无法完整检测',[step.partId]);installed.push(s);continue;}
       if(!finite(step.direction)||length(step.direction)<1e-9||!Number.isFinite(step.distance)||step.distance<=0){addIssue('installation','pending','安装方向和行程必须明确且有效',[step.partId]);installed.push(s);continue;}
       const motion=scale(normalize(step.direction),step.distance);
       const start=s.cells.map(c=>({...c,vertices:c.vertices.map(v=>subtract(v,motion))}));
       let first:{enter:number;leave:number;other:typeof solids[number]}|undefined;
       const sweptBounds=vectorBounds(start.flatMap(c=>c.vertices).concat(s.cells.flatMap(c=>c.vertices)));
       for(const other of installed){
+        if(!other.complete){addIssue('installation','pending','已安装零件的实体几何未确认，该行程尚未完整检测',[s.item.partId,other.item.partId]);continue;}
         if(!broadOverlap(sweptBounds,other.bounds))continue;
         for(const ca of start)for(const cb of other.cells){
           if(!budget())break sweepLoop;
