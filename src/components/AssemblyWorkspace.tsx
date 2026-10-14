@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Upload, Plus, Search, Package, ChevronRight } from "lucide-react";
 import { useWorkbench } from "../store";
 import { emptyAssembly } from "../core/assemblyTypes";
@@ -47,6 +47,28 @@ export default function AssemblyWorkspace({
   const [installationPreview, setInstallationPreview] =
       useState<SceneState["installationPreview"]>(null),
     [error, setError] = useState("");
+  const [hiddenPartIds, setHiddenPartIds] = useState<string[]>([]);
+  const [machiningFace, setMachiningFace] = useState<"front" | "back" | null>(
+    null,
+  );
+  const [referenceMarkers, setReferenceMarkers] = useState<
+    SceneState["referenceMarkers"]
+  >([]);
+  const playbackCancellation = useRef(0);
+  const [cancelVersion, setCancelVersion] = useState(0);
+  const clearPreview = useCallback(() => {
+    playbackCancellation.current += 1;
+    setCancelVersion(playbackCancellation.current);
+    setInstallationPreview(null);
+    setPreview(null);
+    setReferenceMarkers([]);
+  }, []);
+  const toggleHidden = (id: string) => {
+    clearPreview();
+    setHiddenPartIds((ids) =>
+      ids.includes(id) ? ids.filter((v) => v !== id) : [...ids, id],
+    );
+  };
   const blocked = s.status === "searching" || !active || interactionBlocked;
   const actual = useMemo(
     () =>
@@ -62,28 +84,27 @@ export default function AssemblyWorkspace({
   );
   const detection = useAssemblyAnalysis(project, actual, assembly, selected);
   const candidates = detection.candidates;
-  const select = useCallback((id: string | null) => {
-    setPreview(null);
-    setInstallationPreview(null);
-    setExploded(false);
-    setSelected(id);
-    setSnapped(null);
-    setCandidateId(null);
-    setMobile("canvas");
-  }, []);
-  const clearPreview = useCallback(() => {
-    setInstallationPreview(null);
-    setPreview(null);
-  }, []);
+  const select = useCallback(
+    (id: string | null) => {
+      clearPreview();
+      setMachiningFace(null);
+      setExploded(false);
+      setSelected(id);
+      setSnapped(null);
+      setCandidateId(null);
+      setMobile("canvas");
+    },
+    [clearPreview],
+  );
   const commit = useCallback(
     (next: Assembly) => {
-      setInstallationPreview(null);
+      clearPreview();
       const ok = s.updateAssembly(next);
       if (!ok) setError("未保存：请检查输入或解除装配锁定。");
       else setError("");
       return ok;
     },
-    [s.updateAssembly],
+    [s.updateAssembly, clearPreview],
   );
   const commitPose = (pose: AssemblyItem) => {
     setPreview(null);
@@ -154,12 +175,11 @@ export default function AssemblyWorkspace({
     if (selected && !project.parts.some((p) => p.id === selected)) select(null);
   }, [project.parts, selected, select]);
   useEffect(() => {
-    if (!active) {
-      setPreview(null);
+    if (blocked) {
+      clearPreview();
       setSnapped(null);
-      setInstallationPreview(null);
     }
-  }, [active]);
+  }, [blocked, clearPreview]);
   useEffect(() => {
     if (!active) return;
     const key = (e: KeyboardEvent) => {
@@ -171,14 +191,14 @@ export default function AssemblyWorkspace({
       )
         return;
       if (e.key === "Escape") {
-        setPreview(null);
-        setInstallationPreview(null);
+        clearPreview();
         setSelected(null);
         e.preventDefault();
       }
       if (blocked) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
+        clearPreview();
         s.undo();
         return;
       }
@@ -188,7 +208,7 @@ export default function AssemblyWorkspace({
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [active, blocked, interactionBlocked, s.undo]);
+  }, [active, blocked, interactionBlocked, s.undo, clearPreview]);
   const visible = project.parts.filter((p) =>
     (p.name + " " + p.material + " " + p.thickness)
       .toLowerCase()
@@ -212,6 +232,9 @@ export default function AssemblyWorkspace({
     candidateId:
       candidateId ?? candidates.find((c) => c.status === "valid")?.id ?? null,
     installationPreview,
+    hiddenPartIds,
+    machiningFace,
+    referenceMarkers,
   };
   return (
     <div className={"assembly-workspace mobile-" + mobile} hidden={!active}>
@@ -305,6 +328,18 @@ export default function AssemblyWorkspace({
                   </span>
                   <ChevronRight size={14} />
                 </button>
+                {placed && (
+                  <button
+                    className="assembly-rejected-toggle"
+                    aria-label={
+                      (hiddenPartIds.includes(part.id) ? "显示 " : "隐藏 ") +
+                      part.name
+                    }
+                    onClick={() => toggleHidden(part.id)}
+                  >
+                    {hiddenPartIds.includes(part.id) ? "显示零件" : "隐藏零件"}
+                  </button>
+                )}
                 {!placed && (
                   <div className="assembly-resource-item-actions">
                     <button disabled={blocked} onClick={() => add(part.id)}>
@@ -358,12 +393,11 @@ export default function AssemblyWorkspace({
         onMagnet={() => setMagnet((v) => !v)}
         onXray={() => setXray((v) => !v)}
         onExplode={() => {
-          setInstallationPreview(null);
+          clearPreview();
           setExploded((v) => !v);
         }}
         onUndo={() => {
-          setPreview(null);
-          setInstallationPreview(null);
+          clearPreview();
           s.undo();
         }}
         canUndo={!!s.history.length}
@@ -387,6 +421,16 @@ export default function AssemblyWorkspace({
         locate={locate}
         previewStep={previewStep}
         clearPreview={clearPreview}
+        playbackCancellation={playbackCancellation}
+        cancelVersion={cancelVersion}
+        machiningFace={machiningFace}
+        setMachiningFace={setMachiningFace}
+        previewReference={(pose, markers) => {
+          clearPreview();
+          setExploded(false);
+          setPreview(pose);
+          setReferenceMarkers(markers);
+        }}
       />
       <div className="assembly-statusbar">
         <span>

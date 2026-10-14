@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -27,6 +27,11 @@ import {
 } from "../core/assemblyGeometry";
 import { Select } from "./Select";
 import { Thumbnail } from "./Thumbnail";
+import {
+  alignReferences,
+  referencePoints,
+  type AssemblyReference,
+} from "./assemblySceneUtils";
 
 function NumberField({
   label,
@@ -51,7 +56,12 @@ function NumberField({
     );
     setError(false);
   }, [value]);
+  const cancelBlur = useRef(false);
   const submit = () => {
+    if (cancelBlur.current) {
+      cancelBlur.current = false;
+      return;
+    }
     if (optional && !text.trim()) {
       onCommit(undefined);
       setError(false);
@@ -80,6 +90,9 @@ function NumberField({
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
             if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              cancelBlur.current = true;
               setText(value === undefined ? "" : String(value));
               setError(false);
               e.currentTarget.blur();
@@ -110,6 +123,14 @@ type Props = {
   locate: (issue: AssemblyIssue) => void;
   previewStep: (step: AssemblyStep | null, progress: number) => void;
   clearPreview: () => void;
+  playbackCancellation: { current: number };
+  cancelVersion: number;
+  machiningFace: "front" | "back" | null;
+  setMachiningFace: (face: "front" | "back") => void;
+  previewReference: (
+    pose: AssemblyItem,
+    markers: { partId: string; reference: AssemblyReference }[],
+  ) => void;
 };
 export function AssemblyInspector(p: Props) {
   const part = p.project.parts.find((v) => v.id === p.selected),
@@ -188,7 +209,9 @@ export function AssemblyInspector(p: Props) {
               : errors.length
                 ? errors.length + " 项需要调整"
                 : !p.analysis?.complete
-                  ? "尚未完成检测"
+                  ? pendingIssues.some((i) => i.id === "basis:missing")
+                    ? "尚未设置检测依据"
+                    : "尚未完成检测"
                   : "已设置的检测项目通过"}
           </span>
           {tab !== "check" && (
@@ -294,6 +317,18 @@ export function AssemblyInspector(p: Props) {
                     <p className="hint">
                       X 宽 · Y 深 · Z 高；旋转采用 XYZ 顺序。
                     </p>
+                    <div className="assembly-face-controls">
+                      <span>查看局部加工方向</span>
+                      {(["front", "back"] as const).map((face) => (
+                        <button
+                          key={face}
+                          aria-pressed={p.machiningFace === face}
+                          onClick={() => p.setMachiningFace(face)}
+                        >
+                          {face === "front" ? "正面 +Z" : "反面 −Z"}
+                        </button>
+                      ))}
+                    </div>
                     {part.pockets.length > 0 && (
                       <div className="assembly-machining">
                         <h3>确认槽的加工面</h3>
@@ -317,6 +352,7 @@ export function AssemblyInspector(p: Props) {
                                 ]}
                                 onChange={(face) => {
                                   if (!face) return;
+                                  p.setMachiningFace(face as "front" | "back");
                                   p.commit({
                                     ...p.assembly,
                                     pocketFaces: {
@@ -403,6 +439,12 @@ export function AssemblyInspector(p: Props) {
                           : "查看 " + rejectedCount + " 个不匹配位置及原因"}
                       </button>
                     )}
+                    <ReferenceEditor
+                      key={part.id}
+                      {...p}
+                      part={part}
+                      item={item}
+                    />
                     <button
                       className="assembly-remove"
                       onClick={() => {
@@ -756,7 +798,12 @@ function InstallationEditor(p: Props & { item: AssemblyItem | undefined }) {
   const [active, setActive] = useState<number | null>(null),
     [progress, setProgress] = useState(0),
     [playing, setPlaying] = useState(false);
+  const playVersion = useRef(-1);
   useEffect(() => () => p.clearPreview(), []);
+  useEffect(() => {
+    setPlaying(false);
+    setActive(null);
+  }, [p.cancelVersion]);
   useEffect(() => {
     if (p.blocked) {
       setPlaying(false);
@@ -764,10 +811,17 @@ function InstallationEditor(p: Props & { item: AssemblyItem | undefined }) {
     }
   }, [p.blocked]);
   useEffect(() => {
-    if (!playing || active === null) return;
+    if (
+      !playing ||
+      active === null ||
+      playVersion.current !== p.playbackCancellation.current
+    )
+      return;
+    const version = playVersion.current;
     let frame = 0,
       start = performance.now();
     const animate = (now: number) => {
+      if (version !== p.playbackCancellation.current) return;
       const t = Math.min(1, (now - start) / 2000);
       setProgress(t);
       const step = p.assembly.steps[active];
@@ -777,7 +831,7 @@ function InstallationEditor(p: Props & { item: AssemblyItem | undefined }) {
     };
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
-  }, [playing, active, p.assembly.steps]);
+  }, [playing, active, p.assembly.steps, p.cancelVersion]);
   const patch = (index: number, next: AssemblyStep) =>
     p.commit({
       ...p.assembly,
@@ -901,6 +955,7 @@ function InstallationEditor(p: Props & { item: AssemblyItem | undefined }) {
             />
             <button
               onClick={() => {
+                playVersion.current = p.playbackCancellation.current;
                 setActive(index);
                 setProgress(0);
                 setPlaying(true);
@@ -945,6 +1000,156 @@ function InstallationEditor(p: Props & { item: AssemblyItem | undefined }) {
         <p className="hint">
           尚未设置安装顺序。最终位置无冲突并不代表能按任意顺序安装。
         </p>
+      )}
+    </section>
+  );
+}
+
+function ReferenceEditor(p: Props & { part: Part; item: AssemblyItem }) {
+  const [kind, setKind] = useState<"face" | "edge" | "point">("face");
+  const [sourceId, setSourceId] = useState("front");
+  const receivers = p.assembly.items.filter((i) => i.partId !== p.item.partId);
+  const [receiverId, setReceiverId] = useState(receivers[0]?.partId ?? "");
+  const [targetId, setTargetId] = useState("back");
+  const [previewing, setPreviewing] = useState(false);
+  const cancelSeen = useRef(p.cancelVersion);
+  useEffect(() => {
+    if (cancelSeen.current !== p.cancelVersion) {
+      setPreviewing(false);
+      cancelSeen.current = p.cancelVersion;
+    }
+  }, [p.cancelVersion]);
+  const receiver = p.assembly.items.find((i) => i.partId === receiverId);
+  const targetPart = p.project.parts.find((part) => part.id === receiverId);
+  const sources = referencePoints(p.part).filter((r) => r.kind === kind);
+  const targets = targetPart
+    ? referencePoints(targetPart).filter((r) => r.kind === kind)
+    : [];
+  const from = sources.find((r) => r.id === sourceId) ?? sources[0];
+  const to = targets.find((r) => r.id === targetId) ?? targets[0];
+  const pose =
+    receiver && from && to ? alignReferences(p.item, from, receiver, to) : null;
+  const reset = () => {
+    p.clearPreview();
+    setPreviewing(false);
+  };
+  const uncertain = p.analysis?.issues.some(
+    (i) =>
+      (i.kind === "geometry" || i.kind === "collision" || i.kind === "fit") &&
+      i.partIds.some((id) => id === p.item.partId || id === receiverId),
+  );
+  return (
+    <section className="assembly-reference-editor">
+      <h3>参考对齐</h3>
+      <p className="hint">
+        选择面、边中点或角点。面会相向贴合，边会同向对齐；预览后应用。
+      </p>
+      <label>
+        参考类型
+        <Select
+          aria-label="参考类型"
+          value={kind}
+          options={[
+            { value: "face", label: "面" },
+            { value: "edge", label: "边中点" },
+            { value: "point", label: "角点" },
+          ]}
+          onChange={(v) => {
+            reset();
+            setKind(v as typeof kind);
+          }}
+        />
+      </label>
+      <label>
+        所选零件参考
+        <Select
+          aria-label="所选零件参考"
+          value={from?.id ?? ""}
+          options={sources.map((r) => ({ value: r.id, label: r.label }))}
+          onChange={(v) => {
+            reset();
+            setSourceId(v);
+          }}
+        />
+      </label>
+      <label>
+        对齐到零件
+        <Select
+          aria-label="对齐到零件"
+          value={receiverId}
+          options={receivers.map((i) => ({
+            value: i.partId,
+            label:
+              p.project.parts.find((part) => part.id === i.partId)?.name ??
+              i.partId,
+          }))}
+          onChange={(v) => {
+            reset();
+            setReceiverId(v);
+          }}
+        />
+      </label>
+      <label>
+        目标参考
+        <Select
+          aria-label="目标参考"
+          value={to?.id ?? ""}
+          options={targets.map((r) => ({ value: r.id, label: r.label }))}
+          onChange={(v) => {
+            reset();
+            setTargetId(v);
+          }}
+        />
+      </label>
+      <div className="assembly-reference-actions">
+        <button
+          disabled={!pose || p.item.locked}
+          onClick={() => {
+            if (!pose || !from || !to) return;
+            p.previewReference(pose, [
+              { partId: p.item.partId, reference: from },
+              { partId: receiverId, reference: to },
+            ]);
+            cancelSeen.current = p.playbackCancellation.current;
+            setPreviewing(true);
+          }}
+        >
+          预览参考对齐
+        </button>
+        <button
+          disabled={
+            !pose ||
+            !previewing ||
+            p.pending ||
+            uncertain ||
+            !p.analysis ||
+            p.item.locked
+          }
+          onClick={() => {
+            if (pose)
+              p.commit({
+                ...p.assembly,
+                items: p.assembly.items.map((i) =>
+                  i.partId === pose.partId ? pose : i,
+                ),
+              });
+            setPreviewing(false);
+          }}
+        >
+          应用对齐
+        </button>
+      </div>
+      {previewing && (
+        <>
+          <p className="hint">
+            {p.pending
+              ? "正在检查预览位置…"
+              : uncertain
+                ? "此对齐仍有冲突或几何待确认，请调整参考。"
+                : "当前参考位置可应用；安装路径仍按装配规则检查。"}
+          </p>
+          <button onClick={reset}>取消参考预览</button>
+        </>
       )}
     </section>
   );

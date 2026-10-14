@@ -15,6 +15,11 @@ import type {
   Vec3,
 } from "../core/assemblyTypes";
 import type { Project } from "../core/types";
+import {
+  disposeObject,
+  visibleSnapTarget,
+  type AssemblyReference,
+} from "./assemblySceneUtils";
 
 export type SceneState = {
   project: Project;
@@ -29,6 +34,9 @@ export type SceneState = {
   blocked: boolean;
   preview: AssemblyItem | null;
   candidateId: string | null;
+  hiddenPartIds?: string[];
+  machiningFace?: "front" | "back" | null;
+  referenceMarkers?: { partId: string; reference: AssemblyReference }[];
   installationPreview?: {
     partId: string;
     position: Vec3;
@@ -74,14 +82,6 @@ const geometry = (positions: number[]) => {
   g.computeVertexNormals();
   return g;
 };
-const disposeObject = (group: THREE.Object3D) =>
-  group.traverse((obj) => {
-    if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
-      obj.geometry.dispose();
-      const ms = Array.isArray(obj.material) ? obj.material : [obj.material];
-      ms.forEach((m) => m.dispose());
-    }
-  });
 export function createAssemblyScene(
   container: HTMLDivElement,
   callbacks: SceneCallbacks,
@@ -154,7 +154,7 @@ export function createAssemblyScene(
   const pick = (e: PointerEvent) => {
     setRay(e);
     return ray.intersectObjects(
-      [...entries.values()].map((v) => v.mesh),
+      [...entries.values()].filter((v) => v.group.visible).map((v) => v.mesh),
       false,
     )[0];
   };
@@ -225,16 +225,27 @@ export function createAssemblyScene(
       line.renderOrder = 7;
       overlays.add(line);
     }
+    addReferenceMarks();
     const selectedPart = state.project.parts.find(
       (p) => p.id === state!.selected,
     );
-    if (!selectedPart || state.exploded || state.installationPreview) return;
+    if (
+      !selectedPart ||
+      state.hiddenPartIds?.includes(selectedPart.id) ||
+      state.exploded ||
+      state.installationPreview
+    )
+      return;
     const model = buildAssemblyModel(
       selectedPart,
       state.assembly.pocketFaces[selectedPart.id],
     );
     const visible = state.candidates
-      .filter((c) => c.status !== "invalid")
+      .filter(
+        (c) =>
+          c.status !== "invalid" &&
+          !state!.hiddenPartIds?.includes(c.receiverId),
+      )
       .slice(0, 10);
     for (const candidate of visible) {
       const active = candidate.id === (held ?? state.candidateId),
@@ -351,6 +362,95 @@ export function createAssemblyScene(
       }
     }
   }
+  function addReferenceMarks() {
+    if (!state || state.exploded || state.installationPreview) return;
+    for (const marker of state.referenceMarkers ?? []) {
+      const entry = entries.get(marker.partId);
+      if (!entry?.group.visible) continue;
+      entry.group.updateMatrixWorld(true);
+      const point = entry.group.localToWorld(vector(marker.reference.position));
+      const dot = new THREE.Mesh(
+        new THREE.SphereGeometry(2, 12, 8),
+        new THREE.MeshBasicMaterial({
+          color: marker.partId === state.selected ? "#315cb9" : "#e4b61a",
+          depthTest: false,
+        }),
+      );
+      dot.position.copy(point);
+      dot.renderOrder = 12;
+      overlays.add(dot);
+      if (marker.reference.normal) {
+        const direction = vector(marker.reference.normal).applyQuaternion(
+          entry.group.quaternion,
+        );
+        const arrow = new THREE.ArrowHelper(
+          direction,
+          point,
+          20,
+          "#315cb9",
+          5,
+          3,
+        );
+        overlays.add(arrow);
+      }
+    }
+    const entry = state.selected ? entries.get(state.selected) : null;
+    const part = state.project.parts.find((p) => p.id === state!.selected);
+    if (!entry?.group.visible || !part) return;
+    const center = new THREE.Vector3(
+      part.width / 2,
+      part.height / 2,
+      part.thickness / 2,
+    );
+    const direction = state.machiningFace === "back" ? -1 : 1;
+    const local = new THREE.Group();
+    local.position.copy(entry.group.position);
+    local.quaternion.copy(entry.group.quaternion);
+    const axes = new THREE.AxesHelper(
+      Math.min(25, Math.max(part.width, part.height) / 3),
+    );
+    axes.setColors("#3861b4", "#658774", "#7e879b");
+    local.add(axes);
+    if (state.machiningFace) {
+      const model = buildAssemblyModel(
+          part,
+          state.assembly.pocketFaces[part.id],
+        ),
+        z = direction > 0 ? part.thickness : 0;
+      const facePositions: number[] = [];
+      for (let i = 0; i < model.positions.length; i += 9)
+        if (
+          [2, 5, 8].every((k) => Math.abs(model.positions[i + k] - z) < 0.001)
+        )
+          facePositions.push(...model.positions.slice(i, i + 9));
+      if (facePositions.length) {
+        const face = new THREE.Mesh(
+          geometry(facePositions),
+          new THREE.MeshBasicMaterial({
+            color: "#4266c0",
+            transparent: true,
+            opacity: 0.35,
+            side: THREE.DoubleSide,
+            depthTest: false,
+            depthWrite: false,
+          }),
+        );
+        face.position.z = direction * 0.03;
+        face.renderOrder = 11;
+        local.add(face);
+      }
+      const arrow = new THREE.ArrowHelper(
+        new THREE.Vector3(0, 0, direction),
+        center,
+        Math.max(25, part.thickness * 2),
+        direction > 0 ? "#3861b4" : "#b98122",
+        6,
+        3,
+      );
+      local.add(arrow);
+    }
+    overlays.add(local);
+  }
   function addDimensionMarks() {
     if (!state?.analysis?.bounds || state.exploded || state.installationPreview)
       return;
@@ -388,7 +488,10 @@ export function createAssemblyScene(
     if (kind === "selected" && state?.selected) {
       const e = entries.get(state.selected);
       if (e) box.setFromObject(e.group);
-    } else entries.forEach((e) => box.expandByObject(e.group));
+    } else
+      entries.forEach((e) => {
+        if (e.group.visible) box.expandByObject(e.group);
+      });
     if (box.isEmpty())
       box.setFromCenterAndSize(
         new THREE.Vector3(50, 50, 0),
@@ -490,6 +593,7 @@ export function createAssemblyScene(
         if (next.installationPreview?.partId === item.partId)
           entry.group.position.copy(vector(next.installationPreview.position));
       }
+      entry.group.visible = !next.hiddenPartIds?.includes(part.id);
       const selected = next.selected === part.id,
         material = entry.mesh.material as THREE.MeshStandardMaterial;
       material.color.set(selected ? "#c8aa78" : "#dfc89f");
@@ -507,6 +611,7 @@ export function createAssemblyScene(
       entry = next.selected ? entries.get(next.selected) : null;
     if (
       entry &&
+      entry.group.visible &&
       item &&
       !item.locked &&
       !next.blocked &&
@@ -528,7 +633,43 @@ export function createAssemblyScene(
   }
   function snapPose(raw: AssemblyItem, axes = "XYZ") {
     if (!state) return raw;
-    const snapped = weakSnap(raw, state.candidates, {
+    scene.updateMatrixWorld(true);
+    camera.updateMatrixWorld(true);
+    const obstacles = [...entries]
+      .filter(([id, e]) => id !== raw.partId && e.group.visible)
+      .map(([, e]) => e.mesh);
+    const eligible = state.candidates.filter((c) => {
+      if (state!.hiddenPartIds?.includes(c.receiverId)) return false;
+      let anchor = c.target;
+      if (c.feature) {
+        const receiver = state!.project.parts.find(
+          (p) => p.id === c.receiverId,
+        );
+        const host = state!.assembly.items.find(
+          (i) => i.partId === c.receiverId,
+        );
+        const contour =
+          c.feature.kind === "pocket"
+            ? receiver?.pockets[c.feature.index]?.outline
+            : receiver?.holes[c.feature.index];
+        if (receiver && host && contour?.length) {
+          const config = state!.assembly.pocketFaces[receiver.id];
+          const back =
+            c.feature.kind === "pocket" &&
+            config?.faces[c.feature.index] === "back";
+          anchor = transformPoint(
+            {
+              x: contour.reduce((sum, p) => sum + p.x, 0) / contour.length,
+              y: contour.reduce((sum, p) => sum + p.y, 0) / contour.length,
+              z: back ? -0.03 : receiver.thickness + 0.03,
+            },
+            host,
+          );
+        }
+      }
+      return visibleSnapTarget(anchor, camera, obstacles);
+    });
+    const snapped = weakSnap(raw, eligible, {
       enabled: state.magnet,
       suspended: alt,
       heldId: held,
@@ -746,14 +887,7 @@ export function createAssemblyScene(
       window.removeEventListener("blur", onBlur);
       controls.dispose();
       orbit.dispose();
-      scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
-          obj.geometry.dispose();
-          (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(
-            (m) => m.dispose(),
-          );
-        }
-      });
+      disposeObject(scene);
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();

@@ -850,3 +850,41 @@
   font-size: 11px;
   pointer-events: none;
 }
+.assembly-face-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.assembly-face-controls > span {
+  width: 100%;
+  font-size: 11px;
+  color: var(--muted);
+}
+.assembly-face-controls button[aria-pressed="true"] {
+  background: #e4eafa;
+  color: #315cb9;
+}
+.assembly-reference-editor {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.assembly-reference-editor h3 {
+  margin: 0 0 8px;
+}
+.assembly-reference-editor > label {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.assembly-reference-actions {
+  display: flex;
+  gap: 6px;
+}
+.assembly-reference-actions button {
+  flex: 1;
+}
