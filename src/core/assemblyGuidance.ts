@@ -26,11 +26,11 @@ function slotPose(male:Part,receiver:Part,host:AssemblyItem,assembly:Assembly,fe
   const anchor=new Vector3((a.x+b.x)/2,(a.y+b.y)/2,male.thickness/2).applyQuaternion(q);
   return {partId:male.id,position:{x:desired.x-anchor.x,y:desired.y-anchor.y,z:desired.z-anchor.z},rotation:{x:q.x,y:q.y,z:q.z,w:q.w}};
 }
-function candidateStatus(project:Project,assembly:Assembly,pose:AssemblyItem,receiverId:string):Pick<PlacementCandidate,'status'|'message'> {
+function candidateStatus(project:Project,assembly:Assembly,pose:AssemblyItem):Pick<PlacementCandidate,'status'|'message'> {
   const trial={...assembly,items:assembly.items.map(i=>i.partId===pose.partId?pose:i)};
   const analysis=analyzeAssembly(project,trial);
   // Inventory and installation describe the whole build; candidate colour describes this pose.
-  const relevant=analysis.issues.filter(i=>i.partIds.includes(pose.partId)||i.kind==='dimension'&&i.severity==='pending'||i.kind==='geometry'&&(!i.partIds.length||i.partIds.includes(receiverId)));
+  const relevant=analysis.issues.filter(i=>i.partIds.includes(pose.partId)||i.kind==='dimension'&&i.severity==='pending'||i.kind==='geometry'&&i.severity==='pending');
   const uncertainGeometry=relevant.find(i=>i.kind==='geometry'&&i.severity==='pending');if(uncertainGeometry)return {status:'incomplete',message:uncertainGeometry.message};
   const bad=relevant.find(i=>i.severity==='error'&&i.kind!=='missing');if(bad)return {status:'invalid',message:bad.message};
   const pending=relevant.find(i=>i.severity==='pending');if(pending)return {status:'incomplete',message:pending.message};
@@ -61,7 +61,7 @@ export function placementCandidates(project:Project,assembly:Assembly,partId:str
       for(let index=0;index<features.length;index++){
         const feature={kind,index},fit=assembly.fits.find(f=>f.partId===partId&&f.receiverId===host.partId&&f.feature.kind===kind&&f.feature.index===index);
         const pose=slotPose(male,receiver,host,assembly,feature,fit);if(!pose)continue;
-        const status=candidateStatus(project,assembly,pose,host.partId);
+        const status=candidateStatus(project,assembly,pose);
         if(!fit&&status.status!=='invalid'){status.status='incomplete';status.message='矩形槽预览；需声明插入边、深度和制造间隙';}
         result.push({id:`slot:${partId}:${host.partId}:${kind}:${index}`,partId,receiverId:host.partId,pose,target:pose.position,label:`${receiver.name} ${kind==='pocket'?'槽':'通孔'} ${index+1}`,feature,...status});
         if(result.length>=48)return result;
@@ -78,7 +78,7 @@ export function placementCandidates(project:Project,assembly:Assembly,partId:str
       const position=add(item.position,subtract(target.center,source.center));
       if(result.some(c=>!c.feature&&length(subtract(c.pose.position,position))<0.01&&c.receiverId===host.partId))continue;
       const pose={...item,position};
-      result.push({id:`face:${partId}:${host.partId}:${contacts++}`,partId,receiverId:host.partId,pose,target:position,label:`${receiver.name} 表面接触`,...candidateStatus(project,assembly,pose,host.partId)});
+      result.push({id:`face:${partId}:${host.partId}:${contacts++}`,partId,receiverId:host.partId,pose,target:position,label:`${receiver.name} 表面接触`,...candidateStatus(project,assembly,pose)});
       if(contacts>=24)return result;
     }
   }

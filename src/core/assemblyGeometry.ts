@@ -2,7 +2,7 @@ import ClipperLib from 'clipper-lib';
 import { Euler, Quaternion, ShapeUtils, Vector2, Vector3 } from 'three';
 import type { Part, Point } from './types';
 import type { AssemblyItem, AssemblyModel, Bounds3, ConvexCell, PocketFaces, Rotation3, Vec3 } from './assemblyTypes';
-import { signedArea, validContour } from './geometry';
+import { pointInPolygon, pointSegmentDistance, signedArea, validContour } from './geometry';
 const SCALE=10000;
 const CACHE_LIMIT=64;
 const VERTEX_LIMIT=20000;
@@ -39,7 +39,7 @@ export function vectorBounds(points:Vec3[]):Bounds3 {
   for(const p of points)for(const k of ['x','y','z'] as const){b.min[k]=Math.min(b.min[k],p[k]);b.max[k]=Math.max(b.max[k],p[k]);}
   return points.length?b:{min:{x:0,y:0,z:0},max:{x:0,y:0,z:0}};
 }
-export function transformCell(cell:ConvexCell,item:AssemblyItem):ConvexCell {return {vertices:cell.vertices.map(v=>transformPoint(v,item)),faces:cell.faces};}
+export function transformCell(cell:ConvexCell,item:AssemblyItem):ConvexCell {return {vertices:cell.vertices.map(v=>transformPoint(v,item)),faces:cell.faces,boundaryFaces:cell.boundaryFaces};}
 type Region={outer:Point[];holes:Point[][]};
 function path(poly:Point[],positive=true):ClipperLib.Path {
   const p=poly.map(v=>({X:Math.round(v.x*SCALE),Y:Math.round(v.y*SCALE)}));
@@ -47,13 +47,13 @@ function path(poly:Point[],positive=true):ClipperLib.Path {
   return p;
 }
 function polygons(regions:Region[]):ClipperLib.Paths {return regions.flatMap(r=>[path(r.outer),...r.holes.map(h=>path(h,false))]);}
-function difference(subject:ClipperLib.Paths,clip:ClipperLib.Paths):Region[] {
+function difference(subject:ClipperLib.Paths,clip:ClipperLib.Paths,operation=ClipperLib.ClipType.ctDifference):Region[] {
   if(!subject.length)return [];
   const c=new ClipperLib.Clipper(),tree=new ClipperLib.PolyTree();
   c.StrictlySimple=true;
   c.AddPaths(subject,ClipperLib.PolyType.ptSubject,true);
   if(clip.length)c.AddPaths(clip,ClipperLib.PolyType.ptClip,true);
-  if(!c.Execute(ClipperLib.ClipType.ctDifference,tree,ClipperLib.PolyFillType.pftNonZero,ClipperLib.PolyFillType.pftNonZero))throw new Error('材料布尔运算失败');
+  if(!c.Execute(operation,tree,ClipperLib.PolyFillType.pftNonZero,ClipperLib.PolyFillType.pftNonZero))throw new Error('材料布尔运算失败');
   const regions:Region[]=[];
   const points=(node:ClipperLib.PolyNode,ccw:boolean)=>{const p=node.Contour().map(v=>({x:v.X/SCALE,y:v.Y/SCALE}));if((signedArea(p)>0)!==ccw)p.reverse();return p;};
   const visit=(node:ClipperLib.PolyNode)=>{if(node.Contour().length && !node.IsHole())regions.push({outer:points(node,true),holes:node.Childs().filter(n=>n.IsHole()).map(n=>points(n,false))});for(const child of node.Childs())visit(child);};
@@ -74,8 +74,8 @@ function triangle(out:number[],a:Vec3,b:Vec3,c:Vec3) {out.push(a.x,a.y,a.z,b.x,b
 function cap(out:number[],regions:Region[],z:number,up:boolean) {
   for(const r of regions){const {points,triangles}=triangulate(r);for(const t of triangles){const v=t.map(i=>({...points[i],z}));triangle(out,v[0],v[up?1:2],v[up?2:1]);}}
 }
-function prism(points:Point[],z0:number,z1:number):ConvexCell {
-  return {vertices:[...points.map(v=>({...v,z:z0})),...points.map(v=>({...v,z:z1}))],faces:[[2,1,0],[3,4,5],[0,1,4,3],[1,2,5,4],[2,0,3,5]]};
+function prism(points:Point[],z0:number,z1:number,boundaryFaces:boolean[]):ConvexCell {
+  return {vertices:[...points.map(v=>({...v,z:z0})),...points.map(v=>({...v,z:z1}))],faces:[[2,1,0],[3,4,5],[0,1,4,3],[1,2,5,4],[2,0,3,5]],boundaryFaces};
 }
 export function buildAssemblyModel(part:Part,faces?:PocketFaces):AssemblyModel {
   const key=part.id+geometrySignature(part)+JSON.stringify(faces);
@@ -103,7 +103,26 @@ export function buildAssemblyModel(part:Part,faces?:PocketFaces):AssemblyModel {
         cap(model.positions,difference(polygons(regions),i?polygons(layers[i-1]):[]),z0,false);
         cap(model.positions,difference(polygons(regions),i+1<layers.length?polygons(layers[i+1]):[]),z1,true);
         for(const r of regions){
-          const {points,triangles}=triangulate(r);for(const t of triangles)model.cells.push(prism(t.map(k=>points[k]),z0,z1));
+          // Partition at adjacent slab boundaries. Every cap is now wholly external
+          // or wholly internal, including triangles near pocket floors and roofs.
+          let pieces=[r];
+          for(const neighbour of [layers[i-1],layers[i+1]]){
+            if(!neighbour?.length)continue;
+            const clip=polygons(neighbour);
+            pieces=pieces.flatMap(piece=>[...difference(polygons([piece]),clip),...difference(polygons([piece]),clip,ClipperLib.ClipType.ctIntersection)]);
+            if(pieces.length>CELL_LIMIT)throw new Error('实体分区超过检测资源上限');
+          }
+          const inMaterial=(p:Point,regions:Region[]|undefined)=>!!regions?.some(region=>pointInPolygon(p,region.outer)&&!region.holes.some(h=>pointInPolygon(p,h)));
+          const onBoundary=(a:Point,b:Point)=>[r.outer,...r.holes].some(ring=>ring.some((v,k)=>pointSegmentDistance(a,v,ring[(k+1)%ring.length])<1e-7&&pointSegmentDistance(b,v,ring[(k+1)%ring.length])<1e-7));
+          for(const piece of pieces){
+            const {points,triangles}=triangulate(piece);
+            for(const indices of triangles){
+              const t=indices.map(k=>points[k]);
+              const center={x:t.reduce((n,p)=>n+p.x,0)/3,y:t.reduce((n,p)=>n+p.y,0)/3};
+              model.cells.push(prism(t,z0,z1,[!inMaterial(center,layers[i-1]),!inMaterial(center,layers[i+1]),...t.map((p,k)=>onBoundary(p,t[(k+1)%3]))]));
+              if(model.cells.length>CELL_LIMIT)throw new Error('实体单元超过检测资源上限');
+            }
+          }
           for(const ring of [r.outer,...r.holes])for(let k=0;k<ring.length;k++){
             const a={...ring[k],z:z0},b={...ring[(k+1)%ring.length],z:z0},c={...b,z:z1},d={...a,z:z1};triangle(model.positions,a,b,c);triangle(model.positions,a,c,d);
           }

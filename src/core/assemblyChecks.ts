@@ -2,7 +2,7 @@ import type { Part, Point, Project } from './types';
 import type { Assembly, AssemblyAnalysis, AssemblyIssue, AssemblyItem, Bounds3, ConvexCell, FitConstraint, Vec3 } from './assemblyTypes';
 import { CONTACT_EPSILON } from './assemblyTypes';
 import { buildAssemblyModel, geometrySignature, inversePoint, transformCell, vectorBounds } from './assemblyGeometry';
-import { signedArea } from './geometry';
+import { contourDistance, contoursOverlap, pointInPolygon, signedArea } from './geometry';
 export const add=(a:Vec3,b:Vec3):Vec3=>({x:a.x+b.x,y:a.y+b.y,z:a.z+b.z});
 export const subtract=(a:Vec3,b:Vec3):Vec3=>({x:a.x-b.x,y:a.y-b.y,z:a.z-b.z});
 export const scale=(a:Vec3,s:number):Vec3=>({x:a.x*s,y:a.y*s,z:a.z*s});
@@ -29,22 +29,59 @@ function axes(a:ConvexCell,b:ConvexCell):Vec3[] {
   return result;
 }
 function projection(cell:ConvexCell,n:Vec3) {const vs=cell.vertices.map(v=>dot(v,n));return {min:Math.min(...vs),max:Math.max(...vs)};}
-export function cellsCollide(a:ConvexCell,b:ConvexCell):boolean {
-  return axes(a,b).every(n=>{const x=projection(a,n),y=projection(b,n);return Math.min(x.max-y.min,y.max-x.min)>CONTACT_EPSILON;});
+const NUMERIC_EPSILON=1e-9;
+function inNormalCone(direction:Vec3,normals:Vec3[]):boolean {
+  const close=(v:Vec3)=>length(subtract(v,direction))<1e-7;
+  for(const n of normals)if(close(n))return true;
+  for(let i=0;i<normals.length;i++)for(let j=i+1;j<normals.length;j++){
+    const a=normals[i],b=normals[j],ab=dot(a,b),denominator=1-ab*ab;
+    if(denominator<1e-12)continue;
+    const x=(dot(direction,a)-ab*dot(direction,b))/denominator,y=(dot(direction,b)-ab*dot(direction,a))/denominator;
+    if(x>=-1e-9&&y>=-1e-9&&close(add(scale(a,x),scale(b,y))))return true;
+  }
+  for(let i=0;i<normals.length;i++)for(let j=i+1;j<normals.length;j++)for(let k=j+1;k<normals.length;k++){
+    const a=normals[i],b=normals[j],c=normals[k],determinant=dot(a,cross(b,c));
+    if(Math.abs(determinant)<1e-12)continue;
+    const x=dot(direction,cross(b,c))/determinant,y=dot(a,cross(direction,c))/determinant,z=dot(a,cross(b,direction))/determinant;
+    if(x>=-1e-9&&y>=-1e-9&&z>=-1e-9&&close(add(add(scale(a,x),scale(b,y)),scale(c,z))))return true;
+  }
+  return false;
 }
-/** Continuous fixed-orientation SAT: intersect each axis' open overlap time interval. */
-export function sweptCellsCollide(a:ConvexCell,b:ConvexCell,motion:Vec3):boolean {
+/** A support is physical only when its outward direction belongs to the
+ * normal cone of actual boundary faces at every supporting vertex. Internal
+ * diagonals/caps therefore receive only numerical, never contact, tolerance. */
+function boundarySupport(cell:ConvexCell,direction:Vec3):boolean {
+  if(!cell.boundaryFaces)return true;
+  const maximum=projection(cell,direction).max,facePlanes=planes(cell);
+  return cell.vertices.every((v,index)=>{
+    if(maximum-dot(v,direction)>1e-7)return true;
+    const normals=cell.faces.flatMap((face,i)=>cell.boundaryFaces![i]&&face.includes(index)?[facePlanes[i].normal]:[]);
+    return inNormalCone(direction,normals);
+  });
+}
+function supportAllowance(a:ConvexCell,b:ConvexCell,axis:Vec3):number {
+  return boundarySupport(a,axis)&&boundarySupport(b,scale(axis,-1))?CONTACT_EPSILON:NUMERIC_EPSILON;
+}
+export function cellsCollide(a:ConvexCell,b:ConvexCell):boolean {
+  return axes(a,b).every(n=>{
+    const x=projection(a,n),y=projection(b,n);
+    return x.max-y.min>supportAllowance(a,b,n)&&y.max-x.min>supportAllowance(b,a,n);
+  });
+}
+/** Continuous fixed-orientation SAT with the same real-boundary allowances. */
+function sweptCollisionInterval(a:ConvexCell,b:ConvexCell,motion:Vec3):{enter:number;leave:number}|null {
   let enter=0,leave=1;
   for(const n of axes(a,b)){
     const x=projection(a,n),y=projection(b,n),speed=dot(motion,n);
-    const lo=y.min+CONTACT_EPSILON-x.max,hi=y.max-CONTACT_EPSILON-x.min;
-    if(Math.abs(speed)<1e-12){if(lo>=0||hi<=0)return false;continue;}
+    const lo=y.min+supportAllowance(a,b,n)-x.max,hi=y.max-supportAllowance(b,a,n)-x.min;
+    if(Math.abs(speed)<1e-12){if(lo>=0||hi<=0)return null;continue;}
     const t0=lo/speed,t1=hi/speed;
     enter=Math.max(enter,Math.min(t0,t1));leave=Math.min(leave,Math.max(t0,t1));
-    if(enter>=leave)return false;
+    if(enter>=leave)return null;
   }
-  return enter<leave;
+  return enter<leave?{enter,leave}:null;
 }
+export function sweptCellsCollide(a:ConvexCell,b:ConvexCell,motion:Vec3):boolean {return sweptCollisionInterval(a,b,motion)!==null;}
 /** Clip outward polygon faces against every half-space, adding ordered cut caps. */
 export function intersectionPositions(a:ConvexCell,b:ConvexCell):number[] {
   let polygons=a.faces.map(f=>f.map(i=>a.vertices[i]));
@@ -75,7 +112,7 @@ export function intersectionPositions(a:ConvexCell,b:ConvexCell):number[] {
   for(const poly of polygons)for(let i=1;i+1<poly.length;i++)for(const p of [poly[0],poly[i],poly[i+1]])out.push(p.x,p.y,p.z);
   return out;
 }
-function broadOverlap(a:Bounds3,b:Bounds3) {return (['x','y','z'] as const).every(k=>Math.min(a.max[k]-b.min[k],b.max[k]-a.min[k])>CONTACT_EPSILON);}
+function broadOverlap(a:Bounds3,b:Bounds3,epsilon=CONTACT_EPSILON) {return (['x','y','z'] as const).every(k=>Math.min(a.max[k]-b.min[k],b.max[k]-a.min[k])>epsilon);}
 export type RectangularSlot={center:Point;u:Point;v:Point;length:number;width:number};
 export function rectangularSlot(outline:Point[]):RectangularSlot|null {
   let p=outline.filter((v,i)=>{const a=outline[(i+outline.length-1)%outline.length],b=outline[(i+1)%outline.length];return Math.abs((v.x-a.x)*(b.y-v.y)-(v.y-a.y)*(b.x-v.x))>1e-7;});
@@ -95,6 +132,11 @@ export function declaredFitIssue(project:Project,assembly:Assembly,fit:FitConstr
   const feature=fit.feature.kind==='pocket'?receiver.pockets[fit.feature.index]?.outline:receiver.holes[fit.feature.index];
   const slot=feature?rectangularSlot(feature):null;
   if(!slot)return issue('pending','当前只校验明确的矩形槽或孔配合');
+  // An un-clipped source rectangle is insufficient evidence of a real cavity.
+  // Open/clipped or merged machining has no supported rectangular fit semantics.
+  if(!feature!.every(p=>pointInPolygon(p,receiver.outline,true))||contourDistance(feature!,receiver.outline)<1e-7)return issue('pending','声明槽孔未形成接收零件材料内的完整封闭腔体');
+  const otherCuts=[...receiver.holes.filter((_,i)=>fit.feature.kind!=='hole'||i!==fit.feature.index),...receiver.pockets.filter((_,i)=>fit.feature.kind!=='pocket'||i!==fit.feature.index).map(p=>p.outline)];
+  if(otherCuts.some(cut=>contoursOverlap(feature!,cut)||contourDistance(feature!,cut)<1e-7))return issue('pending','声明槽孔与其他加工区域相连，合并腔体配合尚不支持');
   const face=fit.feature.kind==='pocket'?(assembly.pocketFaces[receiver.id]?.signature===geometrySignature(receiver)?assembly.pocketFaces[receiver.id].faces[fit.feature.index]:undefined):'front';
   if(!face)return issue('pending','槽加工面未确认');
   const depth=fit.feature.kind==='pocket'?receiver.pockets[fit.feature.index].depth:receiver.thickness;
@@ -151,7 +193,7 @@ export function analyzeAssembly(project:Project,assembly:Assembly,options:{insta
     const positions:number[]=[];let collision=false;
     for(const ca of a.cells)for(const cb of b.cells){
       if(!budget())break pairLoop;
-      if(!broadOverlap(vectorBounds(ca.vertices),vectorBounds(cb.vertices))||!cellsCollide(ca,cb))continue;
+      if(!broadOverlap(vectorBounds(ca.vertices),vectorBounds(cb.vertices),NUMERIC_EPSILON)||!cellsCollide(ca,cb))continue;
       collision=true;const clipped=intersectionPositions(ca,cb);for(const v of clipped)positions.push(v);
       if(positions.length>2_000_000){exhausted=true;break pairLoop;}
     }
@@ -160,7 +202,7 @@ export function analyzeAssembly(project:Project,assembly:Assembly,options:{insta
   if(result.bounds){
     const tolerance=assembly.targets.tolerance;
     if(!Number.isFinite(tolerance)||tolerance<0)addIssue('dimension','pending','目标尺寸公差无效',[]);
-    for(const [name,axis] of [['width','x'],['depth','y'],['height','z']] as const){const target=assembly.targets[name];if(target===undefined)continue;if(!Number.isFinite(target)||target<=0){addIssue('dimension','pending','目标尺寸无效',[]);continue;}const actual=result.bounds.max[axis]-result.bounds.min[axis];if(Math.abs(actual-target)>tolerance+1e-7)addIssue('dimension','error',`${name} 实际 ${actual.toFixed(2)} mm，目标 ${target} ± ${tolerance} mm`,[]);}
+    for(const [name,axis] of [['width','x'],['depth','y'],['height','z']] as const){const target=assembly.targets[name];if(target===undefined)continue;if(!Number.isFinite(target)||target<=0){addIssue('dimension','pending','目标尺寸无效',[]);continue;}const actual=result.bounds.max[axis]-result.bounds.min[axis];if(Math.abs(actual-target)>tolerance+1e-7)addIssue('dimension','error',`${({width:'宽',depth:'深',height:'高'})[name]} 实际 ${actual.toFixed(2)} mm，目标 ${target} ± ${tolerance} mm`,[]);}
   }
   for(const fit of assembly.fits){const issue=declaredFitIssue(project,assembly,fit);if(issue)result.issues.push(issue);}
   if(options.installation){
@@ -170,13 +212,31 @@ export function analyzeAssembly(project:Project,assembly:Assembly,options:{insta
       if(!s||stepsSeen.has(step.partId)){addIssue('installation','pending','安装顺序包含不存在或重复的零件',[step.partId]);continue;}stepsSeen.add(step.partId);
       if(!finite(step.direction)||length(step.direction)<1e-9||!Number.isFinite(step.distance)||step.distance<=0){addIssue('installation','pending','安装方向和行程必须明确且有效',[step.partId]);installed.push(s);continue;}
       const motion=scale(normalize(step.direction),step.distance);
-      const start=s.cells.map(c=>({vertices:c.vertices.map(v=>subtract(v,motion)),faces:c.faces}));
-      let blocked=false;
+      const start=s.cells.map(c=>({...c,vertices:c.vertices.map(v=>subtract(v,motion))}));
+      let first:{enter:number;leave:number;other:typeof solids[number]}|undefined;
+      const sweptBounds=vectorBounds(start.flatMap(c=>c.vertices).concat(s.cells.flatMap(c=>c.vertices)));
       for(const other of installed){
-        const sweptBounds=vectorBounds(start.flatMap(c=>c.vertices).concat(s.cells.flatMap(c=>c.vertices)));
         if(!broadOverlap(sweptBounds,other.bounds))continue;
-        for(const ca of start)for(const cb of other.cells){if(!budget())break sweepLoop;if(sweptCellsCollide(ca,cb,motion)){blocked=true;break;}}
-        if(blocked){addIssue('installation','error','声明的直线安装行程穿过已安装实体',[s.item.partId,other.item.partId]);break;}
+        for(const ca of start)for(const cb of other.cells){
+          if(!budget())break sweepLoop;
+          const interval=sweptCollisionInterval(ca,cb,motion);
+          if(interval&&(!first||interval.enter<first.enter))first={...interval,other};
+        }
+      }
+      if(first){
+        // The exact open SAT time interval supplies an interior overlap pose.
+        // This evaluates one known blocked time; it never samples the path.
+        const time=(first.enter+first.leave)/2,offset=scale(motion,time);
+        const movingPosition=add(subtract(s.item.position,motion),offset);
+        const movingCells=start.map(c=>({...c,vertices:c.vertices.map(v=>add(v,offset))}));
+        const collisionPositions:number[]=[];
+        for(const ca of movingCells)for(const cb of first.other.cells){
+          if(!budget())break sweepLoop;
+          if(!broadOverlap(vectorBounds(ca.vertices),vectorBounds(cb.vertices),NUMERIC_EPSILON)||!cellsCollide(ca,cb))continue;
+          for(const coordinate of intersectionPositions(ca,cb))collisionPositions.push(coordinate);
+          if(collisionPositions.length>2_000_000){exhausted=true;break sweepLoop;}
+        }
+        result.issues.push({id:`installation:${step.partId}`,kind:'installation',severity:'error',message:'声明的直线安装行程穿过已安装实体',partIds:[s.item.partId,first.other.item.partId],position:movingPosition,movingPosition,collisionPositions});
       }
       installed.push(s);
     }

@@ -15,10 +15,10 @@ export type Assembly = {
   targets: { width?: number; depth?: number; height?: number; tolerance: number };
   fits: FitConstraint[]; steps: AssemblyStep[]; sparePartIds: string[];
 };
-export type ConvexCell = { vertices: Vec3[]; faces: number[][] };
+export type ConvexCell = { vertices: Vec3[]; faces: number[][]; /** True only on the actual material boundary, never a decomposition seam. */ boundaryFaces?: boolean[] };
 export type Bounds3 = { min: Vec3; max: Vec3 };
 export type AssemblyModel = { partId: string; positions: number[]; cells: ConvexCell[]; complete: boolean; issues: string[]; bounds: Bounds3 };
-export type AssemblyIssue = { id: string; kind: 'collision'|'dimension'|'fit'|'geometry'|'missing'|'installation'; severity: 'error'|'pending'; message: string; partIds: string[]; position?: Vec3; constraintId?: string };
+export type AssemblyIssue = { id: string; kind: 'collision'|'dimension'|'fit'|'geometry'|'missing'|'installation'; severity: 'error'|'pending'; message: string; partIds: string[]; position?: Vec3; constraintId?: string; /** First continuously detected blocked motion pose and its real overlap mesh. */ movingPosition?: Vec3; collisionPositions?: number[] };
 export type CollisionRegion = { partIds: [string,string]; positions: number[] };
 export type AssemblyAnalysis = { issues: AssemblyIssue[]; collisions: CollisionRegion[]; bounds: Bounds3|null; complete: boolean; checkedPairs: number };
 export type PlacementCandidate = { id: string; partId: string; receiverId: string; pose: AssemblyItem; target: Vec3; label: string; status: 'valid'|'incomplete'|'invalid'; message?: string; feature?: {kind:'pocket'|'hole';index:number} };
