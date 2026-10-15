@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { AssemblyViewCube } from "./AssemblyViewCube";
+import { viewQuaternion } from "./viewCubeGeometry";
+import type { Rotation3 } from "../core/assemblyTypes";
 import {
   Move,
   Rotate3D,
@@ -36,6 +39,9 @@ export function AssemblyCanvas(props: Props) {
     api = useRef<ReturnType<typeof createAssemblyScene> | null>(null);
   const latest = useRef(props);
   latest.current = props;
+  const [orientation, setOrientation] = useState<Rotation3>(() =>
+    viewQuaternion({ x: 1, y: -1.4, z: 1 }),
+  );
   const [webglError, setWebglError] = useState(""),
     [retry, setRetry] = useState(0);
   useEffect(() => {
@@ -47,6 +53,7 @@ export function AssemblyCanvas(props: Props) {
         commit: (pose) => latest.current.callbacks.commit(pose),
         snap: (id) => latest.current.callbacks.snap(id),
         error: (message) => latest.current.callbacks.error(message),
+        orientation: setOrientation,
       });
       api.current.update(latest.current.state);
       setWebglError("");
@@ -121,18 +128,22 @@ export function AssemblyCanvas(props: Props) {
         {feedback}
       </div>
       <div className="assembly-view-buttons floating" aria-label="三维视图">
-        {(["all", "selected", "front", "side", "top"] as const).map(
-          (view, index) => (
-            <button
-              key={view}
-              onClick={() => api.current?.fit(view)}
-              disabled={view === "selected" && !selectedItem}
-            >
-              {["适应全部", "定位所选", "前视", "侧视", "顶视"][index]}
-            </button>
-          ),
-        )}
+        {(["all", "selected"] as const).map((view, index) => (
+          <button
+            key={view}
+            onClick={() => api.current?.fit(view)}
+            disabled={view === "selected" && !selectedItem}
+          >
+            {["适应全部", "定位所选"][index]}
+          </button>
+        ))}
       </div>
+      {!webglError && (
+        <AssemblyViewCube
+          orientation={orientation}
+          onOrient={(direction) => api.current?.orient(direction)}
+        />
+      )}
       {props.state.installationPreview && (
         <button
           className="assembly-end-preview floating"

@@ -9,12 +9,18 @@ import {
   geometrySignature,
   transformPoint,
 } from "../core/assemblyGeometry";
+import {
+  viewQuaternion,
+  orientationPosition,
+  interpolateViewQuaternion,
+} from "./viewCubeGeometry";
 import { weakSnap } from "../core/assemblyGuidance";
 import type {
   Assembly,
   AssemblyAnalysis,
   AssemblyItem,
   PlacementCandidate,
+  Rotation3,
   Vec3,
 } from "../core/assemblyTypes";
 import type { Project } from "../core/types";
@@ -52,6 +58,7 @@ export type SceneCallbacks = {
   commit: (pose: AssemblyItem) => void;
   snap: (id: string | null) => void;
   error: (message: string) => void;
+  orientation?: (rotation: Rotation3) => void;
 };
 type Entry = {
   group: THREE.Group;
@@ -136,11 +143,22 @@ export function createAssemblyScene(
   let hovered: string | null = null;
   const ray = new THREE.Raycaster(),
     mouse = new THREE.Vector2();
+  let orientationFrame = 0;
+  const lastOrientation = new THREE.Quaternion(0, 0, 0, 0);
   const render = () => {
     if (disposed || frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
       renderer.render(scene, camera);
+      if (Math.abs(lastOrientation.dot(camera.quaternion)) < 1 - 1e-12) {
+        lastOrientation.copy(camera.quaternion);
+        callbacks.orientation?.({
+          x: camera.quaternion.x,
+          y: camera.quaternion.y,
+          z: camera.quaternion.z,
+          w: camera.quaternion.w,
+        });
+      }
     });
   };
   const projectPoint = (p: Vec3) => {
@@ -522,7 +540,51 @@ export function createAssemblyScene(
       overlays.add(line);
     }
   }
+  function stopOrientation() {
+    if (!orientationFrame) return;
+    cancelAnimationFrame(orientationFrame);
+    orientationFrame = 0;
+    camera.up.set(0, 0, 1);
+    orbit.enabled = true;
+    if (!disposed) {
+      orbit.update();
+      camera.updateMatrixWorld(true);
+      render();
+    }
+  }
+  function orient(direction: Vec3) {
+    stopOrientation();
+    cancelDrag();
+    const from = camera.quaternion.clone(),
+      to = viewQuaternion(direction);
+    if (from.angleTo(to) < 0.001) return;
+    const focus = orbit.target.clone(),
+      radius = camera.position.distanceTo(focus) || 1;
+    const started = performance.now();
+    orbit.enabled = false;
+    const tick = (now: number) => {
+      if (disposed) return;
+      const t = Math.min(1, (now - started) / 500),
+        ease = 1 - Math.pow(1 - t, 3);
+      const q = interpolateViewQuaternion(from, to, ease);
+      camera.position.copy(orientationPosition(q, focus, radius));
+      camera.up.set(0, 1, 0).applyQuaternion(q);
+      camera.quaternion.copy(q);
+      render();
+      if (t < 1) orientationFrame = requestAnimationFrame(tick);
+      else {
+        orientationFrame = 0;
+        camera.up.set(0, 0, 1);
+        orbit.enabled = true;
+        orbit.update();
+        render();
+      }
+    };
+    orientationFrame = requestAnimationFrame(tick);
+  }
   function fit(kind: "all" | "selected" | "front" | "side" | "top" = "all") {
+    stopOrientation();
+    cancelDrag();
     const box = new THREE.Box3();
     if (kind === "selected" && state?.selected) {
       const e = entries.get(state.selected);
@@ -789,6 +851,7 @@ export function createAssemblyScene(
   };
   let clickStart: { x: number; y: number; pointerId: number } | null = null;
   const onCapture = (event: PointerEvent) => {
+    stopOrientation();
     clickStart = {
       x: event.clientX,
       y: event.clientY,
@@ -922,9 +985,14 @@ export function createAssemblyScene(
     }
   };
   const onBlur = () => {
+    stopOrientation();
     alt = false;
     cancelDrag();
   };
+  renderer.domElement.addEventListener("wheel", stopOrientation, {
+    capture: true,
+    passive: true,
+  });
   renderer.domElement.addEventListener("pointerdown", onCapture, true);
   renderer.domElement.addEventListener("pointermove", onMove, true);
   renderer.domElement.addEventListener("pointerup", onUp, true);
@@ -951,11 +1019,14 @@ export function createAssemblyScene(
   return {
     update,
     fit,
+    orient,
     cancelDrag,
     dispose() {
       disposed = true;
+      stopOrientation();
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
+      renderer.domElement.removeEventListener("wheel", stopOrientation, true);
       renderer.domElement.removeEventListener("pointerdown", onCapture, true);
       renderer.domElement.removeEventListener("pointermove", onMove, true);
       renderer.domElement.removeEventListener("pointerup", onUp, true);

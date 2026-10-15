@@ -832,7 +832,7 @@
 
 .assembly-end-preview {
   position: absolute;
-  right: 14px;
+  left: 20px;
   top: 80px;
   font-size: 11px;
   padding: 7px 10px;
@@ -1068,4 +1068,94 @@
 .workspace-mode-switch button.active:hover {
   background: var(--ink-soft);
   color: var(--ink);
+}
+.assembly-canvas {
+  container-type: inline-size;
+}
+.assembly-view-cube {
+  position: absolute;
+  right: 12px;
+  bottom: 13px;
+  width: 112px;
+  z-index: 2;
+  user-select: none;
+}
+.assembly-view-cube svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.cube-face {
+  fill: #f8f6ee;
+  stroke: #9da6b5;
+  stroke-width: 0.85;
+  stroke-linejoin: round;
+}
+.cube-face-右,
+.cube-face-左 {
+  fill: #e5e7eb;
+}
+.cube-face-前,
+.cube-face-后 {
+  fill: #efede7;
+}
+.cube-zone {
+  cursor: pointer;
+  outline: none;
+}
+.cube-zone polygon {
+  fill: transparent;
+  stroke: #b2b9c5;
+  stroke-width: 0.4;
+  stroke-linejoin: round;
+}
+.cube-zone.selected polygon {
+  fill: #8ba9e2;
+  fill-opacity: 0.15;
+}
+.cube-zone.hovered polygon,
+.cube-zone:focus-visible polygon {
+  fill: #6d96e3;
+  fill-opacity: 0.35;
+  stroke: #315cb9;
+  stroke-width: 1;
+}
+.cube-label {
+  fill: #556273;
+  font-family: var(--sans-font, system-ui, sans-serif);
+  font-weight: 600;
+  pointer-events: none;
+}
+.cube-caption {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cube-caption button {
+  padding: 4px;
+  min-height: 24px;
+}
+.cube-caption button svg {
+  width: 14px;
+  height: 14px;
+}
+@container (max-width: 650px) {
+  .assembly-view-cube {
+    top: 75px;
+    bottom: auto;
+    right: 7px;
+    width: 100px;
+  }
+}
+@media (max-width: 900px) {
+  .assembly-view-cube {
+    top: 75px;
+    bottom: auto;
+    right: 7px;
+    width: 96px;
+  }
 }
