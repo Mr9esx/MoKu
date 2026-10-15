@@ -3,7 +3,6 @@ import { AssemblyViewCube } from "./AssemblyViewCube";
 import { viewQuaternion } from "./viewCubeGeometry";
 import type { Rotation3 } from "../core/assemblyTypes";
 import {
-  Rotate3D,
   Magnet,
   Scan,
   Eye,
@@ -24,7 +23,6 @@ type Props = {
   guidancePending: boolean;
   error: string;
   snapped: string | null;
-  onRotate: () => void;
   onMagnet: () => void;
   onXray: () => void;
   onExplode: () => void;
@@ -99,9 +97,7 @@ export function AssemblyCanvas(props: Props) {
                   : selected && !selectedItem
                     ? "此零件尚未放入场景 · 点击“放入场景”继续"
                     : selected
-                      ? props.state.tool === "rotate"
-                        ? "拖动圆环旋转 · 点击零件回到移动"
-                        : "拖动零件移动 · 拖动箭头沿轴移动"
+                      ? "拖动零件或箭头移动 · 拖动圆环旋转"
                       : props.state.assembly.items.length
                         ? "点击场景中的零件即可选择，也可以直接拖动"
                         : "点击左侧零件，放入场景开始组装")));
@@ -162,24 +158,6 @@ export function AssemblyCanvas(props: Props) {
           ))}
       </div>
       <nav className="assembly-tools floating" aria-label="三维编辑工具">
-        <button
-          aria-label="旋转"
-          aria-pressed={props.state.tool === "rotate"}
-          className={props.state.tool === "rotate" ? "active" : ""}
-          onClick={props.onRotate}
-          disabled={
-            !selectedItem ||
-            selectedItem.locked ||
-            props.state.blocked ||
-            props.state.exploded ||
-            !!props.state.installationPreview
-          }
-          data-tooltip="拖动圆环旋转；再次点击回到移动"
-        >
-          <Rotate3D size={17} />
-          <span>旋转</span>
-        </button>
-        <span className="tool-divider" />
         <button
           aria-label="弱磁吸"
           aria-pressed={props.state.magnet}

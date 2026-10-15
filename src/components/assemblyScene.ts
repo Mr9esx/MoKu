@@ -1,9 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import {
-  TransformControls,
-  TransformControlsGizmo,
-} from "three/addons/controls/TransformControls.js";
+import { createAssemblyTransformControls } from "./assemblyTransformControls";
 import {
   buildAssemblyModel,
   geometrySignature,
@@ -37,7 +34,6 @@ export type SceneState = {
   selected: string | null;
   candidates: PlacementCandidate[];
   analysis: AssemblyAnalysis | null;
-  tool: "translate" | "rotate";
   magnet: boolean;
   xray: boolean;
   exploded: boolean;
@@ -116,11 +112,8 @@ export function createAssemblyScene(
   const orbit = new OrbitControls(camera, renderer.domElement);
   orbit.target.set(60, 60, 25);
   orbit.enableDamping = false;
-  const controls = new TransformControls(camera, renderer.domElement);
-  controls.setSpace("world");
-  controls.setSize(0.85);
-  controls.setColors("#3861b4", "#658774", "#7e879b", "#dfb322");
-  scene.add(controls.getHelper());
+  const transform = createAssemblyTransformControls(camera, renderer.domElement);
+  scene.add(transform.helper);
   const grid = new THREE.GridHelper(2000, 80, "#bac1cf", "#e3e4e4");
   grid.rotation.x = Math.PI / 2;
   grid.position.z = -0.15;
@@ -142,6 +135,7 @@ export function createAssemblyScene(
     applyingSnap = false,
     fitOnce = false;
   let hovered: string | null = null;
+  let gizmoPointerId: number | null = null;
   const ray = new THREE.Raycaster(),
     mouse = new THREE.Vector2();
   let orientationFrame = 0;
@@ -195,18 +189,9 @@ export function createAssemblyScene(
       entry.edge.renderOrder = selected ? 10 : 0;
     }
   }
-  const hitGizmo = () => {
-    if (!controls.object || !controls.enabled) return false;
-    const gizmo = controls
-      .getHelper()
-      .children.find((child) => child instanceof TransformControlsGizmo) as
-      TransformControlsGizmo | undefined;
-    return (
-      !!gizmo &&
-      ray
-        .intersectObject(gizmo.picker[controls.mode], true)
-        .some((hit) => hit.object.visible)
-    );
+  const transformPointer = (event: PointerEvent) => {
+    setRay(event);
+    return { x: mouse.x, y: mouse.y, button: event.button };
   };
   const clear = (group: THREE.Group) => {
     for (const child of [...group.children]) {
@@ -635,7 +620,13 @@ export function createAssemblyScene(
     render();
   }
   function update(next: SceneState) {
-    if (next.blocked && (direct || gizmoOriginal)) cancelDrag();
+    const draggedId = direct?.id ?? gizmoOriginal?.partId;
+    const draggedItem = next.assembly.items.find(item => item.partId === draggedId);
+    if (draggedId && (
+      next.blocked || next.exploded || next.installationPreview ||
+      next.selected !== draggedId || next.hiddenPartIds?.includes(draggedId) ||
+      !draggedItem || draggedItem.locked
+    )) cancelDrag();
     state = next;
     const wanted = new Set(next.assembly.items.map((i) => i.partId));
     for (const [id, e] of entries)
@@ -731,10 +722,10 @@ export function createAssemblyScene(
       !next.exploded &&
       !next.installationPreview
     ) {
-      if (controls.object !== entry.group) controls.attach(entry.group);
-      controls.setMode(next.tool);
-      controls.setRotationSnap(alt ? null : Math.PI / 2);
-    } else controls.detach();
+      transform.attach(entry.group);
+      for (const control of transform.controls)
+        control.setRotationSnap(alt ? null : Math.PI / 2);
+    } else transform.detach();
     highlightEntries();
     updateOverlays();
     addDimensionMarks();
@@ -793,43 +784,46 @@ export function createAssemblyScene(
     callbacks.snap(held);
     return snapped.pose;
   }
-  const onObjectChange = () => {
-    if (!state || !gizmoOriginal || applyingSnap || !controls.object) return;
-    const group = controls.object as THREE.Group;
-    let pose = poseOf(group, gizmoOriginal.partId);
-    if (controls.mode === "translate")
-      pose = snapPose(pose, controls.axis ?? "XYZ");
-    applyingSnap = true;
-    group.position.copy(vector(pose.position));
-    applyingSnap = false;
-    callbacks.preview(pose);
-    render();
-  };
-  controls.addEventListener("objectChange", onObjectChange);
-  controls.addEventListener("mouseDown", () => {
-    if (!state?.selected) return;
-    const item = state.assembly.items.find((i) => i.partId === state!.selected);
-    if (item) {
-      gizmoOriginal = structuredClone(item);
+  for (const control of transform.controls) {
+    const onObjectChange = () => {
+      if (!state || !gizmoOriginal || applyingSnap || transform.active !== control || !control.object) return;
+      const group = control.object as THREE.Group;
+      let pose = poseOf(group, gizmoOriginal.partId);
+      if (control.mode === "translate")
+        pose = snapPose(pose, control.axis ?? "XYZ");
+      applyingSnap = true;
+      group.position.copy(vector(pose.position));
+      applyingSnap = false;
+      callbacks.preview(pose);
+      render();
+    };
+    control.addEventListener("objectChange", onObjectChange);
+    control.addEventListener("mouseDown", () => {
+      if (!state?.selected) return;
+      const item = state.assembly.items.find((i) => i.partId === state!.selected);
+      if (item) {
+        gizmoOriginal = structuredClone(item);
+        held = null;
+        orbit.enabled = false;
+      }
+    });
+    control.addEventListener("mouseUp", () => {
+      if (!gizmoOriginal) return;
+      const entry = entries.get(gizmoOriginal.partId);
+      const original = gizmoOriginal;
+      gizmoOriginal = null;
       held = null;
-      orbit.enabled = false;
-    }
-  });
-  controls.addEventListener("mouseUp", () => {
-    if (!gizmoOriginal) return;
-    const entry = entries.get(gizmoOriginal.partId);
-    const original = gizmoOriginal;
-    gizmoOriginal = null;
-    held = null;
-    orbit.enabled = true;
-    if (entry) {
-      const pose = poseOf(entry.group, original.partId);
-      callbacks.preview(null);
-      callbacks.snap(null);
-      callbacks.commit(pose);
-    }
-    render();
-  });
+      orbit.enabled = true;
+      if (entry) {
+        const pose = poseOf(entry.group, original.partId);
+        callbacks.preview(null);
+        callbacks.snap(null);
+        callbacks.commit(pose);
+      }
+      render();
+    });
+    control.addEventListener("change", render);
+  }
   const onDown = (event: PointerEvent) => {
     if (
       event.button !== 0 ||
@@ -840,7 +834,13 @@ export function createAssemblyScene(
     )
       return;
     const hit = pick(event);
-    if (hitGizmo()) return;
+    if (transform.down(transformPointer(event))) {
+      gizmoPointerId = event.pointerId;
+      renderer.domElement.setPointerCapture(event.pointerId);
+      renderer.domElement.style.cursor = "grabbing";
+      event.stopImmediatePropagation();
+      return;
+    }
     const id = hit?.object.userData.partId as string | undefined;
     const item = state.assembly.items.find((i) => i.partId === id);
     if (!hit || !item) return;
@@ -862,6 +862,10 @@ export function createAssemblyScene(
   };
   let clickStart: { x: number; y: number; pointerId: number } | null = null;
   const onCapture = (event: PointerEvent) => {
+    if (direct || transform.active) {
+      event.stopImmediatePropagation();
+      return;
+    }
     stopOrientation();
     clickStart = {
       x: event.clientX,
@@ -871,7 +875,14 @@ export function createAssemblyScene(
     onDown(event);
   };
   const onMove = (event: PointerEvent) => {
+    if (transform.active) {
+      event.stopImmediatePropagation();
+      if (event.pointerId === gizmoPointerId)
+        transform.move(transformPointer(event));
+      return;
+    }
     if (!direct) {
+      const overGizmo = transform.hover(transformPointer(event));
       const hit = pick(event),
         id = hit?.object.userData.partId ?? null;
       if (id !== hovered) {
@@ -879,10 +890,11 @@ export function createAssemblyScene(
         highlightEntries();
         render();
       }
-      renderer.domElement.style.cursor = id ? "grab" : "default";
+      renderer.domElement.style.cursor = overGizmo || id ? "grab" : "default";
       return;
     }
     event.stopImmediatePropagation();
+    if (event.pointerId !== direct.pointerId) return;
     if (!direct.movable) return;
     setRay(event);
     if (
@@ -914,14 +926,26 @@ export function createAssemblyScene(
   const onLeave = () => {
     if (direct || gizmoOriginal) return;
     hovered = null;
-    if (!controls.dragging) controls.axis = null;
+    transform.clearHover();
     renderer.domElement.style.cursor = "default";
     highlightEntries();
     render();
   };
   const onUp = (event: PointerEvent) => {
+    if (transform.active) {
+      event.stopImmediatePropagation();
+      if (event.pointerId !== gizmoPointerId) return;
+      transform.up();
+      gizmoPointerId = null;
+      clickStart = null;
+      if (renderer.domElement.hasPointerCapture(event.pointerId))
+        renderer.domElement.releasePointerCapture(event.pointerId);
+      renderer.domElement.style.cursor = "grab";
+      return;
+    }
     if (direct) {
       event.stopImmediatePropagation();
+      if (event.pointerId !== direct.pointerId) return;
       const drag = direct;
       direct = null;
       orbit.enabled = true;
@@ -938,7 +962,7 @@ export function createAssemblyScene(
       render();
       return;
     }
-    if (gizmoOriginal || controls.dragging) return;
+    if (gizmoOriginal) return;
     if (
       clickStart &&
       Math.hypot(event.clientX - clickStart.x, event.clientY - clickStart.y) <=
@@ -948,18 +972,12 @@ export function createAssemblyScene(
   };
   function cancelDrag() {
     const original = direct?.original ?? gizmoOriginal;
-    if (!original) return false;
+    if (!original && !transform.active) return false;
     // Clear our transaction before Three dispatches reset/mouseUp events.
-    // reset() alone keeps dragging=true and would allow later pointer moves.
     gizmoOriginal = null;
-    if (controls.dragging) {
-      controls.reset();
-      controls.pointerUp(null);
-      controls.disconnect();
-      controls.connect(renderer.domElement);
-    }
-    const entry = entries.get(original.partId);
-    if (entry) {
+    transform.reset();
+    const entry = original ? entries.get(original.partId) : null;
+    if (entry && original) {
       entry.group.position.copy(vector(original.position));
       entry.group.quaternion.set(
         original.rotation.x,
@@ -968,13 +986,14 @@ export function createAssemblyScene(
         original.rotation.w,
       );
     }
-    const pointerId = direct?.pointerId ?? clickStart?.pointerId;
+    const pointerId = direct?.pointerId ?? gizmoPointerId ?? clickStart?.pointerId;
     if (
       pointerId !== undefined &&
       renderer.domElement.hasPointerCapture(pointerId)
     )
       renderer.domElement.releasePointerCapture(pointerId);
     clickStart = null;
+    gizmoPointerId = null;
     direct = null;
     renderer.domElement.style.cursor = "default";
     gizmoOriginal = null;
@@ -988,7 +1007,8 @@ export function createAssemblyScene(
   const onKey = (event: KeyboardEvent) => {
     if (event.key === "Alt") {
       alt = event.type === "keydown";
-      controls.setRotationSnap(alt ? null : Math.PI / 2);
+      for (const control of transform.controls)
+        control.setRotationSnap(alt ? null : Math.PI / 2);
     }
     if (event.key === "Escape" && event.type === "keydown" && cancelDrag()) {
       event.preventDefault();
@@ -1013,7 +1033,6 @@ export function createAssemblyScene(
   window.addEventListener("keyup", onKey, true);
   window.addEventListener("blur", onBlur);
   orbit.addEventListener("change", render);
-  controls.addEventListener("change", render);
   const resize = () => {
     const r = container.getBoundingClientRect();
     if (!r.width || !r.height) return;
@@ -1047,7 +1066,7 @@ export function createAssemblyScene(
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("keyup", onKey, true);
       window.removeEventListener("blur", onBlur);
-      controls.dispose();
+      transform.dispose();
       orbit.dispose();
       disposeObject(scene);
       renderer.dispose();

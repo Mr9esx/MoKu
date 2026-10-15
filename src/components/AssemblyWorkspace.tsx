@@ -33,8 +33,7 @@ export default function AssemblyWorkspace({
   const [selected, setSelected] = useState<string | null>(null),
     [query, setQuery] = useState(""),
     [mobile, setMobile] = useState("canvas");
-  const [tool, setTool] = useState<SceneState["tool"]>("translate"),
-    [magnet, setMagnet] = useState(true),
+  const [magnet, setMagnet] = useState(true),
     [xray, setXray] = useState(false),
     [exploded, setExploded] = useState(false);
   const [preview, setPreview] = useState<AssemblyItem | null>(null),
@@ -90,7 +89,6 @@ export default function AssemblyWorkspace({
       setMachiningFace(null);
       setExploded(false);
       setSelected(id);
-      setTool("translate");
       setSnapped(null);
       setCandidateId(null);
       setMobile("canvas");
@@ -203,9 +201,6 @@ export default function AssemblyWorkspace({
         s.undo();
         return;
       }
-      if (["v", "g"].includes(e.key.toLowerCase())) setTool("translate");
-      if (e.key.toLowerCase() === "r")
-        setTool((current) => (current === "rotate" ? "translate" : "rotate"));
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
@@ -230,7 +225,6 @@ export default function AssemblyWorkspace({
     selected,
     candidates,
     analysis: detection.analysis,
-    tool,
     magnet,
     xray,
     exploded,
@@ -416,9 +410,6 @@ export default function AssemblyWorkspace({
         guidancePending={detection.guidancePending}
         error={error || detection.error || detection.guidanceError || ""}
         snapped={snapped}
-        onRotate={() =>
-          setTool((current) => (current === "rotate" ? "translate" : "rotate"))
-        }
         onMagnet={() => setMagnet((v) => !v)}
         onXray={() => setXray((v) => !v)}
         onExplode={() => {
@@ -480,7 +471,7 @@ export default function AssemblyWorkspace({
         <span>
           {blocked
             ? "当前装配只读"
-            : error || "点选后拖动 · R 切换旋转 · Alt 暂停磁吸 · Esc 取消"}
+            : error || "点选零件即可移动与旋转 · Alt 暂停磁吸 · Esc 取消"}
         </span>
       </div>
     </div>
