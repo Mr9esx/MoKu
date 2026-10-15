@@ -2453,8 +2453,10 @@ input::placeholder {
 
 /* Contextual rail: summary first, details when needed. */
 .analysis-panel .panel-heading,
-.inspector .panel-heading {
-  min-height: 52px;
+.inspector .panel-heading,
+.assembly-inspector .panel-heading {
+  height: 57px;
+  min-height: 57px;
   padding: 12px 18px;
   flex-shrink: 0;
 }
