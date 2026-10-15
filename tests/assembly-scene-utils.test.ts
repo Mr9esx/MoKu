@@ -112,6 +112,11 @@ describe("explicit assembly references", () => {
 });
 
 describe("reference preview validation", () => {
+  it("prioritizes a definite contact collision over an earlier unconfirmed machining face", () => {
+    const pending = { id: "geometry:other", kind: "geometry" as const, severity: "pending" as const, message: "槽加工面未确认", partIds: ["moving"] };
+    const collision = { id: "collision:pair", kind: "collision" as const, severity: "error" as const, message: "实体材料发生干涉", partIds: ["moving", "host"] };
+    expect(referencePreviewIssue({ issues: [pending, collision], collisions: [], bounds: null, complete: false, checkedPairs: 0 }, ["moving", "host"])).toBe(collision);
+  });
   it("blocks a preview when global geometry or dimension evidence is unverified", () => {
     const issue = {
       id: "resource-limit",

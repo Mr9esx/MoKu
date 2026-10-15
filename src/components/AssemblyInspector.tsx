@@ -9,7 +9,7 @@ import {
   Plus,
   AlertTriangle,
   CheckCircle2,
-  PackageMinus,
+  Link2,
 } from "lucide-react";
 import type {
   Assembly,
@@ -122,6 +122,16 @@ type Props = {
   commit: (assembly: Assembly) => boolean;
   select: (id: string) => void;
   add: (id: string) => void;
+  remove: () => void;
+  join: {
+    stage: "source" | "target" | "preview";
+    targetName?: string;
+    sourceLabel?: string;
+    targetLabel?: string;
+    issue?: AssemblyIssue;
+  } | null;
+  startJoin: () => void;
+  applyJoin: () => void;
   locate: (issue: AssemblyIssue) => void;
   previewStep: (step: AssemblyStep | null, progress: number) => void;
   clearPreview: () => void;
@@ -145,14 +155,6 @@ export function AssemblyInspector(p: Props) {
       ...p.assembly,
       items: p.assembly.items.map((i) => (i.partId === next.partId ? next : i)),
     });
-  const removeItem = () => {
-    if (!item || p.blocked) return;
-    p.clearPreview();
-    p.commit({
-      ...p.assembly,
-      items: p.assembly.items.filter((i) => i.partId !== item.partId),
-    });
-  };
   const dims = p.analysis?.bounds
     ? {
         width: p.analysis.bounds.max.x - p.analysis.bounds.min.x,
@@ -207,20 +209,7 @@ export function AssemblyInspector(p: Props) {
       >
         <div className="assembly-compact-heading">
           <span>{part ? "当前零件" : "开始组装"}</span>
-          {item && (
-            <div className="assembly-compact-actions">
-              {item.locked && <LockKeyhole size={14} aria-label="零件已锁定" />}
-              <button
-                className="assembly-compact-remove"
-                disabled={p.blocked}
-                onClick={removeItem}
-                title="移出组装，保留左侧零件，可撤销"
-              >
-                <PackageMinus size={14} />
-                移出组装
-              </button>
-            </div>
-          )}
+          {item?.locked && <LockKeyhole size={14} aria-label="零件已锁定" />}
         </div>
         <h2>{part?.name ?? "点选，再搭建"}</h2>
         {part ? (
@@ -249,6 +238,29 @@ export function AssemblyInspector(p: Props) {
           >
             放入场景
           </button>
+        )}
+        {item && p.assembly.items.length > 1 && (
+          <section className="assembly-direct-join" aria-label="点面拼合">
+            {p.join ? (
+              <>
+                <strong>{p.join.stage === "source" ? "1 · 点击这块板的接触面" : p.join.stage === "target" ? "2 · 点击另一块板的接触位置" : "3 · 确认拼合预览"}</strong>
+                <p>{p.join.stage === "preview" ? `${part?.name} · ${p.join.sourceLabel} → ${p.join.targetName} · ${p.join.targetLabel}，两处点击位置贴合。` : p.join.stage === "target" ? `已选 ${part?.name} 的${p.join.sourceLabel}。点击另一块板的接触位置。` : "在 3D 场景里点面，自动调整位置与朝向。可拖空白转动视角。"}</p>
+                {p.join.stage === "preview" && (
+                  <p role="status">{p.pending ? "正在检查拼合位置…" : !p.analysis ? "检测暂不可用，尚不能应用拼合。" : p.join.issue ? p.join.issue.message + (p.join.issue.severity === "pending" ? "；可先保存位置，检测仍待确认。" : "，请重新选择接触位置。") : "接触位置未发现冲突。"}</p>
+                )}
+                <div>
+                  {p.join.stage === "preview" && <button className="primary" disabled={p.blocked || p.pending || !p.analysis || p.join.issue?.severity === "error"} onClick={p.applyJoin}>应用拼合</button>}
+                  {p.join.stage === "preview" && <button onClick={p.startJoin} disabled={p.blocked}>重新选面</button>}
+                  <button onClick={p.clearPreview}>取消</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <button className="wide" disabled={p.blocked || item.locked} onClick={p.startJoin}><Link2 size={15} />点面拼合</button>
+                <p>依次点两块板的接触面，自动贴合。</p>
+              </>
+            )}
+          </section>
         )}
         {!!suggestions.length && item && (
           <div className="assembly-quick-placements">
@@ -627,7 +639,7 @@ export function AssemblyInspector(p: Props) {
                       <summary>零件操作</summary>
                       <button
                         className="assembly-remove"
-                        onClick={removeItem}
+                        onClick={p.remove}
                       >
                         移出组装，保留零件
                       </button>

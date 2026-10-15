@@ -25,6 +25,7 @@ import type { Project } from "../core/types";
 import {
   disposeObject,
   visibleSnapTarget,
+  faceReferenceAt,
   type AssemblyReference,
 } from "./assemblySceneUtils";
 
@@ -43,6 +44,8 @@ export type SceneState = {
   hiddenPartIds?: string[];
   machiningFace?: "front" | "back" | null;
   referenceMarkers?: { partId: string; reference: AssemblyReference }[];
+  facePicking?: { partId: string; stage: "source" | "target" } | null;
+  editingDisabled?: boolean;
   installationPreview?: {
     partId: string;
     position: Vec3;
@@ -57,6 +60,7 @@ export type SceneCallbacks = {
   error: (message: string) => void;
   orientation?: (rotation: Rotation3) => void;
   originSnap?: (axes: (keyof Vec3)[]) => void;
+  facePick?: (partId: string, reference: AssemblyReference) => void;
 };
 type Entry = {
   group: THREE.Group;
@@ -130,7 +134,9 @@ export function createAssemblyScene(
   const entries = new Map<string, Entry>(),
     overlays = new THREE.Group(),
     ghosts = new THREE.Group();
-  scene.add(overlays, ghosts);
+  const faceHover = new THREE.Group();
+  scene.add(overlays, ghosts, faceHover);
+  let faceDown: { pointerId: number; x: number; y: number; partId: string; reference: AssemblyReference } | null = null;
   let state: SceneState | null = null,
     disposed = false,
     frame = 0,
@@ -188,6 +194,38 @@ export function createAssemblyScene(
       false,
     )[0];
   };
+  function pickContact(event: PointerEvent) {
+    if (!state?.facePicking || state.blocked) return null;
+    const hit = pick(event);
+    const id = hit?.object.userData.partId as string | undefined;
+    if (!id || !hit?.face || (state.facePicking.stage === "source" ? id !== state.facePicking.partId : id === state.facePicking.partId)) return null;
+    const entry = entries.get(id);
+    if (!entry) return null;
+    const reference = faceReferenceAt(poseOf(entry.group, id), hit.point, hit.face.normal);
+    return reference ? { partId: id, reference, hit, entry } : null;
+  }
+  function clearFaceHover() {
+    disposeObject(faceHover);
+    faceHover.clear();
+  }
+  function showFaceHover(contact: ReturnType<typeof pickContact>) {
+    clearFaceHover();
+    if (!contact) return;
+    const point = contact.hit.point;
+    const radius = Math.max(0.5, camera.position.distanceTo(point) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 22 / Math.max(1, renderer.domElement.clientHeight));
+    const colour = state?.facePicking?.stage === "source" ? "#315cb9" : "#e4b61a";
+    const marker = new THREE.Mesh(new THREE.CircleGeometry(radius, 32), new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthTest: false }));
+    marker.position.copy(point);
+    marker.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), vector(contact.reference.normal!).applyQuaternion(contact.entry.group.quaternion));
+    marker.renderOrder = 15;
+    faceHover.add(marker);
+  }
+  function cancelFaceGesture() {
+    if (faceDown && renderer.domElement.hasPointerCapture(faceDown.pointerId)) renderer.domElement.releasePointerCapture(faceDown.pointerId);
+    faceDown = null;
+    orbit.enabled = true;
+    clearFaceHover();
+  }
   function highlightEntries() {
     for (const [id, entry] of entries) {
       const selected = state?.selected === id,
@@ -278,6 +316,7 @@ export function createAssemblyScene(
     );
     if (
       !selectedPart ||
+      state.editingDisabled ||
       state.hiddenPartIds?.includes(selectedPart.id) ||
       state.exploded ||
       state.installationPreview
@@ -416,10 +455,14 @@ export function createAssemblyScene(
       if (!entry?.group.visible) continue;
       entry.group.updateMatrixWorld(true);
       const point = entry.group.localToWorld(vector(marker.reference.position));
+      const selectedMarker = marker.partId === state.selected;
+      const radius = Math.max(0.5, camera.position.distanceTo(point) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * (selectedMarker ? 10 : 16) / Math.max(1, renderer.domElement.clientHeight));
       const dot = new THREE.Mesh(
-        new THREE.SphereGeometry(2, 12, 8),
+        new THREE.SphereGeometry(radius, 12, 8),
         new THREE.MeshBasicMaterial({
-          color: marker.partId === state.selected ? "#315cb9" : "#e4b61a",
+          color: selectedMarker ? "#315cb9" : "#e4b61a",
+          transparent: true,
+          opacity: selectedMarker ? 1 : 0.6,
           depthTest: false,
         }),
       );
@@ -433,10 +476,10 @@ export function createAssemblyScene(
         const arrow = new THREE.ArrowHelper(
           direction,
           point,
-          20,
-          "#315cb9",
-          5,
-          3,
+          radius * 4,
+          selectedMarker ? "#315cb9" : "#e4b61a",
+          radius,
+          radius * 0.6,
         );
         (arrow.line.material as THREE.LineBasicMaterial).depthTest = false;
         (arrow.cone.material as THREE.MeshBasicMaterial).depthTest = false;
@@ -635,10 +678,11 @@ export function createAssemblyScene(
     const draggedId = direct?.id ?? gizmoOriginal?.partId;
     const draggedItem = next.assembly.items.find(item => item.partId === draggedId);
     if (draggedId && (
-      next.blocked || next.exploded || next.installationPreview ||
+      next.blocked || next.exploded || next.installationPreview || next.editingDisabled ||
       next.selected !== draggedId || next.hiddenPartIds?.includes(draggedId) ||
       !draggedItem || draggedItem.locked
     )) cancelDrag();
+    if (next.blocked || next.facePicking?.stage !== state?.facePicking?.stage || next.facePicking?.partId !== state?.facePicking?.partId) cancelFaceGesture();
     state = next;
     const wanted = new Set(next.assembly.items.map((i) => i.partId));
     for (const [id, e] of entries)
@@ -731,6 +775,7 @@ export function createAssemblyScene(
       item &&
       !item.locked &&
       !next.blocked &&
+      !next.editingDisabled &&
       !next.exploded &&
       !next.installationPreview
     ) {
@@ -850,6 +895,17 @@ export function createAssemblyScene(
     )
       return;
     const hit = pick(event);
+    if (state.facePicking) {
+      const contact = pickContact(event);
+      if (contact) {
+        faceDown = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, partId: contact.partId, reference: contact.reference };
+        orbit.enabled = false;
+        renderer.domElement.setPointerCapture(event.pointerId);
+        event.stopImmediatePropagation();
+      }
+      return;
+    }
+    if (state.editingDisabled) return;
     if (transform.down(transformPointer(event))) {
       gizmoPointerId = event.pointerId;
       renderer.domElement.setPointerCapture(event.pointerId);
@@ -879,7 +935,7 @@ export function createAssemblyScene(
   };
   let clickStart: { x: number; y: number; pointerId: number } | null = null;
   const onCapture = (event: PointerEvent) => {
-    if (direct || transform.active) {
+    if (direct || transform.active || faceDown) {
       event.stopImmediatePropagation();
       return;
     }
@@ -896,6 +952,17 @@ export function createAssemblyScene(
     onDown(event);
   };
   const onMove = (event: PointerEvent) => {
+    if (faceDown) {
+      event.stopImmediatePropagation();
+      return;
+    }
+    if (state?.facePicking && !state.blocked) {
+      const contact = pickContact(event);
+      showFaceHover(contact);
+      renderer.domElement.style.cursor = contact ? "crosshair" : "default";
+      render();
+      return;
+    }
     if (transform.active) {
       event.stopImmediatePropagation();
       if (event.pointerId === gizmoPointerId)
@@ -945,6 +1012,7 @@ export function createAssemblyScene(
     render();
   };
   const onLeave = () => {
+    clearFaceHover();
     if (direct || gizmoOriginal) return;
     hovered = null;
     transform.clearHover();
@@ -953,6 +1021,16 @@ export function createAssemblyScene(
     render();
   };
   const onUp = (event: PointerEvent) => {
+    if (faceDown) {
+      event.stopImmediatePropagation();
+      if (event.pointerId !== faceDown.pointerId) return;
+      const gesture = faceDown;
+      cancelFaceGesture();
+      clickStart = null;
+      if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) <= 4 && state?.facePicking && !state.blocked) callbacks.facePick?.(gesture.partId, gesture.reference);
+      render();
+      return;
+    }
     if (transform.active) {
       event.stopImmediatePropagation();
       if (event.pointerId !== gizmoPointerId) return;
@@ -984,7 +1062,7 @@ export function createAssemblyScene(
       render();
       return;
     }
-    if (event.button !== 0 || gizmoOriginal) return;
+    if (event.button !== 0 || gizmoOriginal || state?.facePicking || state?.editingDisabled) return;
     if (
       clickStart &&
       Math.hypot(event.clientX - clickStart.x, event.clientY - clickStart.y) <=
@@ -1044,7 +1122,9 @@ export function createAssemblyScene(
     alt = false;
     for (const control of transform.controls) control.setRotationSnap(Math.PI / 2);
     cancelDrag();
+    cancelFaceGesture();
   };
+  const onCancel = () => { cancelFaceGesture(); cancelDrag(); render(); };
   renderer.domElement.addEventListener("wheel", stopOrientation, {
     capture: true,
     passive: true,
@@ -1052,7 +1132,7 @@ export function createAssemblyScene(
   renderer.domElement.addEventListener("pointerdown", onCapture, true);
   renderer.domElement.addEventListener("pointermove", onMove, true);
   renderer.domElement.addEventListener("pointerup", onUp, true);
-  renderer.domElement.addEventListener("pointercancel", cancelDrag);
+  renderer.domElement.addEventListener("pointercancel", onCancel);
   renderer.domElement.addEventListener("pointerleave", onLeave);
   window.addEventListener("keydown", onKey, true);
   window.addEventListener("keyup", onKey, true);
@@ -1086,7 +1166,7 @@ export function createAssemblyScene(
       renderer.domElement.removeEventListener("pointerdown", onCapture, true);
       renderer.domElement.removeEventListener("pointermove", onMove, true);
       renderer.domElement.removeEventListener("pointerup", onUp, true);
-      renderer.domElement.removeEventListener("pointercancel", cancelDrag);
+      renderer.domElement.removeEventListener("pointercancel", onCancel);
       renderer.domElement.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("keyup", onKey, true);

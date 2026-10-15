@@ -52,6 +52,16 @@ export type AssemblyReference = {
   normal?: Vec3;
   direction?: Vec3;
 };
+/** Raycaster normals are local to the part; contact points arrive in world space. */
+export function faceReferenceAt(item: AssemblyItem, world: Vec3, normal: Vec3): AssemblyReference | null {
+  if (![...Object.values(item.position), ...Object.values(item.rotation), ...Object.values(world), ...Object.values(normal)].every(Number.isFinite)) return null;
+  const q = new THREE.Quaternion(item.rotation.x, item.rotation.y, item.rotation.z, item.rotation.w);
+  const n = new THREE.Vector3(normal.x, normal.y, normal.z);
+  if (q.lengthSq() < 1e-12 || n.lengthSq() < 1e-12) return null;
+  const point = new THREE.Vector3(world.x - item.position.x, world.y - item.position.y, world.z - item.position.z).applyQuaternion(q.normalize().invert());
+  n.normalize();
+  return { id: "picked-face", kind: "face", label: n.z > 0.999 ? "正面" : n.z < -0.999 ? "反面" : "侧面", position: { x: point.x, y: point.y, z: point.z }, normal: { x: n.x, y: n.y, z: n.z } };
+}
 export function referencePoints(part: Part): AssemblyReference[] {
   const outline = part.outline;
   const xs = outline.map((p) => p.x),
@@ -173,7 +183,7 @@ export function referencePreviewIssue(
   analysis: AssemblyAnalysis,
   partIds: string[],
 ) {
-  return analysis.issues.find(
+  const relevant = analysis.issues.filter(
     (issue) =>
       issue.id !== "basis:missing" &&
       (issue.kind === "dimension" ||
@@ -183,4 +193,5 @@ export function referencePreviewIssue(
         ((issue.kind === "collision" || issue.kind === "fit") &&
           issue.partIds.some((id) => partIds.includes(id)))),
   );
+  return relevant.find(issue => issue.severity === "error") ?? relevant[0];
 }

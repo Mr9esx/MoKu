@@ -8,6 +8,7 @@ import {
   Eye,
   Layers3,
   Undo2,
+  Trash2,
 } from "lucide-react";
 import {
   createAssemblyScene,
@@ -28,6 +29,8 @@ type Props = {
   onExplode: () => void;
   onUndo: () => void;
   canUndo: boolean;
+  onRemove: () => void;
+  joinPrompt?: string;
   clearPreview: () => void;
   viewRequest: { kind: AssemblyView; seq: number };
 };
@@ -53,6 +56,7 @@ export function AssemblyCanvas(props: Props) {
         error: (message) => latest.current.callbacks.error(message),
         orientation: setOrientation,
         originSnap: setZeroAxes,
+        facePick: (partId, reference) => latest.current.callbacks.facePick?.(partId, reference),
       });
       api.current.update(latest.current.state);
       setWebglError("");
@@ -86,6 +90,7 @@ export function AssemblyCanvas(props: Props) {
     : selectedItem;
   const feedback =
     props.error ||
+    props.joinPrompt ||
     (props.state.exploded
       ? "爆炸查看 · 检测仍使用原装配位置"
       : props.state.installationPreview
@@ -184,6 +189,14 @@ export function AssemblyCanvas(props: Props) {
           ))}
       </div>
       <nav className="assembly-tools floating" aria-label="三维编辑工具">
+        <button
+          aria-label="移出所选零件"
+          disabled={!selectedItem || props.state.blocked}
+          onClick={props.onRemove}
+          data-tooltip="移出所选零件，保留零件库，可撤销"
+        >
+          <Trash2 size={17} />
+        </button>
         <button
           aria-label="弱磁吸"
           aria-pressed={props.state.magnet}

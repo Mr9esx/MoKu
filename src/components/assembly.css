@@ -965,22 +965,12 @@
 .assembly-compact-footer button:first-child {
   background: var(--ink-soft);
 }
-.assembly-compact-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.assembly-compact-remove {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 6px;
-  font-size: 11px;
-  color: var(--accent-dark);
-}
-.assembly-compact-remove:hover:not(:disabled) {
-  background: var(--accent-soft);
-}
+.assembly-direct-join { margin: 12px 0; padding: 12px 0; border-block: 1px solid var(--line); }
+.assembly-direct-join > button { background: var(--ink-soft); }
+.assembly-direct-join strong { font-size: 12px; }
+.assembly-direct-join p { font-size: 11px; line-height: 1.7; color: var(--muted); margin: 7px 0; }
+.assembly-direct-join > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.assembly-direct-join button { font-size: 11px; }
 .assembly-quick-placements {
   margin: 14px 0 8px;
 }
