@@ -21,17 +21,17 @@ describe("combined assembly manipulation", () => {
   it("moves and then rotates the same selection without switching tools", () => {
     const { gizmo, object, scene } = fixture();
     try {
-      expect(gizmo.down(pointer(0.14, 0))).toBe(true);
+      expect(gizmo.down(pointer(0.08, 0))).toBe(true);
       expect(gizmo.active?.mode).toBe("translate");
-      gizmo.move(pointer(0.34, 0, -1));
+      gizmo.move(pointer(0.28, 0, -1));
       gizmo.up();
       expect(object.position.x).toBeCloseTo(0.4);
       expect(object.position.y).toBeCloseTo(0);
       expect(object.quaternion.angleTo(new THREE.Quaternion())).toBeCloseTo(0);
       scene.updateMatrixWorld(true);
-      expect(gizmo.down(pointer(0.368, 0.168))).toBe(true);
+      expect(gizmo.down(pointer(0.288, 0.088))).toBe(true);
       expect(gizmo.active?.mode).toBe("rotate");
-      gizmo.move(pointer(0.032, 0.168, -1));
+      gizmo.move(pointer(0.112, 0.088, -1));
       gizmo.up();
       expect(object.position.x).toBeCloseTo(0.4);
       expect(object.position.y).toBeCloseTo(0);
@@ -42,13 +42,13 @@ describe("combined assembly manipulation", () => {
   it("keeps one handle in charge until release even when crossing another handle", () => {
     const { gizmo, object } = fixture();
     try {
-      gizmo.down(pointer(0.14, 0));
+      gizmo.down(pointer(0.08, 0));
       const owner = gizmo.active;
-      gizmo.hover(pointer(0.168, 0.168));
-      gizmo.down(pointer(0.168, 0.168));
+      gizmo.hover(pointer(0.088, 0.088));
+      gizmo.down(pointer(0.088, 0.088));
       expect(gizmo.active).toBe(owner);
       expect(gizmo.controls.filter(control => control.dragging)).toHaveLength(1);
-      gizmo.move(pointer(0.34, 0.168, -1));
+      gizmo.move(pointer(0.28, 0.088, -1));
       gizmo.up();
       expect(object.position.x).toBeCloseTo(0.4);
       expect(object.position.y).toBeCloseTo(0);
@@ -59,16 +59,16 @@ describe("combined assembly manipulation", () => {
   it("cancels a drag completely before accepting a different operation", () => {
     const { gizmo, object, scene } = fixture();
     try {
-      gizmo.down(pointer(0.14, 0));
-      gizmo.move(pointer(0.34, 0, -1));
+      gizmo.down(pointer(0.08, 0));
+      gizmo.move(pointer(0.28, 0, -1));
       gizmo.reset();
       gizmo.move(pointer(0.6, 0, -1));
       expect(object.position.toArray()).toEqual([0, 0, 0]);
       expect(gizmo.active).toBeNull();
       expect(gizmo.controls.some(control => control.dragging)).toBe(false);
       scene.updateMatrixWorld(true);
-      expect(gizmo.down(pointer(0.168, 0.168))).toBe(true);
-      gizmo.move(pointer(-0.168, 0.168, -1));
+      expect(gizmo.down(pointer(0.088, 0.088))).toBe(true);
+      gizmo.move(pointer(-0.088, 0.088, -1));
       gizmo.up();
       expect(object.quaternion.angleTo(new THREE.Quaternion())).toBeCloseTo(Math.PI / 2, 2);
     } finally { gizmo.dispose(); }
@@ -77,10 +77,10 @@ describe("combined assembly manipulation", () => {
   it("does not edit detached objects or consume right-button scene navigation", () => {
     const { gizmo, object } = fixture();
     try {
-      expect(gizmo.down(pointer(0.14, 0, 2))).toBe(false);
+      expect(gizmo.down(pointer(0.08, 0, 2))).toBe(false);
       gizmo.detach();
-      expect(gizmo.down(pointer(0.14, 0))).toBe(false);
-      expect(gizmo.down(pointer(0.168, 0.168))).toBe(false);
+      expect(gizmo.down(pointer(0.08, 0))).toBe(false);
+      expect(gizmo.down(pointer(0.088, 0.088))).toBe(false);
       gizmo.move(pointer(0.5, 0.5, -1));
       expect(object.position.toArray()).toEqual([0, 0, 0]);
       expect(object.quaternion.angleTo(new THREE.Quaternion())).toBeCloseTo(0);

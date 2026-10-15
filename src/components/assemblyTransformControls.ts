@@ -18,7 +18,7 @@ export function createAssemblyTransformControls(
     control.disconnect();
     control.setMode(mode as "translate" | "rotate");
     control.setSpace("world");
-    control.setSize(mode === "translate" ? 0.65 : 0.95);
+    control.setSize(mode === "translate" ? 0.35 : 0.5);
     control.setColors("#3861b4", "#658774", "#7e879b", "#dfb322");
     control.showXY = control.showYZ = control.showXZ = false;
     control.showE = control.showXYZE = false;
