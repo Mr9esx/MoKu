@@ -7,6 +7,7 @@ import {
   viewQuaternion,
   orientationPosition,
   interpolateViewQuaternion,
+  dragViewQuaternion,
 } from "../src/components/viewCubeGeometry";
 
 describe("assembly orientation cube", () => {
@@ -106,5 +107,41 @@ describe("assembly orientation cube", () => {
     const direction = new Vector3(0, 0, 1).applyQuaternion(q);
     expect(Math.abs(direction.x)).toBeLessThan(1e-9);
     expect(direction.y).toBeGreaterThan(0.8);
+  });
+  it("orbits horizontally and vertically in the same directions as scene dragging", () => {
+    const from = viewQuaternion({ x: 0, y: -1, z: 0 });
+    const horizontal = new Vector3(0, 0, 1).applyQuaternion(
+      dragViewQuaternion(from, 20, 0),
+    );
+    expect(horizontal.x).toBeLessThan(0);
+    expect(horizontal.y).toBeLessThan(0);
+    expect(horizontal.z).toBeCloseTo(0, 10);
+    const vertical = new Vector3(0, 0, 1).applyQuaternion(
+      dragViewQuaternion(from, 0, 20),
+    );
+    expect(vertical.x).toBeCloseTo(0, 10);
+    expect(vertical.y).toBeLessThan(0);
+    expect(vertical.z).toBeGreaterThan(0);
+    expect(
+      dragViewQuaternion(dragViewQuaternion(from, 20, 15), -20, -15).angleTo(from),
+    ).toBeLessThan(1e-6);
+  });
+  it("keeps pole drags finite and Z-up without changing the current focus or zoom", () => {
+    const target = new Vector3(312, -40, 65);
+    for (const zone of cubeZones()) {
+      for (const dy of [-10000, 10000]) {
+        const q = dragViewQuaternion(viewQuaternion(zone.direction), 18, dy);
+        expect([q.x, q.y, q.z, q.w].every(Number.isFinite)).toBe(true);
+        expect(Math.abs(new Vector3(1, 0, 0).applyQuaternion(q).z)).toBeLessThan(
+          1e-9,
+        );
+        const position = orientationPosition(q, target, 427);
+        expect(position.distanceTo(target)).toBeCloseTo(427, 9);
+        const outward = new Vector3(0, 0, 1).applyQuaternion(q);
+        expect(Math.hypot(outward.x, outward.y)).toBeGreaterThan(1e-7);
+        const reversed = dragViewQuaternion(q, 0, dy > 0 ? -20 : 20);
+        expect(q.angleTo(reversed)).toBeGreaterThan(0.01);
+      }
+    }
   });
 });

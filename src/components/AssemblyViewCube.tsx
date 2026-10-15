@@ -1,19 +1,59 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { House } from "lucide-react";
 import { Vector3, Quaternion } from "three";
 import type { Rotation3, Vec3 } from "../core/assemblyTypes";
-import { projectCube, type CubePoint, type CubeZone } from "./viewCubeGeometry";
+import {
+  cubeZones,
+  projectCube,
+  type CubePoint,
+  type CubeZone,
+} from "./viewCubeGeometry";
 
 const points = (polygon: CubePoint[]) =>
   polygon.map((p) => p.x.toFixed(2) + "," + p.y.toFixed(2)).join(" ");
 export function AssemblyViewCube({
   orientation,
   onOrient,
+  onOrbit,
 }: {
   orientation: Rotation3;
   onOrient: (direction: Vec3) => void;
+  onOrbit: (dx: number, dy: number) => void;
 }) {
   const [hover, setHover] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const svg = useRef<SVGSVGElement>(null);
+  const drag = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    x: number;
+    y: number;
+    moved: boolean;
+  } | null>(null);
+  const pendingClick = useRef<{ zone: CubeZone | undefined; suppressed: boolean }>({
+    zone: undefined,
+    suppressed: false,
+  });
+  const cancelDrag = useCallback(() => {
+    const active = drag.current;
+    if (!active) return;
+    drag.current = null;
+    pendingClick.current = { zone: undefined, suppressed: true };
+    setDragging(false);
+    if (svg.current?.hasPointerCapture(active.pointerId))
+      svg.current.releasePointerCapture(active.pointerId);
+  }, []);
+  useEffect(() => {
+    window.addEventListener("blur", cancelDrag);
+    return () => window.removeEventListener("blur", cancelDrag);
+  }, [cancelDrag]);
+  const zoneAt = (target: EventTarget) => {
+    const id = (target as Element)
+      .closest("[data-cube-zone]")
+      ?.getAttribute("data-cube-zone");
+    return cubeZones().find((zone) => zone.id === id);
+  };
   const faces = useMemo(() => projectCube(orientation), [orientation]);
   const visibleZones = useMemo(() => {
     const result = new Map<
@@ -35,8 +75,75 @@ export function AssemblyViewCube({
     new Quaternion(orientation.x, orientation.y, orientation.z, orientation.w),
   );
   return (
-    <nav className="assembly-view-cube" aria-label="视角正方体">
-      <svg viewBox="0 0 112 112" aria-label="点击面、棱或角切换视角">
+    <nav
+      className={"assembly-view-cube" + (dragging ? " dragging" : "")}
+      aria-label="视角正方体"
+    >
+      <svg
+        ref={svg}
+        viewBox="0 0 112 112"
+        aria-label="拖动正方体旋转视角，点击面、棱或角切换视角"
+        onPointerDown={(event) => {
+          if (!event.isPrimary || event.button !== 0 || drag.current) return;
+          drag.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            x: event.clientX,
+            y: event.clientY,
+            moved: false,
+          };
+          pendingClick.current = {
+            zone: zoneAt(event.target),
+            suppressed: false,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const active = drag.current;
+          if (!active || active.pointerId !== event.pointerId) return;
+          if (!active.moved) {
+            if (
+              Math.hypot(
+                event.clientX - active.startX,
+                event.clientY - active.startY,
+              ) < 4
+            ) return;
+            active.moved = true;
+            setDragging(true);
+            setHover(null);
+          }
+          event.preventDefault();
+          onOrbit(event.clientX - active.x, event.clientY - active.y);
+          active.x = event.clientX;
+          active.y = event.clientY;
+        }}
+        onPointerUp={(event) => {
+          const active = drag.current;
+          if (!active || active.pointerId !== event.pointerId) return;
+          pendingClick.current.suppressed = active.moved;
+          drag.current = null;
+          setDragging(false);
+          if (event.currentTarget.hasPointerCapture(event.pointerId))
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onPointerCancel={(event) => {
+          if (drag.current?.pointerId === event.pointerId) cancelDrag();
+        }}
+        onLostPointerCapture={(event) => {
+          if (drag.current?.pointerId === event.pointerId) cancelDrag();
+        }}
+        onClick={(event) => {
+          // Captured pointer clicks target the SVG; assistive clicks retain the zone target.
+          const zone = event.detail === 0
+            ? zoneAt(event.target)
+            : pendingClick.current.suppressed
+              ? undefined
+              : pendingClick.current.zone;
+          pendingClick.current.zone = undefined;
+          if (zone) onOrient(zone.direction);
+        }}
+      >
         {faces.map((face) => (
           <polygon
             key={face.label}
@@ -56,16 +163,16 @@ export function AssemblyViewCube({
               tabIndex={0}
               aria-label={"切换到" + zone.label}
               aria-pressed={selected}
+              data-cube-zone={zone.id}
               className={
                 "cube-zone" +
                 (hover === zone.id ? " hovered" : "") +
                 (selected ? " selected" : "")
               }
-              onPointerEnter={() => setHover(zone.id)}
+              onPointerEnter={() => !drag.current?.moved && setHover(zone.id)}
               onPointerLeave={() => setHover(null)}
               onFocus={() => setHover(zone.id)}
               onBlur={() => setHover(null)}
-              onClick={() => onOrient(zone.direction)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
@@ -98,8 +205,10 @@ export function AssemblyViewCube({
       </svg>
       <div className="cube-caption">
         <span>
-          {visibleZones.find((z) => z.zone.id === hover)?.zone.label ??
-            "点击面 · 棱 · 角"}
+          {dragging
+            ? "拖动旋转视角"
+            : visibleZones.find((z) => z.zone.id === hover)?.zone.label ??
+              "拖动旋转 · 点击切换"}
         </span>
         <button
           aria-label="等轴视图"

@@ -1085,6 +1085,14 @@
   width: 100%;
   overflow: visible;
 }
+.assembly-view-cube > svg {
+  touch-action: none;
+  cursor: grab;
+}
+.assembly-view-cube.dragging > svg,
+.assembly-view-cube.dragging .cube-zone {
+  cursor: grabbing;
+}
 .cube-face {
   fill: #f8f6ee;
   stroke: #9da6b5;
@@ -1100,7 +1108,7 @@
   fill: #efede7;
 }
 .cube-zone {
-  cursor: pointer;
+  cursor: grab;
   outline: none;
 }
 .cube-zone polygon {

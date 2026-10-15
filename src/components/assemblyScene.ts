@@ -13,6 +13,7 @@ import {
   viewQuaternion,
   orientationPosition,
   interpolateViewQuaternion,
+  dragViewQuaternion,
 } from "./viewCubeGeometry";
 import { weakSnap } from "../core/assemblyGuidance";
 import type {
@@ -582,6 +583,17 @@ export function createAssemblyScene(
     };
     orientationFrame = requestAnimationFrame(tick);
   }
+  function orbitView(dx: number, dy: number) {
+    if (disposed) return;
+    stopOrientation();
+    cancelDrag();
+    const q = dragViewQuaternion(camera.quaternion, dx, dy);
+    const radius = camera.position.distanceTo(orbit.target) || 1;
+    camera.position.copy(orientationPosition(q, orbit.target, radius));
+    camera.up.set(0, 0, 1);
+    orbit.update();
+    render();
+  }
   function fit(kind: "all" | "selected" | "front" | "side" | "top" = "all") {
     stopOrientation();
     cancelDrag();
@@ -1020,6 +1032,7 @@ export function createAssemblyScene(
     update,
     fit,
     orient,
+    orbitView,
     cancelDrag,
     dispose() {
       disposed = true;

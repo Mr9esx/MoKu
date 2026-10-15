@@ -142,6 +142,7 @@ export function AssemblyCanvas(props: Props) {
         <AssemblyViewCube
           orientation={orientation}
           onOrient={(direction) => api.current?.orient(direction)}
+          onOrbit={(dx, dy) => api.current?.orbitView(dx, dy)}
         />
       )}
       {props.state.installationPreview && (

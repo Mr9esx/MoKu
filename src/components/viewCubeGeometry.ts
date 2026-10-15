@@ -71,6 +71,25 @@ export function interpolateViewQuaternion(
     z: Math.cos(phi),
   });
 }
+/** Cube dragging follows OrbitControls' direction, with one degree per CSS pixel. */
+export function dragViewQuaternion(q: Rotation3, dx: number, dy: number) {
+  const outward = new Vector3(0, 0, 1).applyQuaternion(
+    new Quaternion(q.x, q.y, q.z, q.w),
+  );
+  const theta = Math.atan2(outward.x, -outward.y) - (dx * Math.PI) / 180;
+  const phi = Math.max(
+    1e-6,
+    Math.min(
+      Math.PI - 1e-6,
+      Math.acos(Math.max(-1, Math.min(1, outward.z))) - (dy * Math.PI) / 180,
+    ),
+  );
+  return viewQuaternion({
+    x: Math.sin(phi) * Math.sin(theta),
+    y: -Math.sin(phi) * Math.cos(theta),
+    z: Math.cos(phi),
+  });
+}
 export function orientationPosition(
   q: Rotation3,
   target: Vec3,
