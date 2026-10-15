@@ -1,0 +1,225 @@
+/* Both workspaces keep context inside the same preview frame. */
+.workspace {
+  --workspace-rail-width: 248px;
+  --preview-information-width: 304px;
+}
+.workspace-surface {
+  --left-rail-width: var(--workspace-rail-width);
+  --canvas-fit-left: 16px;
+  --canvas-fit-right: 16px;
+  --canvas-fit-top: 96px;
+  --canvas-fit-bottom: 140px;
+}
+.workspace-surface.workspace-initial {
+  --canvas-fit-top: 124px;
+}
+.assembly-workspace {
+  --assembly-left: var(--workspace-rail-width);
+}
+.workspace .workbench-preview {
+  position: absolute;
+  inset: 68px 14px 36px calc(var(--workspace-rail-width) + 28px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  container-type: inline-size;
+}
+.preview-information {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 156px;
+  width: var(--preview-information-width);
+  max-width: calc(100% - 32px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 3;
+}
+.workbench-preview .preview-information > :is(.inspector, .analysis-panel, .assembly-inspector) {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.preview-information:has(> .assembly-inspector.is-compact) {
+  width: 224px;
+  bottom: auto;
+  max-height: calc(100% - 172px);
+}
+.preview-information:empty {
+  display: none;
+}
+.preview-heading {
+  position: absolute;
+  top: 17px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 1;
+  pointer-events: none;
+  max-width: calc(100% - var(--preview-information-width) - 60px);
+}
+.preview-heading > span:first-child {
+  font-family: var(--latin-font);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+}
+.preview-heading strong {
+  font-family: var(--display-font);
+  font-size: 22px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preview-heading > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.workbench-preview .parts-drawing-stage {
+  padding: 20px calc(var(--preview-information-width) + 48px) 140px 20px;
+}
+.workspace .workbench-preview .canvas-tools {
+  bottom: 16px;
+  left: 50%;
+  padding: 5px;
+  gap: 2px;
+  border-radius: 2px;
+  box-shadow: 0 2px 0 #2146b507;
+}
+.workbench-preview .canvas-tools button {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+}
+.workbench-preview .canvas-tools button.corner-relief-tool {
+  width: auto;
+}
+.workbench-preview .canvas-tools button.active,
+.workbench-preview .canvas-tools button.active:hover,
+.workbench-preview .canvas-tools button.active:focus-visible {
+  background: var(--ink-soft);
+  color: var(--ink);
+}
+.workbench-preview .view-switch {
+  top: auto;
+  bottom: 66px;
+  left: 50%;
+  padding: 3px;
+  gap: 2px;
+}
+.workbench-preview .view-switch button {
+  font-size: 11px;
+  padding: 5px 7px;
+  min-height: 28px;
+}
+.workbench-preview .view-switch button.active,
+.workbench-preview .view-switch button.active:hover {
+  background: var(--ink-soft);
+  color: var(--ink);
+}
+.workspace .workbench-preview .zoom-controls {
+  right: 16px;
+  bottom: 16px;
+}
+.workbench-preview .candidate-bar {
+  top: 94px;
+  left: 16px;
+  right: calc(var(--preview-information-width) + 48px);
+  width: auto;
+  max-width: none;
+  transform: none;
+}
+.workspace-surface:has(.candidate-bar) {
+  --canvas-fit-top: 154px;
+}
+.workbench-preview .assembly-scene-legend {
+  right: calc(var(--preview-information-width) + 40px);
+}
+.workbench-preview:has(.assembly-inspector.is-compact) .assembly-scene-legend {
+  right: 258px;
+}
+.workspace .workbench-preview .assembly-view-cube {
+  top: auto;
+  bottom: 13px;
+  right: 12px;
+  width: 112px;
+}
+@container (max-width: 700px) {
+  .assembly-tools button span {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .workspace .workbench-preview {
+    inset: 134px 14px 36px;
+  }
+  .workspace-surface {
+    --canvas-fit-top: 96px;
+    --canvas-fit-bottom: 164px;
+  }
+  .workbench-preview .preview-information,
+  .workbench-preview .preview-information:has(> .assembly-inspector.is-compact) {
+    inset: 0;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    display: none;
+  }
+  .workspace-surface.mobile-info .preview-information,
+  .assembly-workspace.mobile-info .preview-information {
+    display: flex;
+  }
+  .workbench-preview .preview-information > :is(.inspector, .analysis-panel, .assembly-inspector) {
+    border: 0;
+    box-shadow: none;
+  }
+  .assembly-workspace.mobile-info .assembly-canvas {
+    visibility: visible;
+  }
+  .workspace-surface.mobile-info .workbench-preview > :not(.preview-information),
+  .assembly-workspace.mobile-info .workbench-preview > :not(.preview-information) {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .workspace-surface.mobile-resources .workbench-preview {
+    visibility: hidden;
+  }
+  .preview-heading {
+    max-width: 75%;
+  }
+  .workbench-preview .parts-drawing-stage {
+    padding: 20px 16px 164px;
+  }
+  .workspace .workbench-preview .canvas-tools button {
+    min-height: 38px;
+    height: 38px;
+    width: 38px;
+  }
+  .workspace .workbench-preview .canvas-tools button.corner-relief-tool {
+    width: auto;
+  }
+  .workspace .workbench-preview .zoom-controls {
+    bottom: 114px;
+    right: 12px;
+  }
+  .workbench-preview .candidate-bar {
+    left: 12px;
+    right: 12px;
+  }
+  .workbench-preview .assembly-scene-legend,
+  .workbench-preview:has(.assembly-inspector.is-compact) .assembly-scene-legend {
+    right: 10px;
+  }
+  .workspace .workbench-preview .assembly-view-cube {
+    top: 75px;
+    bottom: auto;
+    right: 7px;
+    width: 96px;
+  }
+}

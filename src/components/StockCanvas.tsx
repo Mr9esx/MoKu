@@ -74,17 +74,24 @@ export function StockCanvas({
   useLayoutEffect(() => {
     const node = svg.current;
     if (!node) return;
-    const overlays = node.closest(".canvas-region")?.querySelectorAll(".candidate-bar, .view-switch") ?? [];
+    const region = node.closest(".canvas-region");
+    const overlays = region?.querySelectorAll(".candidate-bar") ?? [];
+    const information = region?.querySelector(".preview-information");
     const measure = () => {
       const rect = node.getBoundingClientRect(),
         style = getComputedStyle(node);
       const inset = (side: string) =>
         parseFloat(style.getPropertyValue(`--canvas-fit-${side}`)) || 0;
+      const infoRect = information?.getBoundingClientRect();
+      const infoInset =
+        infoRect && infoRect.width > 0 && infoRect.width < rect.width * 0.75
+          ? rect.right - infoRect.left + 16
+          : 0;
       setViewport({
         width: rect.width,
         height: rect.height,
         left: inset("left"),
-        right: inset("right"),
+        right: Math.max(inset("right"), infoInset),
         top: Math.max(inset("top"), ...Array.from(overlays).map(v => v.getBoundingClientRect().bottom - rect.top + 16)),
         bottom: inset("bottom"),
       });
@@ -93,6 +100,7 @@ export function StockCanvas({
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     overlays.forEach(v => observer.observe(v));
+    if (information) observer.observe(information);
     return () => observer.disconnect();
   }, [candidateVisible]);
   const offsets = layout.sheets.map((_, i) =>

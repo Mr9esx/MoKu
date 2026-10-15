@@ -30,7 +30,7 @@ import { editingLayout } from "./core/editing";
 import { modeLabels } from "./core/types";
 import { measureLayout, validateLayout } from "./core/geometry";
 const AssemblyWorkspace = lazy(() => import("./components/AssemblyWorkspace"));
-export const formatPercent = (n: number) => `${(n * 100).toFixed(1)}%`;
+const formatPercent = (n: number) => `${(n * 100).toFixed(1)}%`;
 export default function App() {
   const s = useWorkbench(),
     [dialog, setDialog] = useState<Dialog>(null),
@@ -246,7 +246,14 @@ export default function App() {
             }}
           />
         )}
-        <div className="canvas-region">
+        <section className={"canvas-region" + (project ? " workbench-preview" : "")} aria-label="二维预览">
+          {project && hasStocks && (
+            <div className="preview-heading">
+              <span>DRAWING / MM</span>
+              <strong>{part?.name ?? "用料排版"}</strong>
+              <span>{project.parts.length} 个零件 · {project.sheets.length} 张板材</span>
+            </div>
+          )}
           {project && layout && metrics && canvasLayout?.sheets.length ? (
             <StockCanvas
               project={project}
@@ -368,52 +375,54 @@ export default function App() {
               )}
             </div>
           )}
-        </div>
-        {part && project ? (
-          <ContextInspector
-            key={part.id}
-            part={part}
-            placement={placement}
-            project={project}
-            onExportPart={() => setDialog("part-export")}
-          />
-        ) : project && !hasStocks ? (
-          <DrawingOverview project={project} onStock={() => setDialog("stock")} />
-        ) : project && layout && metrics ? (
-          <LayoutAnalysis
-            key={s.candidate ? "with-candidate" : "overview"}
-            project={project}
-            layout={analysisLayout ?? layout}
-            metrics={metrics}
-            source={s.source}
-            currentProject={s.project}
-            current={s.current}
-            candidate={s.candidate?.layout ?? null}
-            searchResult={s.candidate}
-            settings={s.settings}
-            view={s.view}
-            issues={issues}
-            onCheck={() => setDialog("check")}
-          />
-        ) : project ? (
-          <aside className="analysis-panel floating analysis-empty" aria-label="排版概览">
-            <div className="panel-heading">
-              <strong>排版概览</strong>
-              <span className="section-index">02</span>
-            </div>
-            <div className="analysis-body">
-              <div className="overview-empty-illustration" aria-hidden="true">
-                <svg viewBox="0 0 80 100">
-                  <path d="M15 7h36l16 17v68H15Z" fill="none" stroke="currentColor" />
-                  <path d="M51 7v17h16M26 41h29M26 50h23M26 59h29" fill="none" stroke="currentColor" strokeWidth=".8" />
-                  <path d="M23 80h31" stroke="var(--accent)" strokeWidth="2" />
-                </svg>
-              </div>
-              <h3>暂无排版数据</h3>
-              <button onClick={() => setDialog("help")}>操作说明 ↗</button>
-            </div>
-          </aside>
-        ) : null}
+          <div className="preview-information">
+            {part && project ? (
+              <ContextInspector
+                key={part.id}
+                part={part}
+                placement={placement}
+                project={project}
+                onExportPart={() => setDialog("part-export")}
+              />
+            ) : project && !hasStocks ? (
+              <DrawingOverview project={project} onStock={() => setDialog("stock")} />
+            ) : project && layout && metrics ? (
+              <LayoutAnalysis
+                key={s.candidate ? "with-candidate" : "overview"}
+                project={project}
+                layout={analysisLayout ?? layout}
+                metrics={metrics}
+                source={s.source}
+                currentProject={s.project}
+                current={s.current}
+                candidate={s.candidate?.layout ?? null}
+                searchResult={s.candidate}
+                settings={s.settings}
+                view={s.view}
+                issues={issues}
+                onCheck={() => setDialog("check")}
+              />
+            ) : project ? (
+              <aside className="analysis-panel floating analysis-empty" aria-label="排版概览">
+                <div className="panel-heading">
+                  <strong>排版概览</strong>
+                  <span className="section-index">02</span>
+                </div>
+                <div className="analysis-body">
+                  <div className="overview-empty-illustration" aria-hidden="true">
+                    <svg viewBox="0 0 80 100">
+                      <path d="M15 7h36l16 17v68H15Z" fill="none" stroke="currentColor" />
+                      <path d="M51 7v17h16M26 41h29M26 50h23M26 59h29" fill="none" stroke="currentColor" strokeWidth=".8" />
+                      <path d="M23 80h31" stroke="var(--accent)" strokeWidth="2" />
+                    </svg>
+                  </div>
+                  <h3>暂无排版数据</h3>
+                  <button onClick={() => setDialog("help")}>操作说明 ↗</button>
+                </div>
+              </aside>
+            ) : null}
+          </div>
+        </section>
       </div>
       {assemblyVisited && s.project && <Suspense fallback={<div className="assembly-loading">正在打开 3D 组装…</div>}>
         <AssemblyWorkspace project={s.project} active={workspaceMode === "assembly"} interactionBlocked={!!dialog || more} open={setDialog}/>

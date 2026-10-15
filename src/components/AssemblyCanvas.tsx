@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AssemblyViewCube } from "./AssemblyViewCube";
 import { viewQuaternion } from "./viewCubeGeometry";
 import type { Rotation3 } from "../core/assemblyTypes";
@@ -19,6 +19,7 @@ import {
 } from "./assemblyScene";
 export type AssemblyView = "all" | "selected" | "front" | "side" | "top";
 type Props = {
+  children: ReactNode;
   state: SceneState;
   callbacks: SceneCallbacks;
   pending: boolean;
@@ -105,7 +106,7 @@ export function AssemblyCanvas(props: Props) {
                         ? "点击场景中的零件即可选择，也可以直接拖动"
                         : "点击左侧零件，放入场景开始组装")));
   return (
-    <section className="assembly-canvas" aria-label="3D 组装场景">
+    <section className="assembly-canvas workbench-preview" aria-label="3D 组装场景">
       <div className="assembly-scene-host" ref={container} />
       <div className="assembly-scene-heading">
         <span className="assembly-eyebrow">ASSEMBLY / MM</span>
@@ -249,6 +250,7 @@ export function AssemblyCanvas(props: Props) {
           </p>
         </div>
       )}
+      <div className="preview-information">{props.children}</div>
     </section>
   );
 }

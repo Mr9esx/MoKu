@@ -24,8 +24,6 @@
 .assembly-workspace {
   position: absolute;
   inset: 0;
-  --assembly-left: 248px;
-  --assembly-right: 338px;
   background: var(--paper);
   background-image: radial-gradient(#2146b510 0.6px, transparent 0.6px);
   background-size: 7px 7px;
@@ -33,8 +31,7 @@
 .assembly-workspace[hidden] {
   display: none;
 }
-.assembly-resources,
-.assembly-inspector {
+.assembly-resources {
   position: absolute;
   top: 68px;
   bottom: 36px;
@@ -49,17 +46,7 @@
   width: var(--assembly-left);
 }
 .assembly-inspector {
-  right: 14px;
-  width: var(--assembly-right);
-}
-.assembly-canvas {
-  position: absolute;
-  top: 68px;
-  bottom: 36px;
-  left: calc(var(--assembly-left) + 28px);
-  right: calc(var(--assembly-right) + 28px);
   overflow: hidden;
-  border: 1px solid var(--line);
 }
 .assembly-scene-host {
   position: absolute;
@@ -737,10 +724,6 @@
   display: none;
 }
 @media (max-width: 1150px) {
-  .assembly-workspace {
-    --assembly-left: 210px;
-    --assembly-right: 298px;
-  }
   .assembly-tools button span {
     display: none;
   }
@@ -779,16 +762,12 @@
     width: auto;
     display: none;
   }
-  .assembly-canvas {
-    inset: 134px 14px 36px;
-  }
   .assembly-workspace.mobile-resources .assembly-resources {
     display: flex;
   }
   .assembly-workspace.mobile-info .assembly-inspector {
     display: flex;
   }
-  .assembly-workspace.mobile-info .assembly-canvas,
   .assembly-workspace.mobile-resources .assembly-canvas {
     visibility: hidden;
   }
@@ -890,15 +869,7 @@
 }
 
 /* Everyday assembly keeps the model primary; details open only on request. */
-.assembly-workspace:has(.assembly-inspector.is-compact) .assembly-canvas {
-  right: 14px;
-}
 .assembly-inspector.is-compact {
-  top: 84px;
-  right: 28px;
-  bottom: auto;
-  width: 224px;
-  max-height: calc(100% - 160px);
   padding: 17px;
   overflow: auto;
 }
@@ -991,9 +962,6 @@
 .assembly-compact-notice svg {
   flex-shrink: 0;
 }
-.assembly-workspace:has(.assembly-inspector.is-compact) .assembly-scene-legend {
-  right: 258px;
-}
 .assembly-inspector > .panel-heading > strong {
   flex: 1;
 }
@@ -1047,20 +1015,6 @@
   padding: 5px 7px;
   background: var(--ink-soft);
 }
-@media (max-width: 900px) {
-  .assembly-inspector.is-compact {
-    top: 134px;
-    bottom: 36px;
-    left: 14px;
-    right: 14px;
-    width: auto;
-    max-height: none;
-  }
-  .assembly-workspace:has(.assembly-inspector.is-compact)
-    .assembly-scene-legend {
-    right: 16px;
-  }
-}
 :is(.assembly-tools, .assembly-inspector-tabs, .assembly-mobile-navigation)
   button.active,
 :is(.assembly-tools, .assembly-inspector-tabs, .assembly-mobile-navigation)
@@ -1068,9 +1022,6 @@
 .workspace-mode-switch button.active:hover {
   background: var(--ink-soft);
   color: var(--ink);
-}
-.assembly-canvas {
-  container-type: inline-size;
 }
 .assembly-view-cube {
   position: absolute;
@@ -1150,20 +1101,4 @@
 .cube-caption button svg {
   width: 14px;
   height: 14px;
-}
-@container (max-width: 650px) {
-  .assembly-view-cube {
-    top: 75px;
-    bottom: auto;
-    right: 7px;
-    width: 100px;
-  }
-}
-@media (max-width: 900px) {
-  .assembly-view-cube {
-    top: 75px;
-    bottom: auto;
-    right: 7px;
-    width: 96px;
-  }
 }

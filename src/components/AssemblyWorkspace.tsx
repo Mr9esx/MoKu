@@ -429,35 +429,36 @@ export default function AssemblyWorkspace({
         canUndo={!!s.history.length}
         viewRequest={viewRequest}
         clearPreview={clearPreview}
-      />
-      <AssemblyInspector
-        project={project}
-        assembly={assembly}
-        selected={selected}
-        analysis={detection.analysis}
-        pending={detection.pending}
-        blocked={blocked}
-        candidates={candidates}
-        guidancePending={detection.guidancePending}
-        candidateId={sceneState.candidateId}
-        setCandidate={setCandidateId}
-        commit={commit}
-        select={(id) => select(id)}
-        add={add}
-        locate={locate}
-        previewStep={previewStep}
-        clearPreview={clearPreview}
-        playbackCancellation={playbackCancellation}
-        cancelVersion={cancelVersion}
-        machiningFace={machiningFace}
-        setMachiningFace={setMachiningFace}
-        previewReference={(pose, markers) => {
-          clearPreview();
-          setExploded(false);
-          setPreview(pose);
-          setReferenceMarkers(markers);
-        }}
-      />
+      >
+        <AssemblyInspector
+          project={project}
+          assembly={assembly}
+          selected={selected}
+          analysis={detection.analysis}
+          pending={detection.pending}
+          blocked={blocked}
+          candidates={candidates}
+          guidancePending={detection.guidancePending}
+          candidateId={sceneState.candidateId}
+          setCandidate={setCandidateId}
+          commit={commit}
+          select={(id) => select(id)}
+          add={add}
+          locate={locate}
+          previewStep={previewStep}
+          clearPreview={clearPreview}
+          playbackCancellation={playbackCancellation}
+          cancelVersion={cancelVersion}
+          machiningFace={machiningFace}
+          setMachiningFace={setMachiningFace}
+          previewReference={(pose, markers) => {
+            clearPreview();
+            setExploded(false);
+            setPreview(pose);
+            setReferenceMarkers(markers);
+          }}
+        />
+      </AssemblyCanvas>
       <div className="assembly-statusbar">
         <span>
           {detection.pending
