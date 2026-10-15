@@ -216,7 +216,7 @@ export function AssemblyCanvas(props: Props) {
           aria-label="撤销装配操作"
           disabled={!props.canUndo || props.state.blocked}
           onClick={props.onUndo}
-          data-tooltip="一次撤销恢复拖动前的位置"
+          data-tooltip="撤销上一次装配操作，也可恢复移出的零件"
         >
           <Undo2 size={17} />
         </button>

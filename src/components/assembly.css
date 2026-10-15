@@ -927,6 +927,7 @@
 }
 .assembly-compact-heading {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   color: var(--muted);
   font-size: 11px;
@@ -963,6 +964,22 @@
 }
 .assembly-compact-footer button:first-child {
   background: var(--ink-soft);
+}
+.assembly-compact-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.assembly-compact-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  font-size: 11px;
+  color: var(--accent-dark);
+}
+.assembly-compact-remove:hover:not(:disabled) {
+  background: var(--accent-soft);
 }
 .assembly-quick-placements {
   margin: 14px 0 8px;

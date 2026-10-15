@@ -9,6 +9,7 @@ import {
   Plus,
   AlertTriangle,
   CheckCircle2,
+  PackageMinus,
 } from "lucide-react";
 import type {
   Assembly,
@@ -144,6 +145,14 @@ export function AssemblyInspector(p: Props) {
       ...p.assembly,
       items: p.assembly.items.map((i) => (i.partId === next.partId ? next : i)),
     });
+  const removeItem = () => {
+    if (!item || p.blocked) return;
+    p.clearPreview();
+    p.commit({
+      ...p.assembly,
+      items: p.assembly.items.filter((i) => i.partId !== item.partId),
+    });
+  };
   const dims = p.analysis?.bounds
     ? {
         width: p.analysis.bounds.max.x - p.analysis.bounds.min.x,
@@ -198,7 +207,20 @@ export function AssemblyInspector(p: Props) {
       >
         <div className="assembly-compact-heading">
           <span>{part ? "当前零件" : "开始组装"}</span>
-          {item?.locked && <LockKeyhole size={14} aria-label="零件已锁定" />}
+          {item && (
+            <div className="assembly-compact-actions">
+              {item.locked && <LockKeyhole size={14} aria-label="零件已锁定" />}
+              <button
+                className="assembly-compact-remove"
+                disabled={p.blocked}
+                onClick={removeItem}
+                title="移出组装，保留左侧零件，可撤销"
+              >
+                <PackageMinus size={14} />
+                移出组装
+              </button>
+            </div>
+          )}
         </div>
         <h2>{part?.name ?? "点选，再搭建"}</h2>
         {part ? (
@@ -605,15 +627,7 @@ export function AssemblyInspector(p: Props) {
                       <summary>零件操作</summary>
                       <button
                         className="assembly-remove"
-                        onClick={() => {
-                          p.clearPreview();
-                          p.commit({
-                            ...p.assembly,
-                            items: p.assembly.items.filter(
-                              (i) => i.partId !== part.id,
-                            ),
-                          });
-                        }}
+                        onClick={removeItem}
                       >
                         移出组装，保留零件
                       </button>
