@@ -29,9 +29,9 @@ describe("combined assembly manipulation", () => {
       expect(object.position.y).toBeCloseTo(0);
       expect(object.quaternion.angleTo(new THREE.Quaternion())).toBeCloseTo(0);
       scene.updateMatrixWorld(true);
-      expect(gizmo.down(pointer(0.288, 0.088))).toBe(true);
+      expect(gizmo.down(pointer(0.242, 0.042))).toBe(true);
       expect(gizmo.active?.mode).toBe("rotate");
-      gizmo.move(pointer(0.112, 0.088, -1));
+      gizmo.move(pointer(0.158, 0.042, -1));
       gizmo.up();
       expect(object.position.x).toBeCloseTo(0.4);
       expect(object.position.y).toBeCloseTo(0);
@@ -44,11 +44,11 @@ describe("combined assembly manipulation", () => {
     try {
       gizmo.down(pointer(0.08, 0));
       const owner = gizmo.active;
-      gizmo.hover(pointer(0.088, 0.088));
-      gizmo.down(pointer(0.088, 0.088));
+      gizmo.hover(pointer(0.042, 0.042));
+      gizmo.down(pointer(0.042, 0.042));
       expect(gizmo.active).toBe(owner);
       expect(gizmo.controls.filter(control => control.dragging)).toHaveLength(1);
-      gizmo.move(pointer(0.28, 0.088, -1));
+      gizmo.move(pointer(0.28, 0.042, -1));
       gizmo.up();
       expect(object.position.x).toBeCloseTo(0.4);
       expect(object.position.y).toBeCloseTo(0);
@@ -67,8 +67,8 @@ describe("combined assembly manipulation", () => {
       expect(gizmo.active).toBeNull();
       expect(gizmo.controls.some(control => control.dragging)).toBe(false);
       scene.updateMatrixWorld(true);
-      expect(gizmo.down(pointer(0.088, 0.088))).toBe(true);
-      gizmo.move(pointer(-0.088, 0.088, -1));
+      expect(gizmo.down(pointer(0.042, 0.042))).toBe(true);
+      gizmo.move(pointer(-0.042, 0.042, -1));
       gizmo.up();
       expect(object.quaternion.angleTo(new THREE.Quaternion())).toBeCloseTo(Math.PI / 2, 2);
     } finally { gizmo.dispose(); }
@@ -80,7 +80,7 @@ describe("combined assembly manipulation", () => {
       expect(gizmo.down(pointer(0.08, 0, 2))).toBe(false);
       gizmo.detach();
       expect(gizmo.down(pointer(0.08, 0))).toBe(false);
-      expect(gizmo.down(pointer(0.088, 0.088))).toBe(false);
+      expect(gizmo.down(pointer(0.042, 0.042))).toBe(false);
       gizmo.move(pointer(0.5, 0.5, -1));
       expect(object.position.toArray()).toEqual([0, 0, 0]);
       expect(object.quaternion.angleTo(new THREE.Quaternion())).toBeCloseTo(0);
