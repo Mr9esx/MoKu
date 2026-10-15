@@ -155,6 +155,13 @@ export default function AssemblyWorkspace({
     setSnapped(null);
     setFaceJoin({ partId: item.partId });
   };
+  const startFaceJoin = (partId: string, reference: AssemblyReference) => {
+    const item = assembly.items.find(i => i.partId === partId);
+    if (blocked || !item || item.locked || assembly.items.length < 2) return;
+    select(partId);
+    setFaceJoin({ partId, source: reference });
+    setReferenceMarkers([{ partId, reference }]);
+  };
   const pickFace = (partId: string, reference: AssemblyReference) => {
     if (!faceJoin || blocked || faceJoin.target) return;
     if (!faceJoin.source) {
@@ -454,6 +461,7 @@ export default function AssemblyWorkspace({
           snap: setSnapped,
           error: setError,
           facePick: pickFace,
+          faceStart: startFaceJoin,
         }}
         pending={detection.pending}
         guidancePending={detection.guidancePending}
@@ -471,7 +479,10 @@ export default function AssemblyWorkspace({
         }}
         canUndo={!!s.history.length}
         onRemove={removeSelected}
-        joinPrompt={faceJoin ? !faceJoin.source ? "① 点击所选板的接触面 · Esc 取消" : !faceJoin.target ? "② 点击另一块板的接触位置 · 可拖空白调整视角" : "拼合预览 · 在右侧确认或重新选面" : undefined}
+        joinPrompt={faceJoin ? !faceJoin.source ? "点击本板接触面 · Esc 取消" : !faceJoin.target ? "拖动接触标记到另一块板，或点击目标面" : "拼合预览 · 在零件旁确认 · Esc 取消" : undefined}
+        join={faceJoin ? { stage: faceJoin.target ? "preview" : faceJoin.source ? "target" : "source", sourceLabel: faceJoin.source?.label, targetName: project.parts.find(p => p.id === faceJoin.target?.partId)?.name, issue: joinIssue, canApply: !blocked && !detection.pending && !!detection.analysis && joinIssue?.severity !== "error", checked: !!detection.analysis } : null}
+        onJoin={startJoin}
+        onApplyJoin={applyJoin}
         viewRequest={viewRequest}
         clearPreview={clearPreview}
       >
@@ -490,9 +501,6 @@ export default function AssemblyWorkspace({
           select={(id) => select(id)}
           add={add}
           remove={removeSelected}
-          join={faceJoin ? { stage: faceJoin.target ? "preview" : faceJoin.source ? "target" : "source", sourceLabel: faceJoin.source?.label, targetLabel: faceJoin.target?.reference.label, targetName: project.parts.find(p => p.id === faceJoin.target?.partId)?.name, issue: joinIssue } : null}
-          startJoin={startJoin}
-          applyJoin={applyJoin}
           locate={locate}
           previewStep={previewStep}
           clearPreview={clearPreview}

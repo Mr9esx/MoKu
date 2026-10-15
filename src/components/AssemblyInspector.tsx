@@ -9,7 +9,6 @@ import {
   Plus,
   AlertTriangle,
   CheckCircle2,
-  Link2,
 } from "lucide-react";
 import type {
   Assembly,
@@ -123,15 +122,6 @@ type Props = {
   select: (id: string) => void;
   add: (id: string) => void;
   remove: () => void;
-  join: {
-    stage: "source" | "target" | "preview";
-    targetName?: string;
-    sourceLabel?: string;
-    targetLabel?: string;
-    issue?: AssemblyIssue;
-  } | null;
-  startJoin: () => void;
-  applyJoin: () => void;
   locate: (issue: AssemblyIssue) => void;
   previewStep: (step: AssemblyStep | null, progress: number) => void;
   clearPreview: () => void;
@@ -185,9 +175,6 @@ export function AssemblyInspector(p: Props) {
     if (p.selected) setTab("part");
   }, [p.selected]);
   if (!expanded) {
-    const suggestions = p.candidates
-      .filter((c) => c.status === "valid")
-      .slice(0, 3);
     const relevant =
       p.analysis?.issues.filter(
         (i) =>
@@ -223,94 +210,29 @@ export function AssemblyInspector(p: Props) {
             点选零件后，直接拖动摆放。
           </p>
         )}
-        {item && (
-          <p className="assembly-compact-hint">
-            {item.locked
-              ? "此零件已锁定，可在精确调整中解锁。"
-              : "直接拖动摆放，靠近黄色位置会轻轻吸附。"}
-          </p>
-        )}
         {part && !item && (
-          <button
-            className="primary wide"
-            disabled={p.blocked}
-            onClick={() => p.add(part.id)}
-          >
-            放入场景
-          </button>
-        )}
-        {item && p.assembly.items.length > 1 && (
-          <section className="assembly-direct-join" aria-label="点面拼合">
-            {p.join ? (
-              <>
-                <strong>{p.join.stage === "source" ? "1 · 点击这块板的接触面" : p.join.stage === "target" ? "2 · 点击另一块板的接触位置" : "3 · 确认拼合预览"}</strong>
-                <p>{p.join.stage === "preview" ? `${part?.name} · ${p.join.sourceLabel} → ${p.join.targetName} · ${p.join.targetLabel}，两处点击位置贴合。` : p.join.stage === "target" ? `已选 ${part?.name} 的${p.join.sourceLabel}。点击另一块板的接触位置。` : "在 3D 场景里点面，自动调整位置与朝向。可拖空白转动视角。"}</p>
-                {p.join.stage === "preview" && (
-                  <p role="status">{p.pending ? "正在检查拼合位置…" : !p.analysis ? "检测暂不可用，尚不能应用拼合。" : p.join.issue ? p.join.issue.message + (p.join.issue.severity === "pending" ? "；可先保存位置，检测仍待确认。" : "，请重新选择接触位置。") : "接触位置未发现冲突。"}</p>
-                )}
-                <div>
-                  {p.join.stage === "preview" && <button className="primary" disabled={p.blocked || p.pending || !p.analysis || p.join.issue?.severity === "error"} onClick={p.applyJoin}>应用拼合</button>}
-                  {p.join.stage === "preview" && <button onClick={p.startJoin} disabled={p.blocked}>重新选面</button>}
-                  <button onClick={p.clearPreview}>取消</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <button className="wide" disabled={p.blocked || item.locked} onClick={p.startJoin}><Link2 size={15} />点面拼合</button>
-                <p>依次点两块板的接触面，自动贴合。</p>
-              </>
-            )}
-          </section>
-        )}
-        {!!suggestions.length && item && (
-          <div className="assembly-quick-placements">
-            <span>推荐落位</span>
-            {suggestions.map((c) => (
-              <button
-                key={c.id}
-                disabled={p.blocked || item.locked}
-                onClick={() => patchItem({ ...c.pose, locked: item.locked })}
-                aria-label={"放到 " + c.label}
-              >
-                <i />
-                {c.label}
-                <ChevronRight size={14} />
-              </button>
-            ))}
-          </div>
+          <p className="assembly-compact-hint">尚未加入 · 在左侧点击零件放入场景</p>
         )}
         {p.guidancePending && item && (
           <p className="assembly-compact-hint" role="status">
             正在寻找可放置位置…
           </p>
         )}
-        {needsFace && (
-          <button
-            className="assembly-compact-notice"
-            onClick={() => openDetails("part", "machining")}
-          >
-            槽的加工面待确认 <ChevronRight size={14} />
-          </button>
-        )}
-        {!needsFace && relevant.length > 0 && (
-          <button
+        {(needsFace || relevant.length > 0) && (
+          <p
             className={
               "assembly-compact-notice" +
               (relevant.some((i) => i.severity === "error")
                 ? " has-errors"
                 : "")
             }
-            onClick={() => openDetails("check")}
+            role="status"
           >
-            <span>{relevant[0].message}</span>
-            <ChevronRight size={14} />
-          </button>
+            {needsFace ? "槽加工面待确认，干涉检查尚未完成。" : relevant[0].message}
+          </p>
         )}
         <div className="assembly-compact-footer">
-          {part && (
-            <button onClick={() => openDetails("part")}>精确调整</button>
-          )}
-          <button onClick={() => openDetails("rules")}>检查与规则</button>
+          <button onClick={() => openDetails(part ? "part" : "rules", needsFace ? "machining" : "position")}>查看详情 <ChevronRight size={12} /></button>
         </div>
       </aside>
     );

@@ -965,43 +965,26 @@
 .assembly-compact-footer button:first-child {
   background: var(--ink-soft);
 }
-.assembly-direct-join { margin: 12px 0; padding: 12px 0; border-block: 1px solid var(--line); }
-.assembly-direct-join > button { background: var(--ink-soft); }
-.assembly-direct-join strong { font-size: 12px; }
-.assembly-direct-join p { font-size: 11px; line-height: 1.7; color: var(--muted); margin: 7px 0; }
-.assembly-direct-join > div { display: flex; flex-wrap: wrap; gap: 6px; }
-.assembly-direct-join button { font-size: 11px; }
-.assembly-quick-placements {
-  margin: 14px 0 8px;
-}
-.assembly-quick-placements > span {
-  font-size: 10px;
-  color: var(--muted);
-}
-.assembly-quick-placements button {
+.assembly-context-actions {
+  position: absolute;
+  z-index: 6;
   display: flex;
   align-items: center;
-  gap: 7px;
-  text-align: left;
-  width: 100%;
-  padding: 9px 7px;
-  margin-top: 6px;
-  background: #fcf4d8;
-  border: 1px solid #e6d28c;
-  font-size: 11px;
-  white-space: normal;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  width: max-content;
+  max-width: min(280px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  padding: 6px;
+  box-shadow: 0 3px 12px #192b4710;
 }
-.assembly-quick-placements button > i {
-  width: 6px;
-  height: 6px;
-  background: #d6ad28;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.assembly-quick-placements button > svg {
-  margin-left: auto;
-  flex-shrink: 0;
-}
+.assembly-context-actions > span { font-size: 11px; padding: 0 4px; }
+.assembly-context-actions button { font-size: 11px; padding: 5px 7px; }
+.assembly-context-buttons { display: flex; align-items: center; gap: 3px; }
+.assembly-context-actions small { flex-basis: 100%; font-size: 10px; line-height: 1.5; color: var(--muted); padding: 0 4px; }
+.assembly-context-actions .has-errors { color: #ba3033; }
 .assembly-compact-notice {
   display: flex;
   align-items: center;

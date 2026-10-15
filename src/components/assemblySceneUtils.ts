@@ -7,6 +7,32 @@ import type {
 import type { Part } from "../core/types";
 import { transformPoint } from "../core/assemblyGeometry";
 
+export function positionAssemblyActions(anchor: { x: number; y: number }, viewport: { width: number; height: number }, size: { width: number; height: number }) {
+  return {
+    left: Math.max(12, Math.min(viewport.width - size.width - 12, anchor.x - size.width / 2)),
+    top: Math.max(12, Math.min(viewport.height - size.height - 12, anchor.y - size.height)),
+  };
+}
+
+/** Place a small action strip above the selected model, with room for its width. */
+export function assemblyContextAnchor(bounds: THREE.Box3, camera: THREE.PerspectiveCamera, viewport: { width: number; height: number }) {
+  if (bounds.isEmpty() || viewport.width <= 0 || viewport.height <= 0) return null;
+  const center = bounds.getCenter(new THREE.Vector3()).project(camera);
+  if (![center.x, center.y, center.z].every(Number.isFinite) || center.z < -1 || center.z > 1 || Math.abs(center.x) > 1.2 || Math.abs(center.y) > 1.2) return null;
+  let top = Infinity;
+  for (const x of [bounds.min.x, bounds.max.x])
+    for (const y of [bounds.min.y, bounds.max.y])
+      for (const z of [bounds.min.z, bounds.max.z]) {
+        const point = new THREE.Vector3(x, y, z).project(camera);
+        if (point.z >= -1 && point.z <= 1) top = Math.min(top, (1 - point.y) * viewport.height / 2);
+      }
+  const margin = Math.min(140, viewport.width / 2);
+  return {
+    x: Math.max(margin, Math.min(viewport.width - margin, (center.x + 1) * viewport.width / 2)),
+    y: Math.max(32, Math.min(Math.max(32, viewport.height - 130), top - 26)),
+  };
+}
+
 export function disposeObject(group: THREE.Object3D) {
   group.traverse((obj) => {
     if (obj instanceof THREE.Mesh || obj instanceof THREE.Line) {
