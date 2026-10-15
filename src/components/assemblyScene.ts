@@ -37,7 +37,7 @@ export type SceneState = {
   selected: string | null;
   candidates: PlacementCandidate[];
   analysis: AssemblyAnalysis | null;
-  tool: "select" | "translate" | "rotate";
+  tool: "translate" | "rotate";
   magnet: boolean;
   xray: boolean;
   exploded: boolean;
@@ -729,8 +729,7 @@ export function createAssemblyScene(
       !item.locked &&
       !next.blocked &&
       !next.exploded &&
-      !next.installationPreview &&
-      next.tool !== "select"
+      !next.installationPreview
     ) {
       if (controls.object !== entry.group) controls.attach(entry.group);
       controls.setMode(next.tool);
@@ -853,7 +852,7 @@ export function createAssemblyScene(
       point: hit.point.clone(),
       plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), -hit.point.z),
       moved: false,
-      movable: !item.locked && state.tool !== "rotate",
+      movable: !item.locked,
       pointerId: event.pointerId,
     };
     orbit.enabled = false;
