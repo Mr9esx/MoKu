@@ -4,6 +4,7 @@ import type { Assembly, AssemblyItem, FitConstraint, PlacementCandidate, Vec3 } 
 import { buildAssemblyModel, geometrySignature, quaternion, transformPoint } from './assemblyGeometry';
 import { MISSING_CHECK_BASIS_ID, add, analyzeAssembly, cross, dot, length, normalize, rectangularSlot, scale, subtract } from './assemblyChecks';
 import { signedArea } from './geometry';
+import { tenonInsertionCandidates } from './assemblyJoinery';
 function slotPose(male:Part,receiver:Part,host:AssemblyItem,assembly:Assembly,feature:{kind:'pocket'|'hole';index:number},fit?:FitConstraint):AssemblyItem|null {
   const outline=feature.kind==='pocket'?receiver.pockets[feature.index]?.outline:receiver.holes[feature.index];
   const slot=outline?rectangularSlot(outline):null;if(!slot)return null;
@@ -53,6 +54,8 @@ function faceSamples(part:Part,item:AssemblyItem,assembly:Assembly) {
 export function placementCandidates(project:Project,assembly:Assembly,partId:string):PlacementCandidate[] {
   const male=project.parts.find(p=>p.id===partId),item=assembly.items.find(i=>i.partId===partId);
   if(!male||!item||item.locked)return [];
+  const insertions=tenonInsertionCandidates(project,assembly,partId);
+  if(insertions.length) return insertions.map(candidate=>({...candidate,...candidateStatus(project,assembly,candidate.pose)}));
   const result:PlacementCandidate[]=[];
   for(const host of assembly.items){
     if(host.partId===partId)continue;const receiver=project.parts.find(p=>p.id===host.partId);if(!receiver)continue;
@@ -89,17 +92,21 @@ export function weakSnap(pose:AssemblyItem,candidates:PlacementCandidate[],optio
   const allowed=options.axes?.toLowerCase()??'xyz';
   const screen=options.project(pose.position);let best:PlacementCandidate|undefined,bestPixels=Infinity;
   for(const candidate of candidates){
-    if(candidate.partId!==pose.partId||candidate.status!=='valid')continue;
+    const insertion=!!candidate.insertion?.geometryChecked;
+    if(candidate.partId!==pose.partId || candidate.status==='invalid' || (candidate.status!=='valid'&&!insertion))continue;
+    const held=options.heldId===candidate.id;
     const a=quaternion(pose.rotation),b=quaternion(candidate.pose.rotation);
-    if(Math.abs(a.dot(b))<1-1e-7)continue;
+    if(insertion ? a.angleTo(b)>(held?12:8)*Math.PI/180 : Math.abs(a.dot(b))<1-1e-7)continue;
     const delta=subtract(candidate.pose.position,pose.position);
     if((['x','y','z'] as const).some(k=>!allowed.includes(k)&&Math.abs(delta[k])>1e-6))continue;
-    const projected=options.project(candidate.pose.position),pixels=Math.hypot(projected.x-screen.x,projected.y-screen.y),world=length(delta),held=options.heldId===candidate.id;
-    if(!Number.isFinite(pixels)||world>(held?8:5)||pixels>(held?12:8))continue;
+    const from=insertion?transformPoint(candidate.insertion!.sourceAnchor,pose):pose.position;
+    const to=insertion?transformPoint(candidate.insertion!.sourceAnchor,candidate.pose):candidate.pose.position;
+    const origin=insertion?options.project(from):screen,projected=options.project(to),pixels=Math.hypot(projected.x-origin.x,projected.y-origin.y),world=length(subtract(to,from));
+    if(!Number.isFinite(pixels)||world>(insertion?(held?18:12):(held?8:5))||pixels>(insertion?(held?16:10):(held?12:8)))continue;
     if(held){best=candidate;break;}
     if(pixels<bestPixels){best=candidate;bestPixels=pixels;}
   }
-  return best?{pose:{...pose,position:{...best.pose.position}},candidateId:best.id}:{pose,candidateId:null};
+  return best?{pose:{...pose,position:{...best.pose.position},rotation:best.insertion?{...best.pose.rotation}:pose.rotation},candidateId:best.id}:{pose,candidateId:null};
 }
 
 /** Assembly contacts take precedence; otherwise each moving axis can settle at zero. */

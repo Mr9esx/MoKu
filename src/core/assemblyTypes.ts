@@ -21,7 +21,7 @@ export type AssemblyModel = { partId: string; positions: number[]; cells: Convex
 export type AssemblyIssue = { id: string; kind: 'collision'|'dimension'|'fit'|'geometry'|'missing'|'installation'; severity: 'error'|'pending'; message: string; partIds: string[]; position?: Vec3; constraintId?: string; /** First continuously detected blocked motion pose and its real overlap mesh. */ movingPosition?: Vec3; collisionPositions?: number[] };
 export type CollisionRegion = { partIds: [string,string]; positions: number[] };
 export type AssemblyAnalysis = { issues: AssemblyIssue[]; collisions: CollisionRegion[]; bounds: Bounds3|null; complete: boolean; checkedPairs: number };
-export type PlacementCandidate = { id: string; partId: string; receiverId: string; pose: AssemblyItem; target: Vec3; label: string; status: 'valid'|'incomplete'|'invalid'; message?: string; feature?: {kind:'pocket'|'hole';index:number} };
+export type PlacementCandidate = { id: string; partId: string; receiverId: string; pose: AssemblyItem; target: Vec3; label: string; status: 'valid'|'incomplete'|'invalid'; message?: string; feature?: {kind:'pocket'|'hole';index:number}; insertion?: { maleEdge: number; depth: number; width: number; clearance: number; sourceAnchor: Vec3; receiverAnchor: Vec3; direction: Vec3; geometryChecked: boolean } };
 export const CONTACT_EPSILON = 0.01;
 export function emptyAssembly(): Assembly {
   return {items:[],pocketFaces:{},targets:{tolerance:0.5},fits:[],steps:[],sparePartIds:[]};

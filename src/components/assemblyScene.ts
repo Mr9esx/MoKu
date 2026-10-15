@@ -12,7 +12,7 @@ import {
   interpolateViewQuaternion,
   dragViewQuaternion,
 } from "./viewCubeGeometry";
-import { weakMoveSnap } from "../core/assemblyGuidance";
+import { weakMoveSnap, weakSnap } from "../core/assemblyGuidance";
 import type {
   Assembly,
   AssemblyAnalysis,
@@ -25,9 +25,6 @@ import type { Project } from "../core/types";
 import {
   disposeObject,
   visibleSnapTarget,
-  faceReferenceAt,
-  assemblyContextAnchor,
-  alignReferences,
   type AssemblyReference,
 } from "./assemblySceneUtils";
 
@@ -46,7 +43,6 @@ export type SceneState = {
   hiddenPartIds?: string[];
   machiningFace?: "front" | "back" | null;
   referenceMarkers?: { partId: string; reference: AssemblyReference }[];
-  facePicking?: { partId: string; stage: "source" | "target" } | null;
   editingDisabled?: boolean;
   installationPreview?: {
     partId: string;
@@ -62,9 +58,7 @@ export type SceneCallbacks = {
   error: (message: string) => void;
   orientation?: (rotation: Rotation3) => void;
   originSnap?: (axes: (keyof Vec3)[]) => void;
-  facePick?: (partId: string, reference: AssemblyReference) => void;
-  faceStart?: (partId: string, reference: AssemblyReference) => void;
-  contextAnchor?: (point: { x: number; y: number } | null) => void;
+
 };
 type Entry = {
   group: THREE.Group;
@@ -107,6 +101,7 @@ export function createAssemblyScene(
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setClearColor("#f7f5ed");
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.localClippingEnabled = true;
   container.appendChild(renderer.domElement);
   renderer.domElement.setAttribute("aria-label", "三维装配场景");
   renderer.domElement.tabIndex = 0;
@@ -138,10 +133,7 @@ export function createAssemblyScene(
   const entries = new Map<string, Entry>(),
     overlays = new THREE.Group(),
     ghosts = new THREE.Group();
-  const faceHover = new THREE.Group();
-  scene.add(overlays, ghosts, faceHover);
-  let faceDown: { pointerId: number; x: number; y: number; partId: string; reference: AssemblyReference; dragSource: boolean } | null = null;
-  let lastContextAnchor: { x: number; y: number } | null = null;
+  scene.add(overlays, ghosts);
   let state: SceneState | null = null,
     disposed = false,
     frame = 0,
@@ -168,15 +160,6 @@ export function createAssemblyScene(
     frame = requestAnimationFrame(() => {
       frame = 0;
       renderer.render(scene, camera);
-      const selectedEntry = state?.selected ? entries.get(state.selected) : null;
-      const anchor = selectedEntry?.group.visible && !state?.blocked && !state?.exploded
-        ? assemblyContextAnchor(new THREE.Box3().setFromObject(selectedEntry.group), camera, { width: renderer.domElement.clientWidth, height: renderer.domElement.clientHeight })
-        : null;
-      const roundedAnchor = anchor ? { x: Math.round(anchor.x), y: Math.round(anchor.y) } : null;
-      if (roundedAnchor?.x !== lastContextAnchor?.x || roundedAnchor?.y !== lastContextAnchor?.y) {
-        lastContextAnchor = roundedAnchor;
-        callbacks.contextAnchor?.(roundedAnchor);
-      }
       if (Math.abs(lastOrientation.dot(camera.quaternion)) < 1 - 1e-12) {
         lastOrientation.copy(camera.quaternion);
         callbacks.orientation?.({
@@ -208,50 +191,6 @@ export function createAssemblyScene(
       false,
     )[0];
   };
-  function pickContact(event: PointerEvent) {
-    if (!state?.facePicking || state.blocked) return null;
-    const rect = renderer.domElement.getBoundingClientRect();
-    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return null;
-    const hit = pick(event);
-    const id = hit?.object.userData.partId as string | undefined;
-    if (!id || !hit?.face || (state.facePicking.stage === "source" ? id !== state.facePicking.partId : id === state.facePicking.partId)) return null;
-    const entry = entries.get(id);
-    if (!entry) return null;
-    const reference = faceReferenceAt(poseOf(entry.group, id), hit.point, hit.face.normal);
-    return reference ? { partId: id, reference, hit, entry } : null;
-  }
-  function clearFaceHover() {
-    disposeObject(faceHover);
-    faceHover.clear();
-  }
-  function showFaceHover(contact: ReturnType<typeof pickContact>) {
-    clearFaceHover();
-    if (!contact) return;
-    const point = contact.hit.point;
-    const radius = Math.max(0.5, camera.position.distanceTo(point) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 22 / Math.max(1, renderer.domElement.clientHeight));
-    const colour = state?.facePicking?.stage === "source" ? "#315cb9" : "#e4b61a";
-    const marker = new THREE.Mesh(new THREE.CircleGeometry(radius, 32), new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthTest: false }));
-    marker.position.copy(point);
-    marker.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), vector(contact.reference.normal!).applyQuaternion(contact.entry.group.quaternion));
-    marker.renderOrder = 15;
-    faceHover.add(marker);
-    const sourceMarker = state?.referenceMarkers?.find(m => m.partId === state?.facePicking?.partId);
-    const sourceEntry = sourceMarker ? entries.get(sourceMarker.partId) : null;
-    if (state?.facePicking?.stage === "target" && sourceMarker && sourceEntry) {
-      const pose = alignReferences(poseOf(sourceEntry.group, sourceMarker.partId), sourceMarker.reference, poseOf(contact.entry.group, contact.partId), contact.reference);
-      const ghost = new THREE.Mesh(sourceEntry.mesh.geometry.clone(), new THREE.MeshBasicMaterial({ color: "#e4b61a", transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
-      ghost.position.copy(vector(pose.position));
-      ghost.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
-      ghost.renderOrder = 13;
-      faceHover.add(ghost);
-    }
-  }
-  function cancelFaceGesture() {
-    if (faceDown && renderer.domElement.hasPointerCapture(faceDown.pointerId)) renderer.domElement.releasePointerCapture(faceDown.pointerId);
-    faceDown = null;
-    orbit.enabled = true;
-    clearFaceHover();
-  }
   function highlightEntries() {
     for (const [id, entry] of entries) {
       const selected = state?.selected === id,
@@ -296,7 +235,7 @@ export function createAssemblyScene(
             polygonOffsetFactor: -2,
           }),
         );
-        mesh.renderOrder = 8;
+        mesh.renderOrder = 20;
         overlays.add(mesh);
         const border = new THREE.LineSegments(
           new THREE.EdgesGeometry(mesh.geometry, 25),
@@ -305,7 +244,7 @@ export function createAssemblyScene(
             depthTest: !state.xray,
           }),
         );
-        border.renderOrder = 9;
+        border.renderOrder = 21;
         overlays.add(border);
       }
     // Errors on specific features get a precise contour, not a whole-object red fill.
@@ -342,6 +281,8 @@ export function createAssemblyScene(
     );
     if (
       !selectedPart ||
+      state.blocked ||
+      state.assembly.items.find(i=>i.partId===selectedPart.id)?.locked ||
       state.editingDisabled ||
       state.hiddenPartIds?.includes(selectedPart.id) ||
       state.exploded ||
@@ -355,11 +296,52 @@ export function createAssemblyScene(
     const visible = state.candidates
       .filter(
         (c) =>
+          c.partId === selectedPart.id &&
           c.status !== "invalid" &&
           !state!.hiddenPartIds?.includes(c.receiverId),
       )
       .slice(0, 10);
+    const highlightedTenons = new Set<number>(), highlightedHoles = new Set<string>();
     for (const candidate of visible) {
+      if (candidate.insertion) {
+        const host=state.assembly.items.find(i=>i.partId===candidate.receiverId);
+        const receiver=state.project.parts.find(p=>p.id===candidate.receiverId);
+        const hole=receiver?.holes[candidate.feature!.index];
+        const featureKey=candidate.receiverId+":"+candidate.feature!.index;
+        if(host && receiver && hole && !highlightedHoles.has(featureKey)) {
+          highlightedHoles.add(featureKey);
+          const wallPositions:number[]=[];
+          for(let i=0;i<hole.length;i++) {
+            const a=hole[i],b=hole[(i+1)%hole.length];
+            for(const p of [{...a,z:0},{...b,z:0},{...b,z:receiver.thickness},{...a,z:0},{...b,z:receiver.thickness},{...a,z:receiver.thickness}]) {
+              const world=transformPoint(p,host); wallPositions.push(world.x,world.y,world.z);
+            }
+          }
+          const wall=new THREE.Mesh(geometry(wallPositions),new THREE.MeshBasicMaterial({color:"#15975b",transparent:true,opacity:0.48,depthWrite:false,side:THREE.DoubleSide,depthTest:false}));
+          wall.renderOrder=11; ghosts.add(wall);
+          for(const z of [0,receiver.thickness+0.04]) {
+            const points=[...hole,hole[0]].map(p=>vector(transformPoint({...p,z},host)));
+            const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:"#087c45",depthTest:false}));
+            line.renderOrder=12; ghosts.add(line);
+          }
+        }
+        const edge=candidate.insertion.maleEdge,sourceEntry=entries.get(selectedPart.id);
+        if(sourceEntry && !highlightedTenons.has(edge)) {
+          highlightedTenons.add(edge);
+          const a=selectedPart.outline[edge],b=selectedPart.outline[(edge+1)%selectedPart.outline.length];
+          if(!a || !b) continue;
+          const u=new THREE.Vector3(b.x-a.x,b.y-a.y,0).normalize();
+          const area=selectedPart.outline.reduce((sum,p,i)=>{const q=selectedPart.outline[(i+1)%selectedPart.outline.length];return sum+p.x*q.y-q.x*p.y;},0);
+          const inward=new THREE.Vector3(-u.y,u.x,0).multiplyScalar(area>0?1:-1);
+          const origin=new THREE.Vector3(a.x,a.y,0),end=new THREE.Vector3(b.x,b.y,0);
+          sourceEntry.group.updateMatrixWorld(true);
+          const planes=[new THREE.Plane(u.clone(),-u.dot(origin)),new THREE.Plane(u.clone().negate(),u.dot(end)),new THREE.Plane(inward.clone(),-inward.dot(origin)),new THREE.Plane(inward.clone().negate(),inward.dot(origin)+candidate.insertion.depth)].map(plane=>plane.applyMatrix4(sourceEntry.group.matrixWorld));
+          const highlight=new THREE.Mesh(sourceEntry.mesh.geometry.clone(),new THREE.MeshBasicMaterial({color:"#16ad67",transparent:true,opacity:0.55,depthWrite:false,depthTest:false,side:THREE.DoubleSide,clippingPlanes:planes}));
+          highlight.position.copy(sourceEntry.group.position); highlight.quaternion.copy(sourceEntry.group.quaternion);
+          highlight.renderOrder=11; ghosts.add(highlight);
+        }
+        continue;
+      }
       const active = candidate.id === (held ?? state.candidateId),
         valid = candidate.status === "valid";
       const group = new THREE.Group();
@@ -375,7 +357,7 @@ export function createAssemblyScene(
         const mesh = new THREE.Mesh(
           g,
           new THREE.MeshBasicMaterial({
-            color: valid ? "#f3c934" : "#8793a9",
+            color: valid ? "#16ad67" : "#8793a9",
             transparent: true,
             opacity: valid ? 0.32 : 0.12,
             depthWrite: false,
@@ -388,7 +370,7 @@ export function createAssemblyScene(
         new THREE.EdgesGeometry(g, 25),
         valid
           ? new THREE.LineBasicMaterial({
-              color: "#cd9e04",
+              color: "#15975b",
               transparent: true,
               opacity: active ? 1 : 0.5,
               depthTest: false,
@@ -432,7 +414,7 @@ export function createAssemblyScene(
             new THREE.BufferGeometry().setFromPoints(points),
             valid
               ? new THREE.LineBasicMaterial({
-                  color: "#e3af08",
+                  color: "#15975b",
                   depthTest: false,
                 })
               : new THREE.LineDashedMaterial({
@@ -450,7 +432,7 @@ export function createAssemblyScene(
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(3, 4.2, 28),
         new THREE.MeshBasicMaterial({
-          color: valid ? "#f3bc1f" : "#9aa6b4",
+          color: valid ? "#16ad67" : "#9aa6b4",
           side: THREE.DoubleSide,
           depthTest: false,
         }),
@@ -467,7 +449,7 @@ export function createAssemblyScene(
             vector(state.preview.position),
             vector(c.pose.position),
           ]),
-          new THREE.LineBasicMaterial({ color: "#d4a418", depthTest: false }),
+          new THREE.LineBasicMaterial({ color: "#15975b", depthTest: false }),
         );
         line.renderOrder = 10;
         overlays.add(line);
@@ -708,7 +690,6 @@ export function createAssemblyScene(
       next.selected !== draggedId || next.hiddenPartIds?.includes(draggedId) ||
       !draggedItem || draggedItem.locked
     )) cancelDrag();
-    if (next.blocked || next.facePicking?.stage !== state?.facePicking?.stage || next.facePicking?.partId !== state?.facePicking?.partId) cancelFaceGesture();
     state = next;
     const wanted = new Set(next.assembly.items.map((i) => i.partId));
     for (const [id, e] of entries)
@@ -818,7 +799,7 @@ export function createAssemblyScene(
     }
     render();
   }
-  function snapPose(raw: AssemblyItem, axes = "XYZ") {
+  function snapPose(raw: AssemblyItem, axes = "XYZ", move = true) {
     if (!state) return raw;
     scene.updateMatrixWorld(true);
     camera.updateMatrixWorld(true);
@@ -826,9 +807,9 @@ export function createAssemblyScene(
       .filter(([id, e]) => id !== raw.partId && e.group.visible)
       .map(([, e]) => e.mesh);
     const eligible = state.candidates.filter((c) => {
-      if (state!.hiddenPartIds?.includes(c.receiverId)) return false;
+      if (c.partId!==raw.partId || state!.hiddenPartIds?.includes(c.receiverId)) return false;
       let anchor = c.target;
-      if (c.feature) {
+      if (c.feature && !c.insertion) {
         const receiver = state!.project.parts.find(
           (p) => p.id === c.receiverId,
         );
@@ -856,14 +837,16 @@ export function createAssemblyScene(
       }
       return visibleSnapTarget(anchor, camera, obstacles);
     });
-    const snapped = weakMoveSnap(raw, eligible, {
+    const options = {
       enabled: state.magnet,
       suspended: alt,
       heldId: held,
       heldOriginAxes,
       axes,
       project: projectPoint,
-    });
+    };
+    const snapped = move ? weakMoveSnap(raw, eligible, options)
+      : {...weakSnap(raw, eligible.filter(c=>c.insertion), options), zeroAxes: []};
     held = snapped.candidateId;
     setOriginSnap(snapped.zeroAxes);
     callbacks.snap(held);
@@ -874,10 +857,11 @@ export function createAssemblyScene(
       if (!state || !gizmoOriginal || applyingSnap || transform.active !== control || !control.object) return;
       const group = control.object as THREE.Group;
       let pose = poseOf(group, gizmoOriginal.partId);
-      if (control.mode === "translate")
-        pose = snapPose(pose, control.axis ?? "XYZ");
+      if (control.mode === "translate") pose = snapPose(pose, control.axis ?? "XYZ");
+      else pose = snapPose(pose, "XYZ", false);
       applyingSnap = true;
       group.position.copy(vector(pose.position));
+      group.quaternion.set(pose.rotation.x,pose.rotation.y,pose.rotation.z,pose.rotation.w);
       applyingSnap = false;
       callbacks.preview(pose);
       render();
@@ -921,19 +905,6 @@ export function createAssemblyScene(
     )
       return;
     const hit = pick(event);
-    if (state.facePicking) {
-      const contact = pickContact(event);
-      const sourceMarker = state.facePicking.stage === "target" && hit?.object.userData.partId === state.facePicking.partId
-        ? state.referenceMarkers?.find(m => m.partId === state!.facePicking!.partId)
-        : null;
-      if (contact || sourceMarker) {
-        faceDown = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, partId: contact?.partId ?? sourceMarker!.partId, reference: contact?.reference ?? sourceMarker!.reference, dragSource: !!sourceMarker };
-        orbit.enabled = false;
-        renderer.domElement.setPointerCapture(event.pointerId);
-        event.stopImmediatePropagation();
-      }
-      return;
-    }
     if (state.editingDisabled) return;
     if (transform.down(transformPointer(event))) {
       gizmoPointerId = event.pointerId;
@@ -964,7 +935,7 @@ export function createAssemblyScene(
   };
   let clickStart: { x: number; y: number; pointerId: number } | null = null;
   const onCapture = (event: PointerEvent) => {
-    if (direct || transform.active || faceDown) {
+    if (direct || transform.active) {
       event.stopImmediatePropagation();
       return;
     }
@@ -981,21 +952,6 @@ export function createAssemblyScene(
     onDown(event);
   };
   const onMove = (event: PointerEvent) => {
-    if (faceDown) {
-      event.stopImmediatePropagation();
-      if (event.pointerId === faceDown.pointerId && faceDown.dragSource) {
-        showFaceHover(pickContact(event));
-        render();
-      }
-      return;
-    }
-    if (state?.facePicking && !state.blocked) {
-      const contact = pickContact(event);
-      showFaceHover(contact);
-      renderer.domElement.style.cursor = contact ? "crosshair" : "default";
-      render();
-      return;
-    }
     if (transform.active) {
       event.stopImmediatePropagation();
       if (event.pointerId === gizmoPointerId)
@@ -1040,12 +996,14 @@ export function createAssemblyScene(
       };
     const pose = snapPose(raw, "XY"),
       entry = entries.get(direct.id);
-    if (entry) entry.group.position.copy(vector(pose.position));
+    if (entry) {
+      entry.group.position.copy(vector(pose.position));
+      entry.group.quaternion.set(pose.rotation.x,pose.rotation.y,pose.rotation.z,pose.rotation.w);
+    }
     callbacks.preview(pose);
     render();
   };
   const onLeave = () => {
-    clearFaceHover();
     if (direct || gizmoOriginal) return;
     hovered = null;
     transform.clearHover();
@@ -1054,20 +1012,6 @@ export function createAssemblyScene(
     render();
   };
   const onUp = (event: PointerEvent) => {
-    if (faceDown) {
-      event.stopImmediatePropagation();
-      if (event.pointerId !== faceDown.pointerId) return;
-      const gesture = faceDown;
-      const drop = gesture.dragSource ? pickContact(event) : null;
-      cancelFaceGesture();
-      clickStart = null;
-      if (state?.facePicking && !state.blocked) {
-        if (drop) callbacks.facePick?.(drop.partId, drop.reference);
-        else if (!gesture.dragSource && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) <= 4) callbacks.facePick?.(gesture.partId, gesture.reference);
-      }
-      render();
-      return;
-    }
     if (transform.active) {
       event.stopImmediatePropagation();
       if (event.pointerId !== gizmoPointerId) return;
@@ -1099,7 +1043,7 @@ export function createAssemblyScene(
       render();
       return;
     }
-    if (event.button !== 0 || gizmoOriginal || state?.facePicking || state?.editingDisabled) return;
+    if (event.button !== 0 || gizmoOriginal || state?.editingDisabled) return;
     if (
       clickStart &&
       Math.hypot(event.clientX - clickStart.x, event.clientY - clickStart.y) <=
@@ -1159,22 +1103,8 @@ export function createAssemblyScene(
     alt = false;
     for (const control of transform.controls) control.setRotationSnap(Math.PI / 2);
     cancelDrag();
-    cancelFaceGesture();
   };
-  const onDoubleClick = (event: MouseEvent) => {
-    if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || !state || state.blocked || state.exploded || state.installationPreview || state.editingDisabled || state.assembly.items.length < 2) return;
-    const hit = pick(event as PointerEvent);
-    const partId = hit?.object.userData.partId as string | undefined;
-    const item = state.assembly.items.find(i => i.partId === partId);
-    const entry = partId ? entries.get(partId) : null;
-    if (!hit?.face || !item || item.locked || !entry) return;
-    const reference = faceReferenceAt(poseOf(entry.group, item.partId), hit.point, hit.face.normal);
-    if (!reference) return;
-    event.stopImmediatePropagation();
-    clickStart = null;
-    callbacks.faceStart?.(item.partId, reference);
-  };
-  const onCancel = () => { cancelFaceGesture(); cancelDrag(); render(); };
+  const onCancel = () => { cancelDrag(); render(); };
   renderer.domElement.addEventListener("wheel", stopOrientation, {
     capture: true,
     passive: true,
@@ -1184,7 +1114,6 @@ export function createAssemblyScene(
   renderer.domElement.addEventListener("pointerup", onUp, true);
   renderer.domElement.addEventListener("pointercancel", onCancel);
   renderer.domElement.addEventListener("pointerleave", onLeave);
-  renderer.domElement.addEventListener("dblclick", onDoubleClick);
   window.addEventListener("keydown", onKey, true);
   window.addEventListener("keyup", onKey, true);
   window.addEventListener("blur", onBlur);
@@ -1219,7 +1148,6 @@ export function createAssemblyScene(
       renderer.domElement.removeEventListener("pointerup", onUp, true);
       renderer.domElement.removeEventListener("pointercancel", onCancel);
       renderer.domElement.removeEventListener("pointerleave", onLeave);
-      renderer.domElement.removeEventListener("dblclick", onDoubleClick);
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("keyup", onKey, true);
       window.removeEventListener("blur", onBlur);

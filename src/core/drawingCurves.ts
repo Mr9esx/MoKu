@@ -31,7 +31,9 @@ export function arcSegments(radiusBound: number, sweep: number) {
   if (!Number.isFinite(radiusBound) || radiusBound <= 0)
     throw new Error("曲线尺寸无效");
   const step = 2 * Math.acos(Math.max(-1, 1 - CURVE_ERROR / radiusBound));
-  const n = Math.max(2, Math.ceil(Math.abs(sweep) / step));
+  // Arc midpoints can be exact mating contacts (for example a dogbone corner).
+  // Keep them as vertices instead of cutting across them with an odd segment count.
+  const n = Math.max(2, 2 * Math.ceil(Math.abs(sweep) / step / 2));
   if (!Number.isSafeInteger(n) || n + 1 > MAX_ENTITY_POINTS)
     throw new DrawingComplexityError();
   return n;

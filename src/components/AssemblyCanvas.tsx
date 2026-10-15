@@ -1,8 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { positionAssemblyActions } from "./assemblySceneUtils";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AssemblyViewCube } from "./AssemblyViewCube";
 import { viewQuaternion } from "./viewCubeGeometry";
-import type { AssemblyIssue, Rotation3, Vec3 } from "../core/assemblyTypes";
+import type { Rotation3, Vec3 } from "../core/assemblyTypes";
 import {
   Magnet,
   Scan,
@@ -10,10 +9,6 @@ import {
   Layers3,
   Undo2,
   Trash2,
-  Link2,
-  Check,
-  X,
-  RotateCcw,
 } from "lucide-react";
 import {
   createAssemblyScene,
@@ -35,17 +30,6 @@ type Props = {
   onUndo: () => void;
   canUndo: boolean;
   onRemove: () => void;
-  joinPrompt?: string;
-  join: {
-    stage: "source" | "target" | "preview";
-    targetName?: string;
-    sourceLabel?: string;
-    issue?: AssemblyIssue;
-    canApply: boolean;
-    checked: boolean;
-  } | null;
-  onJoin: () => void;
-  onApplyJoin: () => void;
   clearPreview: () => void;
   viewRequest: { kind: AssemblyView; seq: number };
 };
@@ -60,9 +44,6 @@ export function AssemblyCanvas(props: Props) {
   const [webglError, setWebglError] = useState(""),
     [retry, setRetry] = useState(0);
   const [zeroAxes, setZeroAxes] = useState<(keyof Vec3)[]>([]);
-  const [contextAnchor, setContextAnchor] = useState<{ x: number; y: number } | null>(null);
-  const contextElement = useRef<HTMLDivElement>(null);
-  const [contextSize, setContextSize] = useState({ width: 80, height: 40 });
   useEffect(() => {
     if (!container.current) return;
     try {
@@ -74,9 +55,6 @@ export function AssemblyCanvas(props: Props) {
         error: (message) => latest.current.callbacks.error(message),
         orientation: setOrientation,
         originSnap: setZeroAxes,
-        facePick: (partId, reference) => latest.current.callbacks.facePick?.(partId, reference),
-        faceStart: (partId, reference) => latest.current.callbacks.faceStart?.(partId, reference),
-        contextAnchor: setContextAnchor,
       });
       api.current.update(latest.current.state);
       setWebglError("");
@@ -108,27 +86,8 @@ export function AssemblyCanvas(props: Props) {
   const selectedPose = props.state.preview?.partId === props.state.selected
     ? props.state.preview
     : selectedItem;
-  const showContext = !!selectedItem && !selectedItem.locked && !props.state.blocked && !props.state.exploded && !props.state.installationPreview && props.state.assembly.items.length > 1 && (!!contextAnchor || !!props.join);
-  useLayoutEffect(() => {
-    const element = contextElement.current;
-    if (!element) return;
-    const measure = () => {
-      const width = element.offsetWidth, height = element.offsetHeight;
-      setContextSize(previous => previous.width === width && previous.height === height ? previous : { width, height });
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [showContext]);
-  const contextPosition = positionAssemblyActions(
-    contextAnchor ?? { x: (container.current?.clientWidth ?? 800) / 2, y: (container.current?.clientHeight ?? 600) * 0.65 },
-    { width: container.current?.clientWidth ?? 800, height: container.current?.clientHeight ?? 600 },
-    contextSize,
-  );
   const feedback =
     props.error ||
-    props.joinPrompt ||
     (props.state.exploded
       ? "爆炸查看 · 检测仍使用原装配位置"
       : props.state.installationPreview
@@ -138,7 +97,7 @@ export function AssemblyCanvas(props: Props) {
           : zeroAxes.length
             ? `${zeroAxes.map(axis => axis.toUpperCase()).join(" / ")} 已吸附到 0 · 继续拖动可脱离`
           : props.snapped
-            ? "已对齐 · 继续拖动可脱离"
+            ? "榫卯已吸附 · 松手放置 · 继续拖动可脱离"
             : props.guidancePending
               ? "正在核对可放置位置…"
               : (candidate?.label ??
@@ -147,7 +106,7 @@ export function AssemblyCanvas(props: Props) {
                   : selected && !selectedItem
                     ? "此零件尚未放入场景 · 点击“放入场景”继续"
                     : selected
-                      ? "拖动零件或箭头移动 · 拖动圆环旋转 · 双击接触面拼合"
+                      ? props.state.candidates.some(c => c.insertion?.geometryChecked && c.status !== "invalid") ? "绿色榫卯可配合 · 旋转对准后拖近吸附 · Alt 暂停磁吸" : "拖动零件或箭头移动 · 拖动圆环旋转"
                       : props.state.assembly.items.length
                         ? "点击场景中的零件即可选择，也可以直接拖动"
                         : "点击左侧零件，放入场景开始组装")));
@@ -186,44 +145,13 @@ export function AssemblyCanvas(props: Props) {
           冲突位置
         </span>
         <span>
-          <i className="legend-yellow" />
-          可放置位置
+          <i className="legend-green" />
+          榫卯匹配
         </span>
       </div>
       <div className="assembly-scene-feedback" role="status" aria-live="polite">
         {feedback}
       </div>
-      {showContext && (
-        <div
-          ref={contextElement}
-          className="assembly-context-actions floating"
-          role="group"
-          aria-label="零件就地操作"
-          style={contextPosition}
-        >
-          {!props.join ? (
-            <button onClick={props.onJoin} title="拼合：也可双击板的接触面直接开始"><Link2 size={15} />拼合</button>
-          ) : (
-            <>
-              <span>{props.join.stage === "source" ? "点击本板的接触面" : props.join.stage === "target" ? `${props.join.sourceLabel}已选 · 拖到或点击目标板` : `贴合到 ${props.join.targetName}`}</span>
-              <div className="assembly-context-buttons">
-                {props.join.stage === "preview" && (
-                  <>
-                    <button className="primary" disabled={!props.join.canApply} onClick={props.onApplyJoin}><Check size={14} />应用拼合</button>
-                    <button aria-label="重新选面" title="重新选面" onClick={props.onJoin}><RotateCcw size={14} /></button>
-                  </>
-                )}
-                <button aria-label="取消拼合" title="取消拼合 · Esc" onClick={props.clearPreview}><X size={14} /></button>
-              </div>
-              {props.join.stage === "preview" && (
-                <small role="status" className={props.join.issue?.severity === "error" ? "has-errors" : ""}>
-                  {props.pending ? "正在检查…" : !props.join.checked ? "检测暂不可用" : props.join.issue?.message ?? "接触位置未发现冲突"}
-                </small>
-              )}
-            </>
-          )}
-        </div>
-      )}
       <div className="assembly-view-buttons floating" aria-label="三维视图">
         {(["all", "selected"] as const).map((view, index) => (
           <button
@@ -323,7 +251,7 @@ export function AssemblyCanvas(props: Props) {
           <p>
             在左侧选择零件，点击“加入组装”。
             <br />
-            移动时查看黄色落点，靠近即可轻轻对齐。
+            绿色标出匹配的榫卯，旋转对准后拖近即可吸附。
           </p>
         </div>
       )}

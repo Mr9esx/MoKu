@@ -15,7 +15,6 @@ import { Thumbnail } from "./Thumbnail";
 import { useAssemblyAnalysis } from "./useAssemblyAnalysis";
 import type { SceneState } from "./assemblyScene";
 import type { Dialog } from "./WorkspaceDialogs";
-import { alignReferences, referencePreviewIssue, type AssemblyReference } from "./assemblySceneUtils";
 import "./assembly.css";
 const EMPTY = emptyAssembly();
 export default function AssemblyWorkspace({
@@ -54,11 +53,6 @@ export default function AssemblyWorkspace({
   const [referenceMarkers, setReferenceMarkers] = useState<
     SceneState["referenceMarkers"]
   >([]);
-  const [faceJoin, setFaceJoin] = useState<{
-    partId: string;
-    source?: AssemblyReference;
-    target?: { partId: string; reference: AssemblyReference };
-  } | null>(null);
   const playbackCancellation = useRef(0);
   const [cancelVersion, setCancelVersion] = useState(0);
   const clearPreview = useCallback(() => {
@@ -67,7 +61,6 @@ export default function AssemblyWorkspace({
     setInstallationPreview(null);
     setPreview(null);
     setReferenceMarkers([]);
-    setFaceJoin(null);
   }, []);
   const toggleHidden = (id: string) => {
     clearPreview();
@@ -146,44 +139,6 @@ export default function AssemblyWorkspace({
     commit({ ...assembly, items: assembly.items.filter(i => i.partId !== selected) });
     setSnapped(null);
   };
-  const startJoin = () => {
-    const item = assembly.items.find(i => i.partId === selected);
-    if (blocked || !item || item.locked || assembly.items.length < 2) return;
-    clearPreview();
-    setExploded(false);
-    setMachiningFace(null);
-    setSnapped(null);
-    setFaceJoin({ partId: item.partId });
-  };
-  const startFaceJoin = (partId: string, reference: AssemblyReference) => {
-    const item = assembly.items.find(i => i.partId === partId);
-    if (blocked || !item || item.locked || assembly.items.length < 2) return;
-    select(partId);
-    setFaceJoin({ partId, source: reference });
-    setReferenceMarkers([{ partId, reference }]);
-  };
-  const pickFace = (partId: string, reference: AssemblyReference) => {
-    if (!faceJoin || blocked || faceJoin.target) return;
-    if (!faceJoin.source) {
-      if (partId !== faceJoin.partId) return;
-      setFaceJoin({ ...faceJoin, source: reference });
-      setReferenceMarkers([{ partId, reference }]);
-      return;
-    }
-    const moving = assembly.items.find(i => i.partId === faceJoin.partId);
-    const host = assembly.items.find(i => i.partId === partId);
-    if (!moving || moving.locked || !host || partId === moving.partId) return;
-    setPreview(alignReferences(moving, faceJoin.source, host, reference));
-    setReferenceMarkers([{ partId: moving.partId, reference: faceJoin.source }, { partId, reference }]);
-    setFaceJoin({ ...faceJoin, target: { partId, reference } });
-  };
-  const joinIssue = faceJoin?.target && detection.analysis
-    ? referencePreviewIssue(detection.analysis, [faceJoin.partId, faceJoin.target.partId])
-    : undefined;
-  const applyJoin = () => {
-    if (blocked || !faceJoin?.target || !preview || detection.pending || !detection.analysis || joinIssue?.severity === "error") return;
-    commitPose(preview);
-  };
   const locate = (issue: AssemblyIssue) => {
     if (issue.partIds[0]) select(issue.partIds[0]);
     if (issue.kind === "installation" && issue.movingPosition)
@@ -229,9 +184,6 @@ export default function AssemblyWorkspace({
       setSnapped(null);
     }
   }, [blocked, clearPreview]);
-  useEffect(() => {
-    if (faceJoin && (!assembly.items.some(i => i.partId === faceJoin.partId && !i.locked) || (faceJoin.target && !assembly.items.some(i => i.partId === faceJoin.target!.partId)))) clearPreview();
-  }, [assembly, faceJoin, clearPreview]);
   useEffect(() => {
     if (!active) return;
     const key = (e: KeyboardEvent) => {
@@ -289,8 +241,7 @@ export default function AssemblyWorkspace({
     hiddenPartIds,
     machiningFace,
     referenceMarkers,
-    facePicking: faceJoin && !faceJoin.target ? { partId: faceJoin.partId, stage: faceJoin.source ? "target" : "source" } : null,
-    editingDisabled: !!faceJoin,
+    editingDisabled: !!preview && !!referenceMarkers?.length,
   };
   return (
     <div className={"assembly-workspace mobile-" + mobile} hidden={!active}>
@@ -460,8 +411,6 @@ export default function AssemblyWorkspace({
           commit: commitPose,
           snap: setSnapped,
           error: setError,
-          facePick: pickFace,
-          faceStart: startFaceJoin,
         }}
         pending={detection.pending}
         guidancePending={detection.guidancePending}
@@ -479,10 +428,6 @@ export default function AssemblyWorkspace({
         }}
         canUndo={!!s.history.length}
         onRemove={removeSelected}
-        joinPrompt={faceJoin ? !faceJoin.source ? "点击本板接触面 · Esc 取消" : !faceJoin.target ? "拖动接触标记到另一块板，或点击目标面" : "拼合预览 · 在零件旁确认 · Esc 取消" : undefined}
-        join={faceJoin ? { stage: faceJoin.target ? "preview" : faceJoin.source ? "target" : "source", sourceLabel: faceJoin.source?.label, targetName: project.parts.find(p => p.id === faceJoin.target?.partId)?.name, issue: joinIssue, canApply: !blocked && !detection.pending && !!detection.analysis && joinIssue?.severity !== "error", checked: !!detection.analysis } : null}
-        onJoin={startJoin}
-        onApplyJoin={applyJoin}
         viewRequest={viewRequest}
         clearPreview={clearPreview}
       >
