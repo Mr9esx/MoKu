@@ -5,6 +5,7 @@ import { buildAssemblyModel, geometrySignature, quaternion, transformPoint } fro
 import { MISSING_CHECK_BASIS_ID, add, analyzeAssembly, cross, dot, length, normalize, rectangularSlot, scale, subtract } from './assemblyChecks';
 import { signedArea } from './geometry';
 import { tenonInsertionCandidates } from './assemblyJoinery';
+import { ordinaryContactCandidates, resolveContact, contactPoseClear } from './assemblyContacts';
 function slotPose(male:Part,receiver:Part,host:AssemblyItem,assembly:Assembly,feature:{kind:'pocket'|'hole';index:number},fit?:FitConstraint):AssemblyItem|null {
   const outline=feature.kind==='pocket'?receiver.pockets[feature.index]?.outline:receiver.holes[feature.index];
   const slot=outline?rectangularSlot(outline):null;if(!slot)return null;
@@ -55,7 +56,8 @@ export function placementCandidates(project:Project,assembly:Assembly,partId:str
   const male=project.parts.find(p=>p.id===partId),item=assembly.items.find(i=>i.partId===partId);
   if(!male||!item||item.locked)return [];
   const insertions=tenonInsertionCandidates(project,assembly,partId);
-  if(insertions.length) return insertions.map(candidate=>({...candidate,...candidateStatus(project,assembly,candidate.pose)}));
+  const generalContacts=ordinaryContactCandidates(project,assembly,partId);
+  if(insertions.length || generalContacts.length) return [...insertions.map(candidate=>({...candidate,...candidateStatus(project,assembly,candidate.pose)})),...generalContacts];
   const result:PlacementCandidate[]=[];
   for(const host of assembly.items){
     if(host.partId===partId)continue;const receiver=project.parts.find(p=>p.id===host.partId);if(!receiver)continue;
@@ -90,23 +92,30 @@ export function placementCandidates(project:Project,assembly:Assembly,partId:str
 export function weakSnap(pose:AssemblyItem,candidates:PlacementCandidate[],options:{enabled:boolean;suspended?:boolean;heldId?:string|null;axes?:string;project:(point:Vec3)=>{x:number;y:number}}):{pose:AssemblyItem;candidateId:string|null} {
   if(!options.enabled||options.suspended||pose.locked)return {pose,candidateId:null};
   const allowed=options.axes?.toLowerCase()??'xyz';
-  const screen=options.project(pose.position);let best:PlacementCandidate|undefined,bestPixels=Infinity;
+  const screen=options.project(pose.position);let best:PlacementCandidate|undefined,bestPose:AssemblyItem|undefined,bestPixels=Infinity,bestRank=Infinity;
   for(const candidate of candidates){
-    const insertion=!!candidate.insertion?.geometryChecked;
-    if(candidate.partId!==pose.partId || candidate.status==='invalid' || (candidate.status!=='valid'&&!insertion))continue;
+    if(candidate.partId!==pose.partId || candidate.status==='invalid')continue;
+    const insertion=!!candidate.insertion?.geometryChecked || !!candidate.contact;
+    const resolved=candidate.contact?resolveContact(pose,candidate):null;
+    if(candidate.contact&&!resolved)continue;
+    const destination=resolved?.pose??candidate.pose;
+    if(candidate.status!=='valid'&&!insertion)continue;
     const held=options.heldId===candidate.id;
-    const a=quaternion(pose.rotation),b=quaternion(candidate.pose.rotation);
+    const a=quaternion(pose.rotation),b=quaternion(destination.rotation);
     if(insertion ? a.angleTo(b)>(held?12:8)*Math.PI/180 : Math.abs(a.dot(b))<1-1e-7)continue;
-    const delta=subtract(candidate.pose.position,pose.position);
+    const delta=subtract(destination.position,pose.position);
     if((['x','y','z'] as const).some(k=>!allowed.includes(k)&&Math.abs(delta[k])>1e-6))continue;
-    const from=insertion?transformPoint(candidate.insertion!.sourceAnchor,pose):pose.position;
-    const to=insertion?transformPoint(candidate.insertion!.sourceAnchor,candidate.pose):candidate.pose.position;
+    const anchor=candidate.contact?.sourceAnchor??candidate.insertion?.sourceAnchor;
+    const from=insertion?transformPoint(anchor!,pose):pose.position;
+    const to=insertion?transformPoint(anchor!,destination):destination.position;
     const origin=insertion?options.project(from):screen,projected=options.project(to),pixels=Math.hypot(projected.x-origin.x,projected.y-origin.y),world=length(subtract(to,from));
     if(!Number.isFinite(pixels)||world>(insertion?(held?18:12):(held?8:5))||pixels>(insertion?(held?16:10):(held?12:8)))continue;
-    if(held){best=candidate;break;}
-    if(pixels<bestPixels){best=candidate;bestPixels=pixels;}
+    if(candidate.contact&&!contactPoseClear(candidate.contact.geometry,destination))continue;
+    if(held){best=candidate;bestPose=destination;break;}
+    const rank=candidate.contact?.kind==='surface'?1:0;
+    if(rank<bestRank || rank===bestRank&&pixels<bestPixels){best=candidate;bestPose=destination;bestPixels=pixels;bestRank=rank;}
   }
-  return best?{pose:{...pose,position:{...best.pose.position},rotation:best.insertion?{...best.pose.rotation}:pose.rotation},candidateId:best.id}:{pose,candidateId:null};
+  return best?{pose:{...pose,position:{...bestPose!.position},rotation:best.insertion||best.contact?{...bestPose!.rotation}:pose.rotation},candidateId:best.id}:{pose,candidateId:null};
 }
 
 /** Assembly contacts take precedence; otherwise each moving axis can settle at zero. */

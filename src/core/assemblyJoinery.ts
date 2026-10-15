@@ -22,7 +22,7 @@ function containedRectangle(rectangle: Point[], outline: Point[]) {
   return outside.reduce((area,p)=>area+Math.abs(ClipperLib.Clipper.Area(p)),0) / (SCALE*SCALE) < 1e-6;
 }
 /** Straight walls establish nominal dimensions; the real contour must contain every corner. */
-export function matchingMortiseProfiles(outline: Point[], tenonWidth: number, thickness: number) {
+export function matchingMortiseProfiles(outline: Point[], tenonWidth: number, thickness: number, longer = false) {
   const profiles: { center: Point; u: Point; length: number; width: number }[] = [];
   if (outline.length > 512 || !validContour(outline) || tenonWidth < 2 || thickness <= 0) return profiles;
   const edges = outline.map((a,i)=>{
@@ -43,7 +43,7 @@ export function matchingMortiseProfiles(outline: Point[], tenonWidth: number, th
       if(width<thickness-1e-6 || width>thickness+0.5) continue;
       for(let k=0;k<vertical.length;k++)for(let l=k+1;l<vertical.length;l++) {
         const length=vertical[l]-vertical[k];
-        if(length<tenonWidth-1e-6 || length>tenonWidth+0.5) continue;
+        if(length<tenonWidth-1e-6 || length>(longer?1e8:tenonWidth+0.5)) continue;
         const point=(s:number,t:number)=>({x:u.x*s+v.x*t,y:u.y*s+v.y*t});
         const rectangle=[point(vertical[k],horizontal[i]),point(vertical[l],horizontal[i]),point(vertical[l],horizontal[j]),point(vertical[k],horizontal[j])];
         if (!containedRectangle(rectangle,outline)) continue;

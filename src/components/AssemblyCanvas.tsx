@@ -80,9 +80,6 @@ export function AssemblyCanvas(props: Props) {
   const selectedItem = props.state.assembly.items.find(
     (item) => item.partId === props.state.selected,
   );
-  const candidate = props.state.candidates.find(
-    (c) => c.id === (props.snapped ?? props.state.candidateId),
-  );
   const selectedPose = props.state.preview?.partId === props.state.selected
     ? props.state.preview
     : selectedItem;
@@ -97,19 +94,18 @@ export function AssemblyCanvas(props: Props) {
           : zeroAxes.length
             ? `${zeroAxes.map(axis => axis.toUpperCase()).join(" / ")} 已吸附到 0 · 继续拖动可脱离`
           : props.snapped
-            ? "榫卯已吸附 · 松手放置 · 继续拖动可脱离"
+            ? "已吸附 · 松手放置 · 继续拖动可脱离"
             : props.guidancePending
               ? "正在核对可放置位置…"
-              : (candidate?.label ??
-                (props.pending
+              : (props.pending
                   ? "检测中…"
                   : selected && !selectedItem
                     ? "此零件尚未放入场景 · 点击“放入场景”继续"
                     : selected
-                      ? props.state.candidates.some(c => c.insertion?.geometryChecked && c.status !== "invalid") ? "绿色榫卯可配合 · 旋转对准后拖近吸附 · Alt 暂停磁吸" : "拖动零件或箭头移动 · 拖动圆环旋转"
+                      ? props.state.candidates.some(c => (c.insertion?.geometryChecked || c.contact) && c.status !== "invalid") ? "绿色区域可配合 · 旋转对准后拖近吸附 · Alt 暂停磁吸" : "拖动零件或箭头移动 · 拖动圆环旋转"
                       : props.state.assembly.items.length
                         ? "点击场景中的零件即可选择，也可以直接拖动"
-                        : "点击左侧零件，放入场景开始组装")));
+                        : "点击左侧零件，放入场景开始组装"));
   return (
     <section className="assembly-canvas workbench-preview" aria-label="3D 组装场景">
       <div className="assembly-scene-host" ref={container} />
@@ -146,7 +142,7 @@ export function AssemblyCanvas(props: Props) {
         </span>
         <span>
           <i className="legend-green" />
-          榫卯匹配
+          匹配接触区
         </span>
       </div>
       <div className="assembly-scene-feedback" role="status" aria-live="polite">
@@ -251,7 +247,7 @@ export function AssemblyCanvas(props: Props) {
           <p>
             在左侧选择零件，点击“加入组装”。
             <br />
-            绿色标出匹配的榫卯，旋转对准后拖近即可吸附。
+            绿色标出匹配的槽口与接触面，旋转对准后拖近即可吸附。
           </p>
         </div>
       )}

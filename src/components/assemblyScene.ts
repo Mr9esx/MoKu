@@ -12,6 +12,8 @@ import {
   interpolateViewQuaternion,
   dragViewQuaternion,
 } from "./viewCubeGeometry";
+import { resolveContact, contactPoseClear } from "../core/assemblyContacts";
+import { pointInPolygon, pointSegmentDistance } from "../core/geometry";
 import { weakMoveSnap, weakSnap } from "../core/assemblyGuidance";
 import type {
   Assembly,
@@ -300,18 +302,41 @@ export function createAssemblyScene(
           c.status !== "invalid" &&
           !state!.hiddenPartIds?.includes(c.receiverId),
       )
-      .slice(0, 10);
+      .slice(0, 48);
     const highlightedTenons = new Set<number>(), highlightedHoles = new Set<string>();
     for (const candidate of visible) {
-      if (candidate.insertion) {
+      if(candidate.contact?.kind==="surface") {
+        const sourceEntry=entries.get(selectedPart.id);if(!sourceEntry)continue;
+        const raw=poseOf(sourceEntry.group,selectedPart.id),resolved=resolveContact(raw,candidate);
+        if(!resolved || sourceEntry.group.quaternion.angleTo(new THREE.Quaternion(resolved.pose.rotation.x,resolved.pose.rotation.y,resolved.pose.rotation.z,resolved.pose.rotation.w))>8*Math.PI/180 || vector(resolved.pose.position).distanceTo(vector(raw.position))>24 || !contactPoseClear(candidate.contact.geometry,resolved.pose))continue;
+        for(const triangles of [candidate.contact.sourceTriangles!.map(p=>transformPoint(p,raw)),candidate.contact.targetTriangles!]) {
+          const mesh=new THREE.Mesh(geometry(triangles.flatMap(p=>[p.x,p.y,p.z])),new THREE.MeshBasicMaterial({color:"#16ad67",transparent:true,opacity:0.32,depthWrite:false,depthTest:false,side:THREE.DoubleSide}));
+          mesh.renderOrder=11;ghosts.add(mesh);
+        }
+        continue;
+      }
+      if (candidate.insertion || candidate.contact?.kind==="groove") {
+        const source=entries.get(selectedPart.id);
+        if(candidate.contact && source && source.group.quaternion.angleTo(new THREE.Quaternion(candidate.pose.rotation.x,candidate.pose.rotation.y,candidate.pose.rotation.z,candidate.pose.rotation.w))>8*Math.PI/180)continue;
+        const joint=candidate.insertion??{maleEdge:candidate.contact!.sourceEdge!,depth:candidate.contact!.depth!};
         const host=state.assembly.items.find(i=>i.partId===candidate.receiverId);
         const receiver=state.project.parts.find(p=>p.id===candidate.receiverId);
-        const hole=receiver?.holes[candidate.feature!.index];
+        const hole=candidate.feature?.kind==="pocket"?receiver?.pockets[candidate.feature.index]?.outline:receiver?.holes[candidate.feature!.index];
         const featureKey=candidate.receiverId+":"+candidate.feature!.index;
         if(host && receiver && hole && !highlightedHoles.has(featureKey)) {
           highlightedHoles.add(featureKey);
           const wallPositions:number[]=[];
-          for(let i=0;i<hole.length;i++) {
+          if(candidate.contact?.kind==="groove") {
+            const receiverModel=buildAssemblyModel(receiver,state.assembly.pocketFaces[receiver.id]);
+            const floor=candidate.contact.face==="back"?candidate.contact.depth!:receiver.thickness-candidate.contact.depth!;
+            const lo=candidate.contact.face==="back"?0:floor,hi=candidate.contact.face==="back"?floor:receiver.thickness;
+            for(let i=0;i<receiverModel.positions.length;i+=9) {
+              const triangle=[0,3,6].map(k=>({x:receiverModel.positions[i+k],y:receiverModel.positions[i+k+1],z:receiverModel.positions[i+k+2]}));
+              const onFloor=triangle.every(p=>Math.abs(p.z-floor)<1e-5)&&pointInPolygon({x:triangle.reduce((n,p)=>n+p.x,0)/3,y:triangle.reduce((n,p)=>n+p.y,0)/3},hole);
+              const onWall=triangle.every(p=>p.z>=lo-1e-5&&p.z<=hi+1e-5)&&hole.some((a,j)=>triangle.every(p=>pointSegmentDistance(p,a,hole[(j+1)%hole.length])<1e-5));
+              if(onFloor||onWall)for(const p of triangle){const world=transformPoint(p,host);wallPositions.push(world.x,world.y,world.z);}
+            }
+          } else for(let i=0;i<hole.length;i++) {
             const a=hole[i],b=hole[(i+1)%hole.length];
             for(const p of [{...a,z:0},{...b,z:0},{...b,z:receiver.thickness},{...a,z:0},{...b,z:receiver.thickness},{...a,z:receiver.thickness}]) {
               const world=transformPoint(p,host); wallPositions.push(world.x,world.y,world.z);
@@ -319,13 +344,13 @@ export function createAssemblyScene(
           }
           const wall=new THREE.Mesh(geometry(wallPositions),new THREE.MeshBasicMaterial({color:"#15975b",transparent:true,opacity:0.48,depthWrite:false,side:THREE.DoubleSide,depthTest:false}));
           wall.renderOrder=11; ghosts.add(wall);
-          for(const z of [0,receiver.thickness+0.04]) {
+          if(!candidate.contact)for(const z of [0,receiver.thickness+0.04]) {
             const points=[...hole,hole[0]].map(p=>vector(transformPoint({...p,z},host)));
             const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:"#087c45",depthTest:false}));
             line.renderOrder=12; ghosts.add(line);
           }
         }
-        const edge=candidate.insertion.maleEdge,sourceEntry=entries.get(selectedPart.id);
+        const edge=joint.maleEdge,sourceEntry=entries.get(selectedPart.id);
         if(sourceEntry && !highlightedTenons.has(edge)) {
           highlightedTenons.add(edge);
           const a=selectedPart.outline[edge],b=selectedPart.outline[(edge+1)%selectedPart.outline.length];
@@ -335,7 +360,7 @@ export function createAssemblyScene(
           const inward=new THREE.Vector3(-u.y,u.x,0).multiplyScalar(area>0?1:-1);
           const origin=new THREE.Vector3(a.x,a.y,0),end=new THREE.Vector3(b.x,b.y,0);
           sourceEntry.group.updateMatrixWorld(true);
-          const planes=[new THREE.Plane(u.clone(),-u.dot(origin)),new THREE.Plane(u.clone().negate(),u.dot(end)),new THREE.Plane(inward.clone(),-inward.dot(origin)),new THREE.Plane(inward.clone().negate(),inward.dot(origin)+candidate.insertion.depth)].map(plane=>plane.applyMatrix4(sourceEntry.group.matrixWorld));
+          const planes=[new THREE.Plane(u.clone(),-u.dot(origin)),new THREE.Plane(u.clone().negate(),u.dot(end)),new THREE.Plane(inward.clone(),-inward.dot(origin)),new THREE.Plane(inward.clone().negate(),inward.dot(origin)+joint.depth)].map(plane=>plane.applyMatrix4(sourceEntry.group.matrixWorld));
           const highlight=new THREE.Mesh(sourceEntry.mesh.geometry.clone(),new THREE.MeshBasicMaterial({color:"#16ad67",transparent:true,opacity:0.55,depthWrite:false,depthTest:false,side:THREE.DoubleSide,clippingPlanes:planes}));
           highlight.position.copy(sourceEntry.group.position); highlight.quaternion.copy(sourceEntry.group.quaternion);
           highlight.renderOrder=11; ghosts.add(highlight);
@@ -808,7 +833,9 @@ export function createAssemblyScene(
       .map(([, e]) => e.mesh);
     const eligible = state.candidates.filter((c) => {
       if (c.partId!==raw.partId || state!.hiddenPartIds?.includes(c.receiverId)) return false;
-      let anchor = c.target;
+      const resolved=c.contact?.kind==="surface"?resolveContact(raw,c):null;
+      if(c.contact?.kind==="surface"&&!resolved)return false;
+      let anchor = resolved?.anchor??c.target;
       if (c.feature && !c.insertion) {
         const receiver = state!.project.parts.find(
           (p) => p.id === c.receiverId,
@@ -846,7 +873,7 @@ export function createAssemblyScene(
       project: projectPoint,
     };
     const snapped = move ? weakMoveSnap(raw, eligible, options)
-      : {...weakSnap(raw, eligible.filter(c=>c.insertion), options), zeroAxes: []};
+      : {...weakSnap(raw, eligible.filter(c=>c.insertion||c.contact), options), zeroAxes: []};
     held = snapped.candidateId;
     setOriginSnap(snapped.zeroAxes);
     callbacks.snap(held);

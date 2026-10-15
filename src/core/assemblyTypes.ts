@@ -21,7 +21,15 @@ export type AssemblyModel = { partId: string; positions: number[]; cells: Convex
 export type AssemblyIssue = { id: string; kind: 'collision'|'dimension'|'fit'|'geometry'|'missing'|'installation'; severity: 'error'|'pending'; message: string; partIds: string[]; position?: Vec3; constraintId?: string; /** First continuously detected blocked motion pose and its real overlap mesh. */ movingPosition?: Vec3; collisionPositions?: number[] };
 export type CollisionRegion = { partIds: [string,string]; positions: number[] };
 export type AssemblyAnalysis = { issues: AssemblyIssue[]; collisions: CollisionRegion[]; bounds: Bounds3|null; complete: boolean; checkedPairs: number };
-export type PlacementCandidate = { id: string; partId: string; receiverId: string; pose: AssemblyItem; target: Vec3; label: string; status: 'valid'|'incomplete'|'invalid'; message?: string; feature?: {kind:'pocket'|'hole';index:number}; insertion?: { maleEdge: number; depth: number; width: number; clearance: number; sourceAnchor: Vec3; receiverAnchor: Vec3; direction: Vec3; geometryChecked: boolean } };
+export type ContactGeometry = { source: ConvexCell[]; obstacles: { cells: ConvexCell[]; bounds: Bounds3 }[]; targets: Assembly['targets']; rules?: { project: import('./types').Project; assembly: Assembly } };
+export type AssemblyContact = {
+  kind: 'groove' | 'surface'; sourceAnchor: Vec3; targetAnchor: Vec3; normal: Vec3;
+  sourceTriangles?: Vec3[]; targetTriangles?: Vec3[];
+  sourceEdge?: number; depth?: number; face?: PocketFace;
+  slideAxis?: Vec3; slideRange?: number;
+  geometry: ContactGeometry;
+};
+export type PlacementCandidate = { id: string; partId: string; receiverId: string; pose: AssemblyItem; target: Vec3; label: string; status: 'valid'|'incomplete'|'invalid'; message?: string; feature?: {kind:'pocket'|'hole';index:number}; contact?: AssemblyContact; insertion?: { maleEdge: number; depth: number; width: number; clearance: number; sourceAnchor: Vec3; receiverAnchor: Vec3; direction: Vec3; geometryChecked: boolean } };
 export const CONTACT_EPSILON = 0.01;
 export function emptyAssembly(): Assembly {
   return {items:[],pocketFaces:{},targets:{tolerance:0.5},fits:[],steps:[],sparePartIds:[]};
