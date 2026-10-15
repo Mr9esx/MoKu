@@ -101,3 +101,33 @@ export function weakSnap(pose:AssemblyItem,candidates:PlacementCandidate[],optio
   }
   return best?{pose:{...pose,position:{...best.pose.position}},candidateId:best.id}:{pose,candidateId:null};
 }
+
+/** Assembly contacts take precedence; otherwise each moving axis can settle at zero. */
+export function weakMoveSnap(
+  pose: AssemblyItem,
+  candidates: PlacementCandidate[],
+  options: Parameters<typeof weakSnap>[2] & { heldOriginAxes?: (keyof Vec3)[] },
+): { pose: AssemblyItem; candidateId: string | null; zeroAxes: (keyof Vec3)[] } {
+  const idle = { pose, candidateId: null, zeroAxes: [] as (keyof Vec3)[] };
+  if (!options.enabled || options.suspended || pose.locked ||
+      !Object.values(pose.position).every(Number.isFinite)) return idle;
+  const contact = weakSnap(pose, candidates, options);
+  if (contact.candidateId) return { ...contact, zeroAxes: [] };
+
+  const allowed = options.axes?.toLowerCase() ?? "xyz";
+  const screen = options.project(pose.position);
+  const position = { ...pose.position }, zeroAxes: (keyof Vec3)[] = [];
+  for (const axis of ["x", "y", "z"] as const) {
+    if (!allowed.includes(axis)) continue;
+    const held = options.heldOriginAxes?.includes(axis) ?? false;
+    if (Math.abs(pose.position[axis]) > (held ? 6 : 3)) continue;
+    const target = options.project({ ...pose.position, [axis]: 0 });
+    const pixels = Math.hypot(target.x - screen.x, target.y - screen.y);
+    if (!Number.isFinite(pixels) || pixels > (held ? 11 : 7)) continue;
+    position[axis] = 0;
+    zeroAxes.push(axis);
+  }
+  return zeroAxes.length
+    ? { pose: { ...pose, position }, candidateId: null, zeroAxes }
+    : idle;
+}

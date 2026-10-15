@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AssemblyViewCube } from "./AssemblyViewCube";
 import { viewQuaternion } from "./viewCubeGeometry";
-import type { Rotation3 } from "../core/assemblyTypes";
+import type { Rotation3, Vec3 } from "../core/assemblyTypes";
 import {
   Magnet,
   Scan,
@@ -41,6 +41,7 @@ export function AssemblyCanvas(props: Props) {
   );
   const [webglError, setWebglError] = useState(""),
     [retry, setRetry] = useState(0);
+  const [zeroAxes, setZeroAxes] = useState<(keyof Vec3)[]>([]);
   useEffect(() => {
     if (!container.current) return;
     try {
@@ -51,6 +52,7 @@ export function AssemblyCanvas(props: Props) {
         snap: (id) => latest.current.callbacks.snap(id),
         error: (message) => latest.current.callbacks.error(message),
         orientation: setOrientation,
+        originSnap: setZeroAxes,
       });
       api.current.update(latest.current.state);
       setWebglError("");
@@ -79,6 +81,9 @@ export function AssemblyCanvas(props: Props) {
   const candidate = props.state.candidates.find(
     (c) => c.id === (props.snapped ?? props.state.candidateId),
   );
+  const selectedPose = props.state.preview?.partId === props.state.selected
+    ? props.state.preview
+    : selectedItem;
   const feedback =
     props.error ||
     (props.state.exploded
@@ -87,6 +92,8 @@ export function AssemblyCanvas(props: Props) {
         ? "安装步骤预览 · 未修改装配"
         : props.state.referenceMarkers?.length && props.state.preview
           ? "参考对齐预览 · 未修改装配"
+          : zeroAxes.length
+            ? `${zeroAxes.map(axis => axis.toUpperCase()).join(" / ")} 已吸附到 0 · 继续拖动可脱离`
           : props.snapped
             ? "已对齐 · 继续拖动可脱离"
             : props.guidancePending
@@ -110,6 +117,25 @@ export function AssemblyCanvas(props: Props) {
         <span>
           {props.state.assembly.items.length} 个已加入 · X 宽 / Y 深 / Z 高
         </span>
+        {selectedPose && (
+          <div className="assembly-position-readout" role="group" aria-label="当前零件 XYZ 坐标，单位毫米">
+            <span>装配坐标 · mm</span>
+            <dl className="assembly-position-values">
+              {(["x", "y", "z"] as const).map(axis => (
+                <div key={axis} data-axis={axis} className={selectedPose.position[axis] === 0 ? "is-zero" : ""}>
+                  <dt>{axis.toUpperCase()}</dt>
+                  <dd>{Number(selectedPose.position[axis].toFixed(2))}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
+        <p className="assembly-camera-guide" aria-label="三维视角操作说明">
+          <span>左键拖空白：旋转视角</span>
+          <span>右键拖动：平移画面</span>
+          <span>滚轮：缩放</span>
+          <span>中键 / Shift＋左键也可平移</span>
+        </p>
       </div>
       <div className="assembly-scene-legend" aria-label="场景颜色说明">
         <span>
@@ -163,7 +189,7 @@ export function AssemblyCanvas(props: Props) {
           aria-pressed={props.state.magnet}
           className={props.state.magnet ? "active" : ""}
           onClick={props.onMagnet}
-          data-tooltip="靠近可放置位置时轻微吸附 · Alt 临时暂停"
+          data-tooltip="靠近落位或坐标 0 时轻微吸附 · Alt 临时暂停"
         >
           <Magnet size={17} />
           <span>磁吸</span>

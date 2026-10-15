@@ -12,7 +12,7 @@ import {
   interpolateViewQuaternion,
   dragViewQuaternion,
 } from "./viewCubeGeometry";
-import { weakSnap } from "../core/assemblyGuidance";
+import { weakMoveSnap } from "../core/assemblyGuidance";
 import type {
   Assembly,
   AssemblyAnalysis,
@@ -56,6 +56,7 @@ export type SceneCallbacks = {
   snap: (id: string | null) => void;
   error: (message: string) => void;
   orientation?: (rotation: Rotation3) => void;
+  originSnap?: (axes: (keyof Vec3)[]) => void;
 };
 type Entry = {
   group: THREE.Group;
@@ -112,6 +113,11 @@ export function createAssemblyScene(
   const orbit = new OrbitControls(camera, renderer.domElement);
   orbit.target.set(60, 60, 25);
   orbit.enableDamping = false;
+  orbit.mouseButtons = {
+    LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: THREE.MOUSE.PAN,
+    RIGHT: THREE.MOUSE.PAN,
+  };
   const transform = createAssemblyTransformControls(camera, renderer.domElement);
   scene.add(transform.helper);
   const grid = new THREE.GridHelper(2000, 80, "#bac1cf", "#e3e4e4");
@@ -136,6 +142,12 @@ export function createAssemblyScene(
     fitOnce = false;
   let hovered: string | null = null;
   let gizmoPointerId: number | null = null;
+  let heldOriginAxes: (keyof Vec3)[] = [];
+  const setOriginSnap = (axes: (keyof Vec3)[]) => {
+    if (axes.join() === heldOriginAxes.join()) return;
+    heldOriginAxes = axes;
+    callbacks.originSnap?.(axes);
+  };
   const ray = new THREE.Raycaster(),
     mouse = new THREE.Vector2();
   let orientationFrame = 0;
@@ -773,14 +785,16 @@ export function createAssemblyScene(
       }
       return visibleSnapTarget(anchor, camera, obstacles);
     });
-    const snapped = weakSnap(raw, eligible, {
+    const snapped = weakMoveSnap(raw, eligible, {
       enabled: state.magnet,
       suspended: alt,
       heldId: held,
+      heldOriginAxes,
       axes,
       project: projectPoint,
     });
     held = snapped.candidateId;
+    setOriginSnap(snapped.zeroAxes);
     callbacks.snap(held);
     return snapped.pose;
   }
@@ -804,6 +818,7 @@ export function createAssemblyScene(
       if (item) {
         gizmoOriginal = structuredClone(item);
         held = null;
+        setOriginSnap([]);
         orbit.enabled = false;
       }
     });
@@ -813,6 +828,7 @@ export function createAssemblyScene(
       const original = gizmoOriginal;
       gizmoOriginal = null;
       held = null;
+      setOriginSnap([]);
       orbit.enabled = true;
       if (entry) {
         const pose = poseOf(entry.group, original.partId);
@@ -845,6 +861,7 @@ export function createAssemblyScene(
     const item = state.assembly.items.find((i) => i.partId === id);
     if (!hit || !item) return;
     callbacks.select(item.partId);
+    setOriginSnap([]);
     direct = {
       id: item.partId,
       original: structuredClone(item),
@@ -867,6 +884,10 @@ export function createAssemblyScene(
       return;
     }
     stopOrientation();
+    if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey) {
+      clickStart = null;
+      return;
+    }
     clickStart = {
       x: event.clientX,
       y: event.clientY,
@@ -951,6 +972,7 @@ export function createAssemblyScene(
       orbit.enabled = true;
       renderer.domElement.style.cursor = "grab";
       held = null;
+      setOriginSnap([]);
       if (renderer.domElement.hasPointerCapture(event.pointerId))
         renderer.domElement.releasePointerCapture(event.pointerId);
       const entry = entries.get(drag.id);
@@ -962,7 +984,7 @@ export function createAssemblyScene(
       render();
       return;
     }
-    if (gizmoOriginal) return;
+    if (event.button !== 0 || gizmoOriginal) return;
     if (
       clickStart &&
       Math.hypot(event.clientX - clickStart.x, event.clientY - clickStart.y) <=
@@ -998,6 +1020,7 @@ export function createAssemblyScene(
     renderer.domElement.style.cursor = "default";
     gizmoOriginal = null;
     held = null;
+    setOriginSnap([]);
     orbit.enabled = true;
     callbacks.preview(null);
     callbacks.snap(null);
@@ -1007,6 +1030,7 @@ export function createAssemblyScene(
   const onKey = (event: KeyboardEvent) => {
     if (event.key === "Alt") {
       alt = event.type === "keydown";
+      if (alt) setOriginSnap([]);
       for (const control of transform.controls)
         control.setRotationSnap(alt ? null : Math.PI / 2);
     }
@@ -1018,6 +1042,7 @@ export function createAssemblyScene(
   const onBlur = () => {
     stopOrientation();
     alt = false;
+    for (const control of transform.controls) control.setRotationSnap(Math.PI / 2);
     cancelDrag();
   };
   renderer.domElement.addEventListener("wheel", stopOrientation, {
