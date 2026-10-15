@@ -888,3 +888,184 @@
 .assembly-reference-actions button {
   flex: 1;
 }
+
+/* Everyday assembly keeps the model primary; details open only on request. */
+.assembly-workspace:has(.assembly-inspector.is-compact) .assembly-canvas {
+  right: 14px;
+}
+.assembly-inspector.is-compact {
+  top: 84px;
+  right: 28px;
+  bottom: auto;
+  width: 224px;
+  max-height: calc(100% - 160px);
+  padding: 17px;
+  overflow: auto;
+}
+.assembly-compact-heading {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11px;
+}
+.assembly-inspector.is-compact h2 {
+  font-family: var(--display-font);
+  font-size: 22px;
+  line-height: 1.4;
+  margin: 9px 0 3px;
+  overflow-wrap: anywhere;
+}
+.assembly-compact-size {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.assembly-compact-hint {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin: 12px 0;
+}
+.assembly-compact-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 12px;
+}
+.assembly-compact-footer button {
+  font-size: 11px;
+  padding: 5px 7px;
+}
+.assembly-compact-footer button:first-child {
+  background: var(--ink-soft);
+}
+.assembly-quick-placements {
+  margin: 14px 0 8px;
+}
+.assembly-quick-placements > span {
+  font-size: 10px;
+  color: var(--muted);
+}
+.assembly-quick-placements button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+  width: 100%;
+  padding: 9px 7px;
+  margin-top: 6px;
+  background: #fcf4d8;
+  border: 1px solid #e6d28c;
+  font-size: 11px;
+  white-space: normal;
+}
+.assembly-quick-placements button > i {
+  width: 6px;
+  height: 6px;
+  background: #d6ad28;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.assembly-quick-placements button > svg {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.assembly-compact-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  white-space: normal;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #87702d;
+  padding: 8px 0;
+}
+.assembly-compact-notice.has-errors {
+  color: #ba3033;
+}
+.assembly-compact-notice svg {
+  flex-shrink: 0;
+}
+.assembly-workspace:has(.assembly-inspector.is-compact) .assembly-scene-legend {
+  right: 258px;
+}
+.assembly-inspector > .panel-heading > strong {
+  flex: 1;
+}
+.assembly-inspector > .panel-heading > button {
+  padding: 3px;
+}
+.assembly-disclosure {
+  border-bottom: 1px solid var(--line);
+  padding: 11px 0;
+}
+.assembly-disclosure > summary {
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.assembly-disclosure[open] > summary {
+  margin-bottom: 12px;
+}
+.assembly-disclosure .assembly-section-title {
+  margin-top: 8px;
+}
+.assembly-disclosure .assembly-reference-editor {
+  border: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+.assembly-resource-item {
+  position: relative;
+}
+.assembly-resource-options > summary {
+  position: absolute;
+  bottom: 8px;
+  right: 7px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0;
+  color: var(--muted);
+  padding: 0 4px;
+}
+.assembly-resource-options > summary::after {
+  content: "···";
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+.assembly-resource-options > summary::-webkit-details-marker {
+  display: none;
+}
+.assembly-resource-options > button {
+  font-size: 11px;
+  margin: 0 7px 8px;
+  padding: 5px 7px;
+  background: var(--ink-soft);
+}
+@media (max-width: 900px) {
+  .assembly-inspector.is-compact {
+    top: 134px;
+    bottom: 36px;
+    left: 14px;
+    right: 14px;
+    width: auto;
+    max-height: none;
+  }
+  .assembly-workspace:has(.assembly-inspector.is-compact)
+    .assembly-scene-legend {
+    right: 16px;
+  }
+}
+:is(.assembly-tools, .assembly-inspector-tabs, .assembly-mobile-navigation)
+  button.active,
+:is(.assembly-tools, .assembly-inspector-tabs, .assembly-mobile-navigation)
+  button.active:hover,
+.workspace-mode-switch button.active:hover {
+  background: var(--ink-soft);
+  color: var(--ink);
+}

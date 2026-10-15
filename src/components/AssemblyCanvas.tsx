@@ -69,6 +69,9 @@ export function AssemblyCanvas(props: Props) {
   const selected = props.state.project.parts.find(
     (p) => p.id === props.state.selected,
   );
+  const selectedItem = props.state.assembly.items.find(
+    (item) => item.partId === props.state.selected,
+  );
   const candidate = props.state.candidates.find(
     (c) => c.id === (props.snapped ?? props.state.candidateId),
   );
@@ -87,9 +90,13 @@ export function AssemblyCanvas(props: Props) {
               : (candidate?.label ??
                 (props.pending
                   ? "检测中…"
-                  : selected
-                    ? "拖动选中零件 · 黄色提示可配合位置"
-                    : "选择左侧零件，加入场景开始组装")));
+                  : selected && !selectedItem
+                    ? "此零件尚未放入场景 · 点击“放入场景”继续"
+                    : selected
+                      ? "直接拖动零件 · 空白处拖动转动视角"
+                      : props.state.assembly.items.length
+                        ? "点击场景中的零件即可选择，也可以直接拖动"
+                        : "点击左侧零件，放入场景开始组装")));
   return (
     <section className="assembly-canvas" aria-label="3D 组装场景">
       <div className="assembly-scene-host" ref={container} />
@@ -119,7 +126,7 @@ export function AssemblyCanvas(props: Props) {
             <button
               key={view}
               onClick={() => api.current?.fit(view)}
-              disabled={view === "selected" && !selected}
+              disabled={view === "selected" && !selectedItem}
             >
               {["适应全部", "定位所选", "前视", "侧视", "顶视"][index]}
             </button>
@@ -156,6 +163,13 @@ export function AssemblyCanvas(props: Props) {
             className={props.state.tool === tool ? "active" : ""}
             onClick={() => props.onTool(tool)}
             disabled={props.state.blocked}
+            data-tooltip={
+              tool === "select"
+                ? "点选或直接拖动零件；拖动空白转动视角"
+                : tool === "translate"
+                  ? "显示三轴移动控件"
+                  : "显示旋转控件"
+            }
           >
             <Icon size={17} />
             <span>{label}</span>

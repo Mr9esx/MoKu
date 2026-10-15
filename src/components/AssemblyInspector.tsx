@@ -153,6 +153,17 @@ export function AssemblyInspector(p: Props) {
     : null;
   const [tab, setTab] = useState<"part" | "check" | "rules">("part");
   const [showRejected, setShowRejected] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [section, setSection] = useState<"position" | "machining">("position");
+  const openDetails = (
+    next: typeof tab,
+    focus: typeof section = "position",
+  ) => {
+    p.clearPreview();
+    setTab(next);
+    setSection(focus);
+    setExpanded(true);
+  };
   const visibleCandidates = p.candidates.filter(
     (c) => showRejected || c.status !== "invalid",
   );
@@ -162,11 +173,127 @@ export function AssemblyInspector(p: Props) {
   useEffect(() => {
     if (p.selected) setTab("part");
   }, [p.selected]);
+  if (!expanded) {
+    const suggestions = p.candidates
+      .filter((c) => c.status === "valid")
+      .slice(0, 3);
+    const relevant =
+      p.analysis?.issues.filter(
+        (i) =>
+          i.kind !== "missing" &&
+          (!i.partIds.length || (part && i.partIds.includes(part.id))),
+      ) ?? [];
+    const needsFace = part?.pockets.some((_, index) => {
+      const config = p.assembly.pocketFaces[part.id];
+      return (
+        !config ||
+        config.signature !== geometrySignature(part) ||
+        !config.faces[index]
+      );
+    });
+    return (
+      <aside
+        className="assembly-inspector is-compact floating"
+        aria-label="装配信息"
+      >
+        <div className="assembly-compact-heading">
+          <span>{part ? "当前零件" : "开始组装"}</span>
+          {item?.locked && <LockKeyhole size={14} aria-label="零件已锁定" />}
+        </div>
+        <h2>{part?.name ?? "点选，再搭建"}</h2>
+        {part ? (
+          <p className="assembly-compact-size">
+            {round(part.width)} × {round(part.height)} × {part.thickness} mm
+          </p>
+        ) : (
+          <p className="assembly-compact-hint">
+            点击左侧零件放入场景。
+            <br />
+            点选零件后，直接拖动摆放。
+          </p>
+        )}
+        {item && (
+          <p className="assembly-compact-hint">
+            {item.locked
+              ? "此零件已锁定，可在精确调整中解锁。"
+              : "直接拖动摆放，靠近黄色位置会轻轻吸附。"}
+          </p>
+        )}
+        {part && !item && (
+          <button
+            className="primary wide"
+            disabled={p.blocked}
+            onClick={() => p.add(part.id)}
+          >
+            放入场景
+          </button>
+        )}
+        {!!suggestions.length && item && (
+          <div className="assembly-quick-placements">
+            <span>推荐落位</span>
+            {suggestions.map((c) => (
+              <button
+                key={c.id}
+                disabled={p.blocked || item.locked}
+                onClick={() => patchItem({ ...c.pose, locked: item.locked })}
+                aria-label={"放到 " + c.label}
+              >
+                <i />
+                {c.label}
+                <ChevronRight size={14} />
+              </button>
+            ))}
+          </div>
+        )}
+        {p.guidancePending && item && (
+          <p className="assembly-compact-hint" role="status">
+            正在寻找可放置位置…
+          </p>
+        )}
+        {needsFace && (
+          <button
+            className="assembly-compact-notice"
+            onClick={() => openDetails("part", "machining")}
+          >
+            槽的加工面待确认 <ChevronRight size={14} />
+          </button>
+        )}
+        {!needsFace && relevant.length > 0 && (
+          <button
+            className={
+              "assembly-compact-notice" +
+              (relevant.some((i) => i.severity === "error")
+                ? " has-errors"
+                : "")
+            }
+            onClick={() => openDetails("check")}
+          >
+            <span>{relevant[0].message}</span>
+            <ChevronRight size={14} />
+          </button>
+        )}
+        <div className="assembly-compact-footer">
+          {part && (
+            <button onClick={() => openDetails("part")}>精确调整</button>
+          )}
+          <button onClick={() => openDetails("rules")}>检查与规则</button>
+        </div>
+      </aside>
+    );
+  }
   return (
     <aside className="assembly-inspector floating" aria-label="装配信息">
       <div className="panel-heading">
         <strong>装配信息</strong>
-        <span className="section-index">03</span>
+        <button
+          aria-label="收起装配详情"
+          onClick={() => {
+            p.clearPreview();
+            setExpanded(false);
+          }}
+        >
+          <X size={16} />
+        </button>
       </div>
       <nav className="assembly-inspector-tabs" aria-label="装配信息分类">
         {(["part", "check", "rules"] as const).map((t, i) => (
@@ -255,211 +382,242 @@ export function AssemblyInspector(p: Props) {
                   </>
                 ) : (
                   <fieldset disabled={p.blocked} className="assembly-fields">
-                    <div className="assembly-section-title">
-                      <h3>位置与朝向</h3>
-                      <button
-                        aria-label={
-                          item.locked ? "解除装配锁定" : "锁定装配零件"
-                        }
-                        data-tooltip="仅锁定 3D 位置，不影响二维排版锁定"
-                        onClick={() =>
-                          patchItem({ ...item, locked: !item.locked })
-                        }
-                      >
-                        {item.locked ? (
-                          <LockKeyhole size={15} />
-                        ) : (
-                          <Unlock size={15} />
-                        )}
-                      </button>
-                    </div>
-                    <fieldset
-                      disabled={item.locked}
-                      className="assembly-fields"
+                    <details
+                      className="assembly-disclosure"
+                      open={section === "position"}
                     >
-                      <div className="assembly-vector-fields">
-                        {(["x", "y", "z"] as const).map((axis) => (
-                          <NumberField
-                            key={axis}
-                            label={"位置 " + axis.toUpperCase()}
-                            value={item.position[axis]}
-                            onCommit={(n) =>
-                              patchItem({
-                                ...item,
-                                position: { ...item.position, [axis]: n },
-                              })
-                            }
-                          />
-                        ))}
-                      </div>
-                      <div className="assembly-vector-fields">
-                        {(["x", "y", "z"] as const).map((axis) => (
-                          <NumberField
-                            key={axis}
-                            label={"旋转 " + axis.toUpperCase()}
-                            unit="°"
-                            value={eulerFromRotation(item.rotation)[axis]}
-                            onCommit={(n) =>
-                              patchItem({
-                                ...item,
-                                rotation: rotationFromEuler({
-                                  ...eulerFromRotation(item.rotation),
-                                  [axis]: n,
-                                }),
-                              })
-                            }
-                          />
-                        ))}
-                      </div>
-                    </fieldset>
-                    {item.locked && (
-                      <p className="hint">已锁定。解除后可拖动或调整数值。</p>
-                    )}
-                    <p className="hint">
-                      X 宽 · Y 深 · Z 高；旋转采用 XYZ 顺序。
-                    </p>
-                    <div className="assembly-face-controls">
-                      <span>查看局部加工方向</span>
-                      {(["front", "back"] as const).map((face) => (
+                      <summary>位置与朝向</summary>
+                      <div className="assembly-section-title">
+                        <span>精确坐标</span>
                         <button
-                          key={face}
-                          aria-pressed={p.machiningFace === face}
-                          onClick={() => p.setMachiningFace(face)}
+                          aria-label={
+                            item.locked ? "解除装配锁定" : "锁定装配零件"
+                          }
+                          data-tooltip="仅锁定 3D 位置，不影响二维排版锁定"
+                          onClick={() =>
+                            patchItem({ ...item, locked: !item.locked })
+                          }
                         >
-                          {face === "front" ? "正面 +Z" : "反面 −Z"}
+                          {item.locked ? (
+                            <LockKeyhole size={15} />
+                          ) : (
+                            <Unlock size={15} />
+                          )}
                         </button>
-                      ))}
-                    </div>
-                    {part.pockets.length > 0 && (
-                      <div className="assembly-machining">
-                        <h3>确认槽的加工面</h3>
-                        <p className="hint">正面是局部 +Z，反面是局部 −Z。</p>
-                        {part.pockets.map((pocket, index) => {
-                          const config = p.assembly.pocketFaces[part.id],
-                            valid =
-                              config?.signature === geometrySignature(part);
-                          return (
-                            <label key={index}>
-                              <span>
-                                槽 {index + 1} · 深 {pocket.depth ?? "未知"} mm
-                              </span>
-                              <Select
-                                aria-label={"槽 " + (index + 1) + " 加工面"}
-                                value={valid ? (config.faces[index] ?? "") : ""}
-                                options={[
-                                  { value: "", label: "请选择加工面" },
-                                  { value: "front", label: "正面 +Z" },
-                                  { value: "back", label: "反面 −Z" },
-                                ]}
-                                onChange={(face) => {
-                                  if (!face) return;
-                                  p.setMachiningFace(face as "front" | "back");
-                                  p.commit({
-                                    ...p.assembly,
-                                    pocketFaces: {
-                                      ...p.assembly.pocketFaces,
-                                      [part.id]: {
-                                        signature: geometrySignature(part),
-                                        faces: {
-                                          ...(valid ? config.faces : {}),
-                                          [index]: face as "front" | "back",
+                      </div>
+                      <fieldset
+                        disabled={item.locked}
+                        className="assembly-fields"
+                      >
+                        <div className="assembly-vector-fields">
+                          {(["x", "y", "z"] as const).map((axis) => (
+                            <NumberField
+                              key={axis}
+                              label={"位置 " + axis.toUpperCase()}
+                              value={item.position[axis]}
+                              onCommit={(n) =>
+                                patchItem({
+                                  ...item,
+                                  position: { ...item.position, [axis]: n },
+                                })
+                              }
+                            />
+                          ))}
+                        </div>
+                        <div className="assembly-vector-fields">
+                          {(["x", "y", "z"] as const).map((axis) => (
+                            <NumberField
+                              key={axis}
+                              label={"旋转 " + axis.toUpperCase()}
+                              unit="°"
+                              value={eulerFromRotation(item.rotation)[axis]}
+                              onCommit={(n) =>
+                                patchItem({
+                                  ...item,
+                                  rotation: rotationFromEuler({
+                                    ...eulerFromRotation(item.rotation),
+                                    [axis]: n,
+                                  }),
+                                })
+                              }
+                            />
+                          ))}
+                        </div>
+                      </fieldset>
+                      {item.locked && (
+                        <p className="hint">已锁定。解除后可拖动或调整数值。</p>
+                      )}
+                      <p className="hint">
+                        X 宽 · Y 深 · Z 高；旋转采用 XYZ 顺序。
+                      </p>
+                    </details>
+                    <details
+                      className="assembly-disclosure"
+                      open={section === "machining"}
+                    >
+                      <summary>加工面与局部方向</summary>
+                      <div className="assembly-face-controls">
+                        <span>查看局部加工方向</span>
+                        {(["front", "back"] as const).map((face) => (
+                          <button
+                            key={face}
+                            aria-pressed={p.machiningFace === face}
+                            onClick={() => p.setMachiningFace(face)}
+                          >
+                            {face === "front" ? "正面 +Z" : "反面 −Z"}
+                          </button>
+                        ))}
+                      </div>
+                      {part.pockets.length > 0 && (
+                        <div className="assembly-machining">
+                          <h3>确认槽的加工面</h3>
+                          <p className="hint">正面是局部 +Z，反面是局部 −Z。</p>
+                          {part.pockets.map((pocket, index) => {
+                            const config = p.assembly.pocketFaces[part.id],
+                              valid =
+                                config?.signature === geometrySignature(part);
+                            return (
+                              <label key={index}>
+                                <span>
+                                  槽 {index + 1} · 深 {pocket.depth ?? "未知"}{" "}
+                                  mm
+                                </span>
+                                <Select
+                                  aria-label={"槽 " + (index + 1) + " 加工面"}
+                                  value={
+                                    valid ? (config.faces[index] ?? "") : ""
+                                  }
+                                  options={[
+                                    { value: "", label: "请选择加工面" },
+                                    { value: "front", label: "正面 +Z" },
+                                    { value: "back", label: "反面 −Z" },
+                                  ]}
+                                  onChange={(face) => {
+                                    if (!face) return;
+                                    p.setMachiningFace(
+                                      face as "front" | "back",
+                                    );
+                                    p.commit({
+                                      ...p.assembly,
+                                      pocketFaces: {
+                                        ...p.assembly.pocketFaces,
+                                        [part.id]: {
+                                          signature: geometrySignature(part),
+                                          faces: {
+                                            ...(valid ? config.faces : {}),
+                                            [index]: face as "front" | "back",
+                                          },
                                         },
                                       },
-                                    },
-                                  });
-                                }}
-                              />
-                            </label>
-                          );
-                        })}
+                                    });
+                                  }}
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </details>
+                    <details className="assembly-disclosure">
+                      <summary>落位建议与不匹配原因</summary>
+                      <div className="assembly-section-title">
+                        <h3>可放置位置</h3>
+                        <small>黄色为几何可放置</small>
                       </div>
-                    )}
-                    <div className="assembly-section-title">
-                      <h3>可放置位置</h3>
-                      <small>黄色为几何可放置</small>
-                    </div>
-                    {visibleCandidates.length ? (
-                      <div className="assembly-candidates">
-                        {visibleCandidates.map((c) => (
-                          <div
-                            className={
-                              "assembly-candidate " +
-                              c.status +
-                              (c.id === p.candidateId ? " is-active" : "")
-                            }
-                            key={c.id}
-                          >
-                            <button
-                              className="assembly-candidate-pick"
-                              onClick={() => p.setCandidate(c.id)}
-                            >
-                              <i />
-                              <span>
-                                {c.label}
-                                <small>
-                                  {c.message ??
-                                    (c.status === "valid"
-                                      ? "最终位置已检查 · 安装路径单独检测"
-                                      : c.status === "incomplete"
-                                        ? "待确认加工面或配合规则"
-                                        : "此处不适合当前零件")}
-                                </small>
-                              </span>
-                            </button>
-                            <button
-                              aria-label={"对齐到 " + c.label}
-                              disabled={c.status !== "valid" || item.locked}
-                              data-tooltip={
-                                c.status === "valid"
-                                  ? "使用预览位置和朝向对齐；可撤销"
-                                  : (c.message ?? "此候选未通过检查")
+                      {visibleCandidates.length ? (
+                        <div className="assembly-candidates">
+                          {visibleCandidates.map((c) => (
+                            <div
+                              className={
+                                "assembly-candidate " +
+                                c.status +
+                                (c.id === p.candidateId ? " is-active" : "")
                               }
-                              onClick={() =>
-                                patchItem({ ...c.pose, locked: item.locked })
-                              }
+                              key={c.id}
                             >
-                              对齐
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="hint">
-                        {p.guidancePending
-                          ? "正在核对可放置位置…"
-                          : "尚无明确配合位置。可先移动零件，再选择装配规则建立配合关系。"}
-                      </p>
-                    )}
-                    {rejectedCount > 0 && (
-                      <button
-                        className="assembly-rejected-toggle"
-                        onClick={() => setShowRejected((v) => !v)}
-                      >
-                        {showRejected
-                          ? "收起不匹配位置"
-                          : "查看 " + rejectedCount + " 个不匹配位置及原因"}
-                      </button>
-                    )}
-                    <ReferenceEditor
-                      key={part.id}
-                      {...p}
-                      part={part}
-                      item={item}
-                    />
-                    <button
-                      className="assembly-remove"
-                      onClick={() => {
-                        p.clearPreview();
-                        p.commit({
-                          ...p.assembly,
-                          items: p.assembly.items.filter(
-                            (i) => i.partId !== part.id,
-                          ),
-                        });
+                              <button
+                                className="assembly-candidate-pick"
+                                onClick={() => p.setCandidate(c.id)}
+                              >
+                                <i />
+                                <span>
+                                  {c.label}
+                                  <small>
+                                    {c.message ??
+                                      (c.status === "valid"
+                                        ? "最终位置已检查 · 安装路径单独检测"
+                                        : c.status === "incomplete"
+                                          ? "待确认加工面或配合规则"
+                                          : "此处不适合当前零件")}
+                                  </small>
+                                </span>
+                              </button>
+                              <button
+                                aria-label={"对齐到 " + c.label}
+                                disabled={c.status !== "valid" || item.locked}
+                                data-tooltip={
+                                  c.status === "valid"
+                                    ? "使用预览位置和朝向对齐；可撤销"
+                                    : (c.message ?? "此候选未通过检查")
+                                }
+                                onClick={() =>
+                                  patchItem({ ...c.pose, locked: item.locked })
+                                }
+                              >
+                                对齐
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="hint">
+                          {p.guidancePending
+                            ? "正在核对可放置位置…"
+                            : "尚无明确配合位置。可先移动零件，再选择装配规则建立配合关系。"}
+                        </p>
+                      )}
+                      {rejectedCount > 0 && (
+                        <button
+                          className="assembly-rejected-toggle"
+                          onClick={() => setShowRejected((v) => !v)}
+                        >
+                          {showRejected
+                            ? "收起不匹配位置"
+                            : "查看 " + rejectedCount + " 个不匹配位置及原因"}
+                        </button>
+                      )}
+                    </details>
+                    <details
+                      className="assembly-disclosure"
+                      onToggle={(event) => {
+                        if (!event.currentTarget.open) p.clearPreview();
                       }}
                     >
-                      移出组装，保留零件
-                    </button>
+                      <summary>按面、边或角点对齐</summary>
+                      <ReferenceEditor
+                        key={part.id}
+                        {...p}
+                        part={part}
+                        item={item}
+                      />
+                    </details>
+                    <details className="assembly-disclosure">
+                      <summary>零件操作</summary>
+                      <button
+                        className="assembly-remove"
+                        onClick={() => {
+                          p.clearPreview();
+                          p.commit({
+                            ...p.assembly,
+                            items: p.assembly.items.filter(
+                              (i) => i.partId !== part.id,
+                            ),
+                          });
+                        }}
+                      >
+                        移出组装，保留零件
+                      </button>
+                    </details>
                   </fieldset>
                 )}
               </section>

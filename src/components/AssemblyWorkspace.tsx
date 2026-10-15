@@ -33,7 +33,7 @@ export default function AssemblyWorkspace({
   const [selected, setSelected] = useState<string | null>(null),
     [query, setQuery] = useState(""),
     [mobile, setMobile] = useState("canvas");
-  const [tool, setTool] = useState<SceneState["tool"]>("translate"),
+  const [tool, setTool] = useState<SceneState["tool"]>("select"),
     [magnet, setMagnet] = useState(true),
     [xray, setXray] = useState(false),
     [exploded, setExploded] = useState(false);
@@ -215,8 +215,14 @@ export default function AssemblyWorkspace({
       .includes(query.toLowerCase()),
   );
   const errors =
-    detection.analysis?.issues.filter((i) => i.severity === "error").length ??
-    0;
+    detection.analysis?.issues.filter(
+      (i) => i.severity === "error" && i.kind !== "missing",
+    ).length ?? 0;
+  const remaining = project.parts.filter(
+    (part) =>
+      !assembly.items.some((i) => i.partId === part.id) &&
+      !assembly.sparePartIds.includes(part.id),
+  ).length;
   const sceneState: SceneState = {
     project,
     assembly: actual,
@@ -306,9 +312,21 @@ export default function AssemblyWorkspace({
               >
                 <button
                   className="assembly-resource-select"
-                  aria-label={"选择组装零件 " + part.name}
+                  aria-label={
+                    (placed ? "选择组装零件 " : "放入场景 ") + part.name
+                  }
+                  disabled={!placed && blocked}
                   aria-pressed={part.id === selected}
-                  onClick={() => select(part.id)}
+                  onClick={() => {
+                    if (!placed) add(part.id);
+                    else {
+                      if (hiddenPartIds.includes(part.id))
+                        setHiddenPartIds((ids) =>
+                          ids.filter((id) => id !== part.id),
+                        );
+                      select(part.id);
+                    }
+                  }}
                 >
                   <div className="assembly-resource-thumb">
                     <Thumbnail part={part} />
@@ -323,29 +341,37 @@ export default function AssemblyWorkspace({
                       mm
                     </small>
                     <em>
-                      {placed ? "已加入成品" : spare ? "备用件" : "尚未加入"}
+                      {placed
+                        ? hiddenPartIds.includes(part.id)
+                          ? "已隐藏 · 点击显示"
+                          : "已在场景"
+                        : spare
+                          ? "备用 · 点击放入场景"
+                          : "点击放入场景"}
                     </em>
                   </span>
-                  <ChevronRight size={14} />
+                  {placed ? <ChevronRight size={14} /> : <Plus size={15} />}
                 </button>
-                {placed && (
-                  <button
-                    className="assembly-rejected-toggle"
-                    aria-label={
-                      (hiddenPartIds.includes(part.id) ? "显示 " : "隐藏 ") +
-                      part.name
-                    }
-                    onClick={() => toggleHidden(part.id)}
-                  >
-                    {hiddenPartIds.includes(part.id) ? "显示零件" : "隐藏零件"}
-                  </button>
+                {placed && part.id === selected && (
+                  <details className="assembly-resource-options">
+                    <summary>更多操作</summary>
+                    <button
+                      className="assembly-rejected-toggle"
+                      aria-label={
+                        (hiddenPartIds.includes(part.id) ? "显示 " : "隐藏 ") +
+                        part.name
+                      }
+                      onClick={() => toggleHidden(part.id)}
+                    >
+                      {hiddenPartIds.includes(part.id)
+                        ? "显示零件"
+                        : "隐藏零件"}
+                    </button>
+                  </details>
                 )}
                 {!placed && (
-                  <div className="assembly-resource-item-actions">
-                    <button disabled={blocked} onClick={() => add(part.id)}>
-                      <Plus size={12} />
-                      加入组装
-                    </button>
+                  <details className="assembly-resource-options">
+                    <summary>更多操作</summary>
                     <button
                       disabled={blocked}
                       onClick={() =>
@@ -361,7 +387,7 @@ export default function AssemblyWorkspace({
                     >
                       {spare ? "取消备用" : "标为备用"}
                     </button>
-                  </div>
+                  </details>
                 )}
               </article>
             );
@@ -438,9 +464,14 @@ export default function AssemblyWorkspace({
             ? "检测中"
             : errors
               ? "装配检查：" + errors + " 项需要调整"
-              : detection.analysis?.complete
-                ? "装配检查：已设置项目通过"
-                : "装配检查：尚未完成"}
+              : remaining
+                ? assembly.items.length +
+                  " 件已放入 · " +
+                  remaining +
+                  " 件待放入"
+                : detection.analysis?.complete
+                  ? "装配检查：已设置项目通过"
+                  : "装配检查：尚未完成"}
         </span>
         <span>
           {blocked
