@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AssemblyViewCube } from "./AssemblyViewCube";
 import { viewQuaternion } from "./viewCubeGeometry";
 import type { Rotation3, Vec3 } from "../core/assemblyTypes";
+import type { ViewShortcut } from "../core/keyboardShortcuts";
 import {
   Magnet,
   Scan,
@@ -15,7 +16,7 @@ import {
   type SceneState,
   type SceneCallbacks,
 } from "./assemblyScene";
-export type AssemblyView = "all" | "selected" | "front" | "side" | "top";
+export type AssemblyView = ViewShortcut;
 type Props = {
   children: ReactNode;
   state: SceneState;
@@ -72,7 +73,9 @@ export function AssemblyCanvas(props: Props) {
     api.current?.update(props.state);
   }, [props.state]);
   useEffect(() => {
-    api.current?.fit(props.viewRequest.kind);
+    const kind = props.viewRequest.kind;
+    if (kind === "zoom-in" || kind === "zoom-out") api.current?.zoom(kind === "zoom-in" ? 1.2 : 1 / 1.2);
+    else api.current?.fit(kind === "iso" ? "all" : kind);
   }, [props.viewRequest]);
   const selected = props.state.project.parts.find(
     (p) => p.id === props.state.selected,
@@ -154,6 +157,8 @@ export function AssemblyCanvas(props: Props) {
             key={view}
             onClick={() => api.current?.fit(view)}
             disabled={view === "selected" && !selectedItem}
+            data-tooltip={view === "selected" ? "定位所选 · F" : "适应全部 · 0 / Shift F"}
+            aria-keyshortcuts={view === "selected" ? "F" : "0 Shift+F"}
           >
             {["适应全部", "定位所选"][index]}
           </button>
@@ -186,7 +191,8 @@ export function AssemblyCanvas(props: Props) {
           aria-label="移出所选零件"
           disabled={!selectedItem || props.state.blocked}
           onClick={props.onRemove}
-          data-tooltip="移出所选零件，保留零件库，可撤销"
+          data-tooltip="移出所选零件 · Delete / Backspace · 保留零件库，可撤销"
+          aria-keyshortcuts="Delete Backspace"
         >
           <Trash2 size={17} />
         </button>
@@ -195,7 +201,8 @@ export function AssemblyCanvas(props: Props) {
           aria-pressed={props.state.magnet}
           className={props.state.magnet ? "active" : ""}
           onClick={props.onMagnet}
-          data-tooltip="靠近落位或坐标 0 时轻微吸附 · Alt 临时暂停"
+          data-tooltip="弱磁吸 · M · Alt 临时暂停"
+          aria-keyshortcuts="M"
         >
           <Magnet size={17} />
           <span>磁吸</span>
@@ -205,7 +212,8 @@ export function AssemblyCanvas(props: Props) {
           aria-pressed={props.state.xray}
           className={props.state.xray ? "active" : ""}
           onClick={props.onXray}
-          data-tooltip="看清内部的红色冲突区域"
+          data-tooltip="透视查看 · T · 看清内部冲突"
+          aria-keyshortcuts="T"
         >
           <Eye size={17} />
         </button>
@@ -214,7 +222,8 @@ export function AssemblyCanvas(props: Props) {
           aria-pressed={props.state.exploded}
           className={props.state.exploded ? "active" : ""}
           onClick={props.onExplode}
-          data-tooltip="仅分开展示，装配位置与检测不变"
+          data-tooltip="爆炸查看 · B · 装配位置与检测不变"
+          aria-keyshortcuts="B"
         >
           <Layers3 size={17} />
         </button>
@@ -222,14 +231,16 @@ export function AssemblyCanvas(props: Props) {
           aria-label="撤销装配操作"
           disabled={!props.canUndo || props.state.blocked}
           onClick={props.onUndo}
-          data-tooltip="撤销上一次装配操作，也可恢复移出的零件"
+          data-tooltip="撤销 · Ctrl/⌘ Z · 也可恢复移出的零件"
+          aria-keyshortcuts="Control+Z Meta+Z"
         >
           <Undo2 size={17} />
         </button>
         <button
           aria-label="适应所有零件"
           onClick={() => api.current?.fit()}
-          data-tooltip="适应所有零件"
+          data-tooltip="适应所有零件 · 0 / Shift F"
+          aria-keyshortcuts="0 Shift+F"
         >
           <Scan size={17} />
         </button>

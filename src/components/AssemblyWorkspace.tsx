@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Upload, Plus, Search, Package, ChevronRight } from "lucide-react";
 import { useWorkbench } from "../store";
 import { emptyAssembly } from "../core/assemblyTypes";
+import { assemblyShortcut } from "../core/assemblyEditing";
+import { keyboardShortcut } from "../core/keyboardShortcuts";
 import type {
   Assembly,
   AssemblyItem,
@@ -68,7 +70,7 @@ export default function AssemblyWorkspace({
       ids.includes(id) ? ids.filter((v) => v !== id) : [...ids, id],
     );
   };
-  const blocked = s.status === "searching" || !active || interactionBlocked;
+  const blocked = s.status === "searching" || s.importing || !active || interactionBlocked;
   const actual = useMemo(
     () =>
       preview
@@ -188,28 +190,38 @@ export default function AssemblyWorkspace({
     if (!active) return;
     const key = (e: KeyboardEvent) => {
       if (interactionBlocked) return;
-      if (
-        (e.target as HTMLElement).closest(
-          "input,textarea,select,[contenteditable=true]",
-        )
-      )
-        return;
-      if (e.key === "Escape") {
+      const command = keyboardShortcut(e, "assembly");
+      if (!command || ["workspace", "help", "import", "export"].includes(command.type)) return;
+      if (command.type === "escape") {
         clearPreview();
         setSelected(null);
         e.preventDefault();
+        return;
+      }
+      if (command.type === "view") {
+        e.preventDefault();
+        const kind = command.view === "selected" && (!assembly.items.some(i => i.partId === selected) || hiddenPartIds.includes(selected!)) ? "all" : command.view;
+        setViewRequest(v => ({ kind, seq: v.seq + 1 }));
+        return;
       }
       if (blocked) return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
+      e.preventDefault();
+      if (command.type === "undo") {
         clearPreview();
+        setSnapped(null);
         s.undo();
-        return;
+      } else if (command.type === "magnet") setMagnet(v => !v);
+      else if (command.type === "xray") setXray(v => !v);
+      else if (command.type === "explode") { clearPreview(); setExploded(v => !v); }
+      else if (command.type === "remove") removeSelected();
+      else if (!exploded && !installationPreview && !referenceMarkers?.length && !hiddenPartIds.includes(selected!)) {
+        const next = assemblyShortcut(assembly, selected, command);
+        if (next) commit(next);
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [active, blocked, interactionBlocked, s.undo, clearPreview]);
+  }, [active, blocked, interactionBlocked, s.undo, clearPreview, assembly, selected, hiddenPartIds, exploded, installationPreview, referenceMarkers, commit]);
   const visible = project.parts.filter((p) =>
     (p.name + " " + p.material + " " + p.thickness)
       .toLowerCase()
@@ -479,7 +491,7 @@ export default function AssemblyWorkspace({
         <span>
           {blocked
             ? "当前装配只读"
-            : error || "点选零件即可移动与旋转 · Alt 暂停磁吸 · Esc 取消"}
+            : error || "方向键微调 · R 旋转 · Delete 移出 · ? 查看快捷键"}
         </span>
       </div>
     </div>

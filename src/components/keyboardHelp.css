@@ -1,0 +1,17 @@
+.modal.shortcut-modal { width: min(850px, 100%); }
+.shortcut-help .shortcut-intro { margin: 0 0 20px; }
+.shortcut-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.shortcut-groups section { min-width: 0; }
+.shortcut-groups h3 { font-size: 14px; margin: 0 0 12px; font-weight: 600; }
+.shortcut-groups dl { margin: 0; }
+.shortcut-groups dl > div { display: grid; grid-template-columns: 155px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12px; line-height: 1.65; }
+.shortcut-groups dd { margin: 0; color: var(--muted); }
+.shortcut-groups kbd { display: inline-block; font: inherit; padding: 1px 5px; }
+.shortcut-common { grid-column: 1 / -1; }
+.shortcut-common dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+.shortcut-mouse { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 10px; }
+.shortcut-mouse p { margin-bottom: 0; }
+@media (max-width: 680px) {
+  .shortcut-groups, .shortcut-common dl { grid-template-columns: minmax(0, 1fr); }
+  .shortcut-groups dl > div { grid-template-columns: minmax(125px, 42%) minmax(0, 1fr); }
+}

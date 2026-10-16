@@ -29,6 +29,7 @@ import { TooltipLayer } from "./components/TooltipLayer";
 import { editingLayout } from "./core/editing";
 import { modeLabels } from "./core/types";
 import { measureLayout, validateLayout } from "./core/geometry";
+import { keyboardShortcut, applyDrawingShortcut, type ViewShortcut } from "./core/keyboardShortcuts";
 const AssemblyWorkspace = lazy(() => import("./components/AssemblyWorkspace"));
 const formatPercent = (n: number) => `${(n * 100).toFixed(1)}%`;
 export default function App() {
@@ -41,6 +42,7 @@ export default function App() {
     [mobile, setMobile] = useState("canvas"),
     [workspaceMode, setWorkspaceMode] = useState<"drawing" | "assembly">("drawing"),
     [assemblyVisited, setAssemblyVisited] = useState(false);
+  const [drawingViewRequest, setDrawingViewRequest] = useState<{ kind: ViewShortcut; seq: number }>({ kind: "all", seq: 0 });
   const lastDrawingView = useRef(s.view);
   const switchWorkspace = (mode: "drawing" | "assembly") => {
     if (mode === workspaceMode) return;
@@ -50,31 +52,42 @@ export default function App() {
   };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (
-        dialog ||
-        (e.target as HTMLElement).closest(
-          "input,textarea,select,[contenteditable=true]",
-        )
-      )
+      if (dialog) return;
+      const command = keyboardShortcut(e, workspaceMode);
+      if (!command) return;
+      if (more) {
+        if (command.type === "escape") { setMore(false); e.preventDefault(); }
         return;
-      if (e.key === "Escape" && more) {
-        setMore(false);
+      }
+      if (command.type === "help") { e.preventDefault(); setDialog("help"); return; }
+      if (command.type === "escape") {
+        if (workspaceMode === "drawing") { e.preventDefault(); s.select(null); }
+        return;
+      }
+      if (command.type === "view" && workspaceMode === "drawing") {
         e.preventDefault();
+        setDrawingViewRequest(v => ({ kind: command.view, seq: v.seq + 1 }));
+        return;
+      }
+      if (s.status === "searching" || s.importing) return;
+      if (command.type === "workspace") {
+        if (s.project?.parts.length) { e.preventDefault(); switchWorkspace(command.workspace); }
+        return;
+      }
+      if (command.type === "import") { e.preventDefault(); setDialog("import"); return; }
+      if (command.type === "export") {
+        if (s.project) { e.preventDefault(); setDialog(s.current?.sheets.length ? "export" : "part-export"); }
         return;
       }
       if (workspaceMode === "assembly") return;
-      if (e.key === "Escape" && !e.defaultPrevented) s.select(null);
-      if (s.status === "searching") return;
-      if (e.key.toLowerCase() === "v") setTool("select");
-      if (e.key.toLowerCase() === "h") setTool("hand");
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        s.undo();
-      }
+      e.preventDefault();
+      if (command.type === "tool") setTool(command.tool);
+      else if (command.type === "magnet") setMagnet(v => !v);
+      else applyDrawingShortcut(s, command);
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [dialog, more, s.undo, s.status, workspaceMode]);
+  }, [dialog, more, s, workspaceMode]);
   const project = s.view === "original" ? (s.source ?? s.project) : s.project;
   const searching = s.status === "searching";
   const hasStocks = !!project?.sheets.length;
@@ -117,8 +130,8 @@ export default function App() {
         </div>
         <div className="top-actions">
           {!!s.project?.parts.length && <nav className="workspace-mode-switch" aria-label="二维和三维工作区">
-            <button aria-label="二维图纸" aria-pressed={workspaceMode === "drawing"} className={workspaceMode === "drawing" ? "active" : ""} onClick={() => switchWorkspace("drawing")}><DraftingCompass size={15}/><span>二维图纸</span></button>
-            <button aria-label="3D 组装" aria-pressed={workspaceMode === "assembly"} className={workspaceMode === "assembly" ? "active" : ""} onClick={() => switchWorkspace("assembly")}><Box size={15}/><span>3D 组装</span></button>
+            <button aria-label="二维图纸" aria-keyshortcuts="Alt+2" data-tooltip="二维图纸 · Alt 2" aria-pressed={workspaceMode === "drawing"} className={workspaceMode === "drawing" ? "active" : ""} onClick={() => switchWorkspace("drawing")}><DraftingCompass size={15}/><span>二维图纸</span></button>
+            <button aria-label="3D 组装" aria-keyshortcuts="Alt+3" data-tooltip="3D 组装 · Alt 3" aria-pressed={workspaceMode === "assembly"} className={workspaceMode === "assembly" ? "active" : ""} onClick={() => switchWorkspace("assembly")}><Box size={15}/><span>3D 组装</span></button>
           </nav>}
           {project && (
             <>
@@ -261,7 +274,8 @@ export default function App() {
               metrics={metrics}
               tool={tool}
               magnet={magnet}
-              interactionBlocked={!!dialog || more}
+              interactionBlocked={!!dialog || more || workspaceMode !== "drawing"}
+              viewRequest={drawingViewRequest}
             />
           ) : project?.parts.length ? (
             <PartCanvas project={project} selected={s.selected} select={s.select} />
@@ -297,7 +311,8 @@ export default function App() {
             </button>
             <button
               disabled={searching}
-              data-tooltip={searching ? searchEditingReason : "磁吸 · Alt 暂时关闭"}
+              data-tooltip={searching ? searchEditingReason : "磁吸 · M · Alt 暂时关闭"}
+              aria-keyshortcuts="M"
               aria-label="磁吸"
               aria-pressed={magnet}
               className={magnet ? "active" : ""}
@@ -448,7 +463,7 @@ export default function App() {
               : !hasStocks ? "选择零件，编辑榫槽或导出图纸"
               : s.view !== "current"
                 ? "只读视图 · 切换当前排版后编辑"
-                : "拖动零件 · Alt 暂停磁吸 · Esc 返回概览")}
+                : "方向键微调 · R 旋转 · ? 查看快捷键")}
         </span>
       </footer>
       <WorkspaceDialogs

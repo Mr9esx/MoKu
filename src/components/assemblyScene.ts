@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { keyboardShortcut } from "../core/keyboardShortcuts";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createAssemblyTransformControls } from "./assemblyTransformControls";
 import {
@@ -707,6 +708,16 @@ export function createAssemblyScene(
     orbit.update();
     render();
   }
+  function zoom(factor: number) {
+    stopOrientation();
+    if (!Number.isFinite(factor) || factor <= 0) return;
+    const offset = camera.position.clone().sub(orbit.target), distance = offset.length();
+    if (!distance) return;
+    const next = THREE.MathUtils.clamp(distance / factor, Math.max(0.1, camera.near * 3), camera.far / 4);
+    camera.position.copy(orbit.target).addScaledVector(offset, next / distance);
+    orbit.update();
+    render();
+  }
   function update(next: SceneState) {
     const draggedId = direct?.id ?? gizmoOriginal?.partId;
     const draggedItem = next.assembly.items.find(item => item.partId === draggedId);
@@ -1119,10 +1130,17 @@ export function createAssemblyScene(
   }
   const onKey = (event: KeyboardEvent) => {
     if (event.key === "Alt") {
-      alt = event.type === "keydown";
+      alt = event.type === "keydown" && !state?.blocked;
       if (alt) setOriginSnap([]);
       for (const control of transform.controls)
         control.setRotationSnap(alt ? null : Math.PI / 2);
+      return;
+    }
+    if (!state || state.blocked || event.type !== "keydown") return;
+    if ((direct || gizmoOriginal) && event.key !== "Escape" && keyboardShortcut(event, "assembly")) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
     }
     if (event.key === "Escape" && event.type === "keydown" && cancelDrag()) {
       event.preventDefault();
@@ -1165,6 +1183,7 @@ export function createAssemblyScene(
   return {
     update,
     fit,
+    zoom,
     orient,
     orbitView,
     cancelDrag,

@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import { useWorkbench } from "../store";
-import { transformPoints } from "../core/geometry";
+import { transformPoints, bounds } from "../core/geometry";
+import { keyboardShortcut, type ViewShortcut } from "../core/keyboardShortcuts";
 import { points, displayPoints } from "../core/export";
 import { settlePlacement, snapPlacement, type Guide } from "../core/editing";
 import { fitCanvasViewport } from "../core/canvasViewport";
@@ -15,6 +16,7 @@ export function StockCanvas({
   tool = "select",
   magnet = true,
   interactionBlocked = false,
+  viewRequest,
 }: {
   layout: Layout;
   metrics: LayoutMetrics;
@@ -22,6 +24,7 @@ export function StockCanvas({
   tool?: "select" | "hand";
   magnet?: boolean;
   interactionBlocked?: boolean;
+  viewRequest?: { kind: ViewShortcut; seq: number };
 }) {
   const s = useWorkbench(),
     project = provided ?? s.project!;
@@ -53,6 +56,7 @@ export function StockCanvas({
     [pan, setPan] = useState({ x: 0, y: 0 }),
     [ghost, setGhost] = useState<Placement | null>(null),
     [guides, setGuides] = useState<Guide[]>([]);
+  const consumedViewRequest = useRef(viewRequest?.seq);
   const [viewport, setViewport] = useState({
     width: 1,
     height: 1,
@@ -169,26 +173,42 @@ export function StockCanvas({
     setGhost(null);
     setGuides([]);
   };
+  const fitSelected = () => {
+    const placement = layout.placements.find(p => p.partId === s.selected), part = project.parts.find(p => p.id === s.selected);
+    const index = layout.sheets.findIndex(sheet => sheet.id === placement?.sheetId);
+    if (!placement || !part || index < 0) { fit(); return; }
+    const box = bounds(displayPoints(transformPoints(part.outline, part, placement), layout.sheets[index].height));
+    const availableWidth = Math.max(1, viewport.width - viewport.left - viewport.right);
+    const availableHeight = Math.max(1, viewport.height - viewport.top - viewport.bottom);
+    const next = Math.max(0.4, Math.min(12,
+      fitted.width * availableWidth / viewport.width / Math.max(80, box.width * 1.4),
+      fitted.height * availableHeight / viewport.height / Math.max(80, box.height * 1.4)));
+    setZoom(next);
+    setPan({
+      x: offsets[index] + (box.minX + box.maxX) / 2 - fitted.width / next * (viewport.left + availableWidth / 2) / viewport.width - fitted.x,
+      y: 85 + (box.minY + box.maxY) / 2 - fitted.height / next * (viewport.top + availableHeight / 2) / viewport.height - fitted.y,
+    });
+  };
+  useEffect(() => {
+    if (!viewRequest || viewRequest.seq === consumedViewRequest.current) return;
+    consumedViewRequest.current = viewRequest.seq;
+    if (interactionBlocked) return;
+    if (viewRequest.kind === "selected") fitSelected();
+    else if (viewRequest.kind === "zoom-in") adjustZoom(1.2);
+    else if (viewRequest.kind === "zoom-out") adjustZoom(1 / 1.2);
+    else fit();
+  }, [viewRequest]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (
-        (e.target as HTMLElement).closest(
-          "input,textarea,select,[contenteditable=true]",
-        )
-      )
-        return;
-      if (interactionBlocked) return;
-      if (e.key === "Escape" && drag.current) {
-        e.preventDefault();
-        clear();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "0") {
-        e.preventDefault();
-        fit();
-      }
+      if (interactionBlocked || !drag.current) return;
+      const command = keyboardShortcut(e, "drawing");
+      if (!command) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (command.type === "escape") clear();
     };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
   }, [interactionBlocked]);
   useEffect(() => {
     if (searching || interactionBlocked || !drag.current || drag.current.placement) clear();
@@ -504,18 +524,20 @@ export function StockCanvas({
       </svg>
       <div className="zoom-controls floating">
         <button
-          data-tooltip="缩小"
+          data-tooltip="缩小 · −"
+          aria-keyshortcuts="-"
           aria-label="缩小"
           onClick={() => adjustZoom(1 / 1.2)}
         >
           <Minus size={15} />
         </button>
         <span>{Math.round(zoom * 100)}%</span>
-        <button data-tooltip="放大" aria-label="放大" onClick={() => adjustZoom(1.2)}>
+        <button data-tooltip="放大 · +" aria-keyshortcuts="+" aria-label="放大" onClick={() => adjustZoom(1.2)}>
           <Plus size={15} />
         </button>
         <button
-          data-tooltip="适合全部板材 · Ctrl/⌘ 0"
+          data-tooltip="适合全部板材 · 0 / Shift F"
+          aria-keyshortcuts="0 Shift+F Control+0 Meta+0"
           aria-label="适合全部板材"
           onClick={fit}
         >

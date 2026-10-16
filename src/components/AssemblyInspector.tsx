@@ -349,7 +349,8 @@ export function AssemblyInspector(p: Props) {
                           aria-label={
                             item.locked ? "解除装配锁定" : "锁定装配零件"
                           }
-                          data-tooltip="仅锁定 3D 位置，不影响二维排版锁定"
+                          data-tooltip="锁定 / 解锁 · L · 仅影响 3D 位置"
+                          aria-keyshortcuts="L"
                           onClick={() =>
                             patchItem({ ...item, locked: !item.locked })
                           }

@@ -1,5 +1,29 @@
 import type { Assembly } from "./assemblyTypes";
 import type { Project } from "./types";
+import type { Shortcut } from "./keyboardShortcuts";
+
+/** Keyboard edits affect the selected instance; inventory and declared fits remain intact. */
+export function assemblyShortcut(assembly: Assembly, selected: string | null, command: Shortcut): Assembly | null {
+  const item = assembly.items.find(item => item.partId === selected);
+  if (!item) return null;
+  if (command.type === "remove") return { ...assembly, items: assembly.items.filter(item => item.partId !== selected) };
+  let next = item;
+  if (command.type === "lock") next = { ...item, locked: !item.locked };
+  else if (item.locked) return null;
+  else if (command.type === "nudge") next = { ...item, position: { ...item.position, [command.axis]: item.position[command.axis] + command.amount } };
+  else if (command.type === "rotate") {
+    const s = Math.sin(command.degrees * Math.PI / 360), w = Math.SQRT1_2;
+    const x = command.axis === "x" ? s : 0, y = command.axis === "y" ? s : 0, z = command.axis === "z" ? s : 0;
+    const q = item.rotation;
+    next = { ...item, rotation: {
+      x: w * q.x + x * q.w + y * q.z - z * q.y,
+      y: w * q.y - x * q.z + y * q.w + z * q.x,
+      z: w * q.z + x * q.y - y * q.x + z * q.w,
+      w: w * q.w - x * q.x - y * q.y - z * q.z,
+    } };
+  } else return null;
+  return { ...assembly, items: assembly.items.map(value => value === item ? next : value) };
+}
 const finiteVector = (v: { x: number; y: number; z: number }) =>
   [v.x, v.y, v.z].every(Number.isFinite);
 /** Validate user input before an undoable transaction; physical interference is saved for correction. */

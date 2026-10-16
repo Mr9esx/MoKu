@@ -90,13 +90,16 @@ export function ContextInspector({
         {project.sheets.length > 0 && <div className="inspector-actions">
           <button
             disabled={readonly || !placement}
-            data-tooltip={s.status === "searching" ? searchEditingReason : "固定或释放零件位置"}
+            data-tooltip={s.status === "searching" ? searchEditingReason : "固定或释放零件位置 · L"}
+            aria-keyshortcuts="L"
             onClick={() => s.toggleLock(part.id)}
           >
             {placement?.locked ? <Lock size={14} /> : <Unlock size={14} />}{" "}
             {placement?.locked ? "解锁" : "锁定"}
           </button>
           <button
+            data-tooltip="旋转 90° · R · Shift R 反向"
+            aria-keyshortcuts="R Shift+R"
             disabled={
               readonly ||
               !placement ||
@@ -144,11 +147,13 @@ export function ContextInspector({
                 />
               </label>
               <button
+                data-tooltip="复制 · Ctrl/⌘ D 快速复制一个"
+                aria-keyshortcuts="Control+D Meta+D"
                 disabled={readonly || !Number.isInteger(quantity) || quantity < 1 || quantity > 100}
                 onClick={() => s.duplicatePart(part.id, quantity)}
               ><Copy size={14} />复制</button>
             </div>
-            <button className="delete-part" disabled={readonly} onClick={() => s.removePart(part.id)}>
+            <button className="delete-part" aria-keyshortcuts="Delete Backspace" data-tooltip="删除零件 · Delete / Backspace · 可撤销" disabled={readonly} onClick={() => s.removePart(part.id)}>
               <Trash2 size={14} />删除零件
             </button>
           </div>

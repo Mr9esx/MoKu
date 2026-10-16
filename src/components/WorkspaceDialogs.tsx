@@ -9,6 +9,7 @@ import { JoineryPanel } from "./JoineryPanel";
 import { Select } from "./Select";
 import { validateLayout } from "../core/geometry";
 import { exportEligibility, exportCurrentSvg, exportPartSvg } from "../core/export";
+import { KeyboardHelp } from "./KeyboardHelp";
 export type Dialog =
   | "settings"
   | "import"
@@ -200,30 +201,7 @@ export function WorkspaceDialogs({
       </>
     );
   } else if (dialog === "help")
-    content = (
-      <div className="help">
-        <p>
-          <kbd>V</kbd> 选择零件；拖动当前排版中的零件，松开后检查并保存。
-        </p>
-        <p>
-          <kbd>H</kbd> 手形平移；普通滚轮移动画布，Shift 横向移动。
-        </p>
-        <p>
-          <kbd>Ctrl / ⌘ + 滚轮</kbd> 围绕指针缩放；<kbd>Ctrl / ⌘ + 0</kbd>{" "}
-          适应全部板材。
-        </p>
-        <p>
-          <kbd>Alt</kbd> 拖动时暂时关闭 8 像素磁吸。
-        </p>
-        <p>
-          <kbd>Ctrl / ⌘ + Z</kbd> 撤销新增、移动或应用；<kbd>Esc</kbd>{" "}
-          关闭弹窗或取消拖动。
-        </p>
-        <p>
-          恢复原图恢复仍在库存中的原板位置；已删除原板上的零件保留当前位置。新增板材和零件保留，可撤销。
-        </p>
-      </div>
-    );
+    content = <KeyboardHelp />;
   else if (dialog === "import" || dialog === "sample")
     content = <ImportPreview close={close} sample={dialog === "sample"} />;
   else if (dialog === "restore")
@@ -428,7 +406,7 @@ export function WorkspaceDialogs({
     >
       <div
         ref={ref}
-        className={`modal ${dialog === "joinery" ? "joinery-modal" : dialog === "export" || dialog === "part-export" ? "export-drawer" : dialog === "stock" || dialog === "stock-edit" ? "stock-modal" : dialog === "settings" ? "settings-modal" : dialog === "import" || dialog === "sample" ? "import-modal" : ""}`}
+        className={`modal ${dialog === "help" ? "shortcut-modal" : dialog === "joinery" ? "joinery-modal" : dialog === "export" || dialog === "part-export" ? "export-drawer" : dialog === "stock" || dialog === "stock-edit" ? "stock-modal" : dialog === "settings" ? "settings-modal" : dialog === "import" || dialog === "sample" ? "import-modal" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={titles[dialog]}
