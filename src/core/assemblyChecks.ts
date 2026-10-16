@@ -3,6 +3,7 @@ import type { Assembly, AssemblyAnalysis, AssemblyIssue, AssemblyItem, Bounds3, 
 import { CONTACT_EPSILON } from './assemblyTypes';
 import { buildAssemblyModel, geometrySignature, inversePoint, transformCell, vectorBounds } from './assemblyGeometry';
 import { contourDistance, contoursOverlap, pointInPolygon, signedArea } from './geometry';
+import { assemblyMachiningWarnings } from './assemblyMachining';
 export const add=(a:Vec3,b:Vec3):Vec3=>({x:a.x+b.x,y:a.y+b.y,z:a.z+b.z});
 export const subtract=(a:Vec3,b:Vec3):Vec3=>({x:a.x-b.x,y:a.y-b.y,z:a.z-b.z});
 export const scale=(a:Vec3,s:number):Vec3=>({x:a.x*s,y:a.y*s,z:a.z*s});
@@ -166,7 +167,7 @@ export function declaredFitIssue(project:Project,assembly:Assembly,fit:FitConstr
   return null;
 }
 export const MISSING_CHECK_BASIS_ID='basis:missing';
-export function analyzeAssembly(project:Project,assembly:Assembly,options:{installation?:boolean}={}):AssemblyAnalysis {
+export function analyzeAssembly(project:Project,assembly:Assembly,options:{installation?:boolean;machining?:boolean}={}):AssemblyAnalysis {
   const result:AssemblyAnalysis={issues:[],collisions:[],bounds:null,complete:true,checkedPairs:0};
   const addIssue=(kind:AssemblyIssue['kind'],severity:AssemblyIssue['severity'],message:string,partIds:string[],id=kind+':'+result.issues.length)=>result.issues.push({id,kind,severity,message,partIds});
   const solids:{item:AssemblyItem;cells:ConvexCell[];bounds:Bounds3;complete:boolean}[]=[];
@@ -254,5 +255,6 @@ export function analyzeAssembly(project:Project,assembly:Assembly,options:{insta
     for(const s of solids)if(!stepsSeen.has(s.item.partId))addIssue('installation','pending','未声明该零件的安装顺序、方向和行程',[s.item.partId]);
   }
   if(exhausted)addIssue('geometry','pending','检测达到资源上限，未完成全部实体/行程检查',[]);
+  if(options.machining)result.machiningWarnings=assemblyMachiningWarnings(project,assembly);
   result.complete=!result.issues.some(i=>i.severity==='pending');return result;
 }

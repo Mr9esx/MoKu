@@ -1,5 +1,23 @@
 type Size = { width: number; height: number };
 type Insets = { left: number; right: number; top: number; bottom: number };
+export type CanvasViewport = Size & { x: number; y: number };
+
+/** Scale around a drawing point while keeping its screen position fixed. */
+export function zoomCanvasViewport(
+  view: CanvasViewport,
+  anchor: { x: number; y: number },
+  factor: number,
+  limits: { minWidth: number; maxWidth: number },
+): CanvasViewport {
+  const width = Math.max(limits.minWidth, Math.min(limits.maxWidth, view.width / factor));
+  const ratio = width / view.width;
+  return {
+    x: anchor.x - (anchor.x - view.x) * ratio,
+    y: anchor.y - (anchor.y - view.y) * ratio,
+    width,
+    height: view.height * ratio,
+  };
+}
 
 /** Fit in the unobscured area without shrinking the drawing's actual viewport. */
 export function fitCanvasViewport(

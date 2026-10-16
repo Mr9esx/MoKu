@@ -275,9 +275,9 @@ export default function AssemblyWorkspace({
           </button>
         ))}
       </nav>
-      <aside className="assembly-resources floating" aria-label="组装零件库">
+      <aside className="assembly-resources floating" aria-label="零件库">
         <div className="panel-heading">
-          <strong>组装零件库</strong>
+          <strong>零件库</strong>
           <span className="section-index">01</span>
         </div>
         <div className="assembly-resource-actions">
@@ -485,7 +485,9 @@ export default function AssemblyWorkspace({
                   remaining +
                   " 件待放入"
                 : detection.analysis?.complete
-                  ? "装配检查：已设置项目通过"
+                  ? detection.analysis.machiningWarnings?.length
+                    ? "装配检查：几何项目通过 · 刀口待确认"
+                    : "装配检查：已设置项目通过"
                   : "装配检查：尚未完成"}
         </span>
         <span>

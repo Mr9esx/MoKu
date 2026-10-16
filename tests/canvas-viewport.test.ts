@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitCanvasViewport } from "../src/core/canvasViewport";
+import { fitCanvasViewport, zoomCanvasViewport } from "../src/core/canvasViewport";
 
 describe("full canvas fitting", () => {
   it("keeps the viewport full size while fitting content between floating panels", () => {
@@ -31,5 +31,22 @@ describe("full canvas fitting", () => {
     expect(fit.width).toBeCloseTo(3000);
     expect(fit.y).toBeCloseTo(-1250);
     expect(fit.height).toBeCloseTo(3000);
+  });
+});
+
+describe("pointer-anchored preview zoom", () => {
+  const view = { x: -100, y: 50, width: 800, height: 400 };
+  const limits = { minWidth: 100, maxWidth: 1600 };
+  it("keeps the drawing point under the pointer when zooming in", () => {
+    expect(zoomCanvasViewport(view, { x: 100, y: 150 }, 2, limits))
+      .toEqual({ x: 0, y: 100, width: 400, height: 200 });
+  });
+  it("stops at the close-up limit without shifting the anchor or distorting the drawing", () => {
+    expect(zoomCanvasViewport(view, { x: 100, y: 150 }, 1000, limits))
+      .toEqual({ x: 75, y: 137.5, width: 100, height: 50 });
+  });
+  it("keeps a recoverable overview when zooming out repeatedly", () => {
+    expect(zoomCanvasViewport(view, { x: 100, y: 150 }, 0.001, limits))
+      .toEqual({ x: -300, y: -50, width: 1600, height: 800 });
   });
 });

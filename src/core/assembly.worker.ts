@@ -16,7 +16,7 @@ self.onmessage = (event: MessageEvent<AssemblyWorkerRequest>) => {
       self.postMessage({
         kind,
         revision,
-        analysis: analyzeAssembly(project, assembly, { installation: true }),
+        analysis: analyzeAssembly(project, assembly, { installation: true, machining: true }),
       });
   } catch (error) {
     self.postMessage({

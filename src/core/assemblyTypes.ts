@@ -18,9 +18,11 @@ export type Assembly = {
 export type ConvexCell = { vertices: Vec3[]; faces: number[][]; /** True only on the actual material boundary, never a decomposition seam. */ boundaryFaces?: boolean[]; /** Complete physical boundary normals at each vertex, shared across adjacent cells. */ boundaryNormals?: Vec3[][] };
 export type Bounds3 = { min: Vec3; max: Vec3 };
 export type AssemblyModel = { partId: string; positions: number[]; cells: ConvexCell[]; complete: boolean; issues: string[]; bounds: Bounds3 };
-export type AssemblyIssue = { id: string; kind: 'collision'|'dimension'|'fit'|'geometry'|'missing'|'installation'; severity: 'error'|'pending'; message: string; partIds: string[]; position?: Vec3; constraintId?: string; /** First continuously detected blocked motion pose and its real overlap mesh. */ movingPosition?: Vec3; collisionPositions?: number[] };
+export type AssemblyIssue = { id: string; kind: 'collision'|'dimension'|'fit'|'geometry'|'missing'|'installation'|'machining'; severity: 'error'|'pending'|'warning'; message: string; partIds: string[]; position?: Vec3; constraintId?: string; /** First continuously detected blocked motion pose and its real overlap mesh. */ movingPosition?: Vec3; collisionPositions?: number[] };
+/** Manufacturing advice is separate from the geometric proofs used by magnets and fits. */
+export type AssemblyMachiningWarning = AssemblyIssue & { kind: 'machining'; severity: 'warning'; target: string; cornerCount: number; /** Positions on the cutting face, in part-local coordinates, so drag previews stay aligned. */ localPositions: Vec3[] };
 export type CollisionRegion = { partIds: [string,string]; positions: number[] };
-export type AssemblyAnalysis = { issues: AssemblyIssue[]; collisions: CollisionRegion[]; bounds: Bounds3|null; complete: boolean; checkedPairs: number };
+export type AssemblyAnalysis = { issues: AssemblyIssue[]; machiningWarnings?: AssemblyMachiningWarning[]; collisions: CollisionRegion[]; bounds: Bounds3|null; complete: boolean; checkedPairs: number };
 export type ContactGeometry = { source: ConvexCell[]; obstacles: { cells: ConvexCell[]; bounds: Bounds3 }[]; targets: Assembly['targets']; rules?: { project: import('./types').Project; assembly: Assembly } };
 export type AssemblyContact = {
   kind: 'groove' | 'surface'; sourceAnchor: Vec3; targetAnchor: Vec3; normal: Vec3;

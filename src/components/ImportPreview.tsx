@@ -129,7 +129,7 @@ export function ImportPreview({ close, sample = false }: { close: () => void; sa
           }}/>}
           status={<>{s.importing && <div className="import-progress" role="status">正在读取图纸…<button onClick={cancelImportDrawing}>取消解析</button></div>}
             {s.importMessage && <div className="warning" role="alert">{s.importMessage}{(file||sample)&&!s.importing&&<button onClick={()=>parse(file,mode,unit)}>重新读取</button>}</div>}</>}
-          resultPreview={draft?<ImportDrawingPreview draft={draft} stockId={stockId} selectStock={id=>{setStockId(id);setPreviewRequest(previous=>({shapeId:id,revision:(previous?.revision??0)+1}));}}/>:undefined}
+          resultPreview={draft?<ImportDrawingPreview draft={draft} stockId={stockId} selectStock={setStockId}/>:undefined}
           parameters={<>      {!draft && <p className="import-description">{!reviewIssues.length && compiled.error ? compiled.error : "先完成图形用途确认，再填写板厚与材质。"}</p>}{draft && <>
         <div className="import-counts"><span><strong>{draft.sheets.length}</strong> 张板材</span><span><strong>{draft.parts.length}</strong> {mode === "parts" ? "种轮廓" : "个零件"}</span>
           <span>{draft.original.placements.length} 个已放置 · {draft.parts.length - draft.original.placements.length} 个待放置</span>

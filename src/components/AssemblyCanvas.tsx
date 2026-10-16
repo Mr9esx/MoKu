@@ -110,11 +110,11 @@ export function AssemblyCanvas(props: Props) {
                         ? "点击场景中的零件即可选择，也可以直接拖动"
                         : "点击左侧零件，放入场景开始组装"));
   return (
-    <section className="assembly-canvas workbench-preview" aria-label="3D 组装场景">
+    <section className="assembly-canvas workbench-preview" aria-label="组装预览">
       <div className="assembly-scene-host" ref={container} />
       <div className="assembly-scene-heading">
         <span className="assembly-eyebrow">ASSEMBLY / MM</span>
-        <strong>{selected?.name ?? "搭建你的成品"}</strong>
+        <strong>{selected?.name ?? "组装预览"}</strong>
         <span>
           {props.state.assembly.items.length} 个已加入 · X 宽 / Y 深 / Z 高
         </span>

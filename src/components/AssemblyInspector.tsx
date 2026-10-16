@@ -27,6 +27,7 @@ import {
 } from "../core/assemblyGeometry";
 import { Select } from "./Select";
 import { Thumbnail } from "./Thumbnail";
+import "./assemblyMachining.css";
 import {
   alignReferences,
   referencePoints,
@@ -140,6 +141,9 @@ export function AssemblyInspector(p: Props) {
   const errors = p.analysis?.issues.filter((i) => i.severity === "error") ?? [],
     pendingIssues =
       p.analysis?.issues.filter((i) => i.severity === "pending") ?? [];
+  const machiningWarnings = p.analysis?.machiningWarnings ?? [];
+  const machiningCorners = machiningWarnings.reduce((sum, warning) => sum + warning.cornerCount, 0);
+  const checkItems = [...(p.analysis?.issues ?? []), ...machiningWarnings];
   const patchItem = (next: AssemblyItem) =>
     p.commit({
       ...p.assembly,
@@ -231,6 +235,13 @@ export function AssemblyInspector(p: Props) {
             {needsFace ? "槽加工面待确认，干涉检查尚未完成。" : relevant[0].message}
           </p>
         )}
+        {machiningWarnings.length > 0 && (
+          <button className="assembly-machining-summary" onClick={() => openDetails("check")}>
+            <AlertTriangle size={14} />
+            <span>刀口待确认 · {machiningCorners} 处内直角<small>查看缺少清角/T 骨的位置</small></span>
+            <ChevronRight size={13} />
+          </button>
+        )}
         <div className="assembly-compact-footer">
           <button onClick={() => openDetails(part ? "part" : "rules", needsFace ? "machining" : "position")}>查看详情 <ChevronRight size={12} /></button>
         </div>
@@ -262,8 +273,8 @@ export function AssemblyInspector(p: Props) {
             }}
           >
             {["零件", "检查", "装配规则"][i]}
-            {t === "check" && errors.length > 0 && (
-              <small>{errors.length}</small>
+            {t === "check" && errors.length + machiningWarnings.length > 0 && (
+              <small>{errors.length + machiningWarnings.length}</small>
             )}
           </button>
         ))}
@@ -276,11 +287,11 @@ export function AssemblyInspector(p: Props) {
               ? "has-errors"
               : p.pending || pendingIssues.length || !p.analysis?.complete
                 ? "is-pending"
-                : "is-valid")
+                : machiningWarnings.length ? "is-warning" : "is-valid")
           }
           role="status"
         >
-          {errors.length ? (
+          {errors.length || machiningWarnings.length ? (
             <AlertTriangle size={16} />
           ) : p.analysis?.complete ? (
             <CheckCircle2 size={16} />
@@ -296,7 +307,7 @@ export function AssemblyInspector(p: Props) {
                   ? pendingIssues.some((i) => i.id === "basis:missing")
                     ? "尚未设置检测依据"
                     : "尚未完成检测"
-                  : "已设置的检测项目通过"}
+                  : machiningWarnings.length ? "几何项目通过 · 刀口待确认" : "已设置的检测项目通过"}
           </span>
           {tab !== "check" && (
             <button aria-label="查看装配检查" onClick={() => setTab("check")}>
@@ -604,13 +615,16 @@ export function AssemblyInspector(p: Props) {
         {tab === "check" && (
           <section className="assembly-checks">
             <h3>问题与定位</h3>
-            {p.analysis?.issues.length ? (
+            {checkItems.length ? (
               <div className="assembly-issue-list">
-                {p.analysis.issues.map((issue) => (
+                {checkItems.map((issue) => (
                   <button
                     className={"assembly-issue " + issue.severity}
                     key={issue.id}
-                    onClick={() => p.locate(issue)}
+                    onClick={() => {
+                      p.locate(issue);
+                      if (issue.kind === "machining") setExpanded(false);
+                    }}
                   >
                     <span className="assembly-issue-dot" />
                     <span>
@@ -623,6 +637,7 @@ export function AssemblyInspector(p: Props) {
                                 ?.name ?? id,
                           )
                           .join(" / ")}
+                        {issue.kind === "machining" && " · 点击定位黄色角标"}
                       </small>
                     </span>
                     <ChevronRight size={15} />
@@ -646,6 +661,9 @@ export function AssemblyInspector(p: Props) {
               <p>
                 接触计算阈值 0.01
                 mm，曲线精度沿用导入轮廓。黄色落点与整条安装路径分别检查。
+              </p>
+              <p>
+                刀口提示检查图中未清角的内直角；已画圆角按实际轮廓检查干涉。未设置刀具直径与加工方式，不能据此确认可加工性。黄色角标仅作提示，补画刀口后会重新检查。
               </p>
             </div>
           </section>

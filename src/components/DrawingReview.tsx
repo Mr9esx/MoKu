@@ -6,6 +6,8 @@ import { effectiveDrawingShape } from "../core/drawingNormalization";
 import { bounds } from "../core/geometry";
 import "./drawingReview.css";
 import { Select } from "./Select";
+import { DrawingCanvas, type DrawingCanvasFocus } from "./DrawingCanvas";
+import { drawingSelectionRules, selectDrawingShape } from "../core/drawingCanvas";
 
 const roles: { value: DrawingRole; label: string }[] = [
   { value: "unknown", label: "未确认" }, { value: "outer", label: "零件外轮廓" },
@@ -64,7 +66,8 @@ export function DrawingReview({ document, space, setSpace, layerRules, shapeRule
   useEffect(()=>{if(!resultPreview)setPreviewMode("source");},[!!resultPreview]);
   const [appliedTasks,setAppliedTasks]=useState<Array<{ids:string[];layer:string;scope:string}>>([]);
   const [actionMessage,setActionMessage]=useState("");
-  const [zoomSelected, setZoomSelected] = useState(false);
+  const [canvasFocus, setCanvasFocus] = useState<DrawingCanvasFocus | null>(null);
+  const drawingSettings = useRef<HTMLDetailsElement>(null);
   const editor = useRef<HTMLDivElement>(null);
   const controls = useRef<HTMLDivElement>(null);
   const handledParameterRequest = useRef(0);
@@ -75,23 +78,34 @@ export function DrawingReview({ document, space, setSpace, layerRules, shapeRule
   },[tab,parameterRequest]);
   const [selection, setSelection] = useState<{ layer: string; shapeId?: string; shapeIds?: string[] } | null>(null);
   const [pendingDrafts,setPendingDrafts] = useState<Record<string,DrawingRule>>({});
-  useEffect(() => { setSelection(null); setZoomSelected(false); setPendingDrafts({}); setAppliedTasks([]); setActionMessage(""); }, [document, space]);
+  useEffect(() => { setSelection(null); setCanvasFocus(null); setPendingDrafts({}); setAppliedTasks([]); setActionMessage(""); }, [document, space]);
   const shapes = document.shapes.filter(shape => shape.space === space);
   useEffect(()=>{
     const shape=document.shapes.find(shape=>shape.id===previewRequest?.shapeId && shape.space===space);
-    if(shape){setSelection({layer:shape.layer,shapeId:shape.id});setZoomSelected(true);}
+    if(shape) {
+      const value={layer:shape.layer,shapeId:shape.id};
+      setSelection(value); focusSelection(value);
+    }
   },[previewRequest,document,space]);
   const selectedIds=selection?.shapeIds??(selection?.shapeId?[selection.shapeId]:[]);
-  const chooseSelection = (value: typeof selection) => {
-    setSelection(value); setZoomSelected(true); setPreviewMode("source");
+  const focusSelection = (value: NonNullable<typeof selection>) => {
+      setPreviewMode("source");
+      const ids = value.shapeIds ?? (value.shapeId ? [value.shapeId] : shapes.filter(shape => shape.layer === value.layer).map(shape => shape.id));
+      setCanvasFocus({ points: shapes.filter(shape => ids.includes(shape.id)).flatMap(shape => {
+        const rule = resolveDrawingRule(shape, layerRules, shapeRules);
+        return [...effectiveDrawingShape(shape, rule).points, ...(grooveGeometry.get(shape.id)?.points ?? [])];
+      }) });
+  };
+  const chooseSelection = (value: typeof selection, locate = true) => {
+    setSelection(value); setPreviewMode("source");
+    if (locate && value) focusSelection(value);
     if(tab === "parameters" && value?.shapeId) setTab("all");
     else if(tab === "confirm" && value?.shapeId && !issues.some(issue=>issue.shapeId===value.shapeId || issue.shapeIds?.includes(value.shapeId!))) setTab("all");
   };
   useEffect(() => { if(selection && tab==="all") editor.current?.scrollIntoView({block:"nearest"}); }, [selection,tab]);
-  const toggleShape=(shape:DrawingShape,extend=true)=>{
-    if(!extend){chooseSelection({layer:shape.layer,shapeId:shape.id});return;}
-    const next=selectedIds.includes(shape.id)?selectedIds.filter(id=>id!==shape.id):[...selectedIds,shape.id];
-    chooseSelection(next.length===1?{layer:shape.layer,shapeId:next[0]}:{layer:shape.layer,shapeIds:next});
+  const toggleShape=(shape:DrawingShape,extend=true,locate=false)=>{
+    const next=selectDrawingShape(selectedIds,shape.id,extend);
+    chooseSelection(!next.length ? null : next.length===1?{layer:shapes.find(value=>value.id===next[0])!.layer,shapeId:next[0]}:{layer:shape.layer,shapeIds:next},locate);
   };
   const suggestions=useMemo(()=>suggestDrawingRoles(document,space,layerRules,shapeRules),[document,space,layerRules,shapeRules]);
   const suggestionGroups=[...new Set(suggestions.map(s=>JSON.stringify([s.label,s.basis,s.roles,s.conflict,shapes.find(shape=>shape.id===s.shapeId)?.layer])))].map(key=>{
@@ -122,15 +136,24 @@ export function DrawingReview({ document, space, setSpace, layerRules, shapeRule
   const selectedGeometry = selectedShape && selectedRule ? effectiveDrawingShape(selectedShape, selectedRule) : undefined;
   const selectedBounds = selectedGeometry?.points.length ? bounds(selectedGeometry.points) : undefined;
   const normalizationRecords = shapes.filter(shape => shape.normalization);
-  const focusedShapes = zoomSelected && selection ? shapes.filter(shape => selectedIds.length ? selectedIds.includes(shape.id) : shape.layer === selection.layer) : [];
-  const previewShapes = focusedShapes.length ? focusedShapes : shapes;
-  const finitePoints = [...previewShapes.flatMap(shape => shape.points), ...(focusedShapes.length ? [] : labels.map(label => label.point))]
-    .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  finitePoints.forEach(point => { minX = Math.min(minX, point.x); minY = Math.min(minY, point.y); maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y); });
-  if (!finitePoints.length) { minX = minY = 0; maxX = maxY = 100; }
-  const width = Math.max(maxX - minX, 1), height = Math.max(maxY - minY, 1);
-  const padding = Math.max(width, height) * 0.06;
+  const canvasPoints = useMemo(() => [...shapes.flatMap(shape => {
+    const rule = resolveDrawingRule(shape, layerRules, shapeRules);
+    return [...effectiveDrawingShape(shape, rule).points, ...(grooveGeometry.get(shape.id)?.points ?? [])];
+  }), ...labels.map(label => label.point)], [document, space, layerRules, shapeRules, grooveGeometry]);
+  const actionShapes = selection ? shapes.filter(shape => selectedIds.length ? selectedIds.includes(shape.id) : selection.shapeIds ? false : shape.layer === selection.layer) : [];
+  const actionRoles = new Set(actionShapes.map(shape => resolveDrawingRule(shape, layerRules, shapeRules).role));
+  const actionRole = actionRoles.size === 1 ? [...actionRoles][0] : "mixed";
+  const clearSelection = () => { if (!selection) return false; setSelection(null); return true; };
+  const applyPurpose = (role: DrawingRole) => {
+    const next = drawingSelectionRules(document, actionShapes.map(shape => shape.id), layerRules, shapeRules, role);
+    Object.entries(next).forEach(([id, rule]) => setShapeRule(id, rule));
+    setActionMessage(`已设置${roles.find(option => option.value === role)?.label} · ${actionShapes.length} 个图形`);
+    if (role === "pocket") setTab("all");
+  };
+  const focusUnit = () => {
+    if (drawingSettings.current) drawingSettings.current.open = true;
+    controls.current?.querySelector<HTMLElement>('[aria-label="原文件单位"]')?.focus();
+  };
   const activeIssueIds = new Set(issues.map(issue => issue.id));
   const activeBlockers = diagnostics.filter(issue => activeIssueIds.has(issue.id) && issue.severity === "blocking");
   const issueGroups = groupDrawingReviewIssues(activeBlockers);
@@ -141,11 +164,12 @@ export function DrawingReview({ document, space, setSpace, layerRules, shapeRule
     if(tab!=="confirm")return;
     handledReviewRequest.current=reviewRequest;
     const first=issueGroups[0];
-    if(first){setSelection({layer:first.layer,shapeIds:first.shapeIds});setZoomSelected(!!first.shapeIds.length);}
+    if(first?.shapeIds.length) chooseSelection({layer:first.layer,shapeIds:first.shapeIds});
+    if(first?.issues.some(issue=>issue.id==="unit")) { focusUnit(); return; }
     const target=first?.issues.some(issue=>issue.id==="unit")
       ? controls.current?.closest('.drawing-review')?.querySelector<HTMLElement>('[aria-label="原文件单位"]')
       : controls.current?.querySelector<HTMLElement>('.drawing-review-confirm-panel [role=combobox], .drawing-review-confirm-panel input')??controls.current?.querySelector<HTMLElement>('.drawing-review-confirm-panel button');
-    // Unit controls are in the persistent preview toolbar.
+    // Open the unit settings before focusing a missing-unit input.
     (target??controls.current?.closest('.drawing-review')?.querySelector<HTMLElement>('[aria-label="原文件单位"]'))?.focus();
   },[reviewRequest,tab]);
   const completedTasks=appliedTasks.filter(task=>!activeBlockers.some(issue=>task.ids.some(id=>issue.shapeId===id||issue.shapeIds?.includes(id))));
@@ -222,18 +246,22 @@ export function DrawingReview({ document, space, setSpace, layerRules, shapeRule
   return <section className="drawing-review" aria-label="原图与图层用途确认">
     <div className="drawing-review-workbench">
       <section className="drawing-review-source" aria-label="CAD 图纸">
-        <div className="drawing-review-source-heading"><strong>CAD 图纸</strong><div className="drawing-review-preview-tabs" role="group" aria-label="预览内容">
+        <div className="drawing-review-source-heading"><div className="drawing-review-preview-tabs" role="group" aria-label="预览内容">
           <button type="button" aria-pressed={previewMode==="source"} onClick={()=>setPreviewMode("source")}>原图</button>
-          <button type="button" aria-pressed={previewMode==="result"} disabled={!resultPreview} data-tooltip={!resultPreview?"确认图形用途后可查看导入结果":undefined} onClick={()=>setPreviewMode("result")}>导入结果</button>
-        </div><span>{shapes.length} 个图形</span></div>
-        <div className="drawing-review-view-tools">
-          {document.spaces.length > 1 && <Select className="drawing-review-space-select" value={space} aria-label="模型 / 布局空间" onChange={value=>{setSelection(null);setZoomSelected(false);setSpace(value);}} options={document.spaces.map(name=>({value:name,label:name.toLowerCase()==="model"?"模型空间":name.toLowerCase()==="paper"?"布局空间":name}))} />}
-          {unitControls}
-          {previewMode==="source" && <><button type="button" onClick={()=>setZoomSelected(false)} aria-label="查看整张图" data-tooltip="查看整张图" aria-pressed={!zoomSelected}>全图</button>
-          <button type="button" disabled={!selection} onClick={()=>setZoomSelected(true)} aria-label="放大选中图形" data-tooltip="放大选中图形" aria-pressed={zoomSelected}>放大选中</button></>}
-        </div>
-        {previewMode==="result" && resultPreview ? <div className="drawing-review-result">{resultPreview}</div> : <><div className="drawing-review-stage">
-          <svg aria-label="原图预览，点击图形确认用途" viewBox={`${minX - padding} ${-maxY - padding} ${width + padding * 2} ${height + padding * 2}`}>
+          <button type="button" aria-pressed={previewMode==="result"} disabled={!resultPreview} data-tooltip={!resultPreview?"确认图形用途后可查看导入效果":undefined} onClick={()=>setPreviewMode("result")}>导入效果</button>
+        </div><span className="drawing-review-canvas-hint" data-tooltip={previewMode==="source" ? "拖动平移 · Ctrl/⌘ + 滚轮缩放 · 双击图形定位 · Shift 多选" : "拖动平移 · Ctrl/⌘ + 滚轮缩放"}>{previewMode==="source" ? "直接点选图形" : "拖动浏览图纸"}</span></div>
+        <div className="drawing-review-result" hidden={previewMode!=="result"}>{resultPreview}</div>
+        <div className="drawing-review-source-canvas" hidden={previewMode!=="source"}>
+          <DrawingCanvas key={space} points={canvasPoints} focus={canvasFocus} resetKey={document}
+            label="原图预览，点击图形确认用途" clearSelection={clearSelection}
+            actions={actionShapes.length > 0 ? <>
+              <span className="drawing-canvas-selection-label" data-tooltip-overflow={actionShapes.length===1 ? actionShapes[0].id : undefined}>{actionShapes.length===1 ? <><span>图形 </span>{actionShapes[0].id}</> : `已选 ${actionShapes.length} 个`}</span>
+              <Select aria-label="选中图形用途" value={actionRole} options={[...(actionRoles.size>1 ? [{value:"mixed",label:"多种用途",disabled:true}] : []),...roles]}
+                onChange={value=>applyPurpose(value as DrawingRole)} />
+              {actionRole!=="ignore" && <button type="button" className="drawing-canvas-ignore" onClick={()=>applyPurpose("ignore")}>忽略</button>}
+              <button type="button" onClick={()=>{setTab("all");requestAnimationFrame(()=>editor.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus());}}><span className="drawing-canvas-detail-prefix">详细</span>设置</button>
+              <button type="button" aria-label="取消图形选择" data-tooltip="取消选择 · Esc" onClick={clearSelection}>×</button>
+            </> : undefined}>
             <g transform="scale(1 -1)">
               {[...shapes].sort((a,b)=>{const x=bounds(a.points),y=bounds(b.points);return y.width*y.height-x.width*x.height;}).map(shape => {
                 const rule = resolveDrawingRule(shape, layerRules, shapeRules);
@@ -254,21 +282,21 @@ export function DrawingReview({ document, space, setSpace, layerRules, shapeRule
                   <path d={d} className="drawing-review-hit" vectorEffect="non-scaling-stroke" tabIndex={d ? 0 : undefined}
                     role="button" aria-label={`选择图形：${title}`} aria-pressed={selectedIds.includes(shape.id)}
                     onClick={event => toggleShape(shape,event.shiftKey)}
-                    onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggleShape(shape,event.shiftKey); } }} />
+                    onDoubleClick={event => { event.stopPropagation(); chooseSelection({layer:shape.layer,shapeId:shape.id}); }}
+                    onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleShape(shape,event.shiftKey); } }} />
                 </g>;
               })}
             </g>
             {labels.filter(label => Number.isFinite(label.point.x) && Number.isFinite(label.point.y)).map(label => <text key={label.id} x={label.point.x} y={-label.point.y}
-              className="drawing-review-label" fontSize={Math.max(width, height) / 65}>{label.text}</text>)}
-          </svg>
-          {!shapes.length && <p className="drawing-review-empty">没有加工轮廓</p>}
+              className="drawing-review-label">{label.text}</text>)}
+            {!shapes.length && <text x="0" y="0" className="drawing-review-label">没有加工轮廓</text>}
+          </DrawingCanvas>
         </div>
-        <div className="drawing-review-legend" aria-label="图形颜色说明">
+        <div className="drawing-review-canvas-status"><span role="status">{selection && previewMode==="source" ? actionShapes.length ? `已选 ${actionShapes.length} / ${shapes.length} 个图形` : `图层：${selection.layer}` : `${shapes.length} 个图形`}</span>
+        <details className="drawing-review-legend-details"><summary>图例</summary><div className="drawing-review-legend" aria-label="图形颜色说明">
           <span className="is-outer">外轮廓</span><span className="is-hole">通孔</span><span className="is-pocket">铣槽</span>
           <span className="is-stock">板框</span><span className="is-unknown">未确认 / 待处理</span><span className="is-ignore">忽略</span>
-        </div>
-        </>}
-        {selection && previewMode==="source" && <div className="drawing-review-selection-status" role="status">{selectedIds.length ? `已选 ${selectedIds.length} 个图形：${selectedIds.slice(0,4).join("、")}${selectedIds.length>4?"…":""}` : `图层：${selection.layer}`}</div>}
+        </div></details></div>
       </section>
       <section className="drawing-review-controls" aria-label="导入操作区">
         <div className="drawing-review-tabs" role="group" aria-label="导入步骤">
@@ -277,6 +305,12 @@ export function DrawingReview({ document, space, setSpace, layerRules, shapeRule
           {parameters && <button type="button" aria-pressed={tab==="parameters"} onClick={()=>setTab("parameters")}>板厚与材质</button>}
         </div>
         <div className="drawing-review-control-scroll" ref={controls} role="region" aria-label="导入内容与图层设置" tabIndex={0}>
+          <details className="drawing-review-settings" ref={drawingSettings} open={!document.unitKnown}><summary>图纸设置 <span>{document.importInfo.sourceUnit}</span></summary>
+            <div className="drawing-review-settings-fields">
+              {unitControls}
+              {document.spaces.length > 1 && <label><span>模型 / 布局空间</span><Select value={space} aria-label="模型 / 布局空间" onChange={value=>{setSelection(null);setCanvasFocus(null);setSpace(value);}} options={document.spaces.map(name=>({value:name,label:name.toLowerCase()==="model"?"模型空间":name.toLowerCase()==="paper"?"布局空间":name}))} /></label>}
+            </div>
+          </details>
           {configuration}
           {status}
           {actionMessage && <p className="drawing-review-action-message" role="status">{actionMessage}</p>}
@@ -296,7 +330,7 @@ export function DrawingReview({ document, space, setSpace, layerRules, shapeRule
           <div hidden={tab!=="confirm"} className="drawing-review-confirm-panel">
             {issueGroups.length>0 && <div className="drawing-review-section-heading"><h4>待确认</h4><span>{issueGroups.length} 组{pendingFigureCount ? ` · ${pendingFigureCount} 个图形` : ""}</span></div>}
             {issueGroups.map((group,index)=><div className="drawing-review-task" key={group.id}>
-              <button type="button" className="drawing-review-task-view" onClick={event=>{const ids=group.shapeIds.filter(id=>shapes.some(shape=>shape.id===id));chooseSelection({layer:group.layer,shapeIds:ids});if(!ids.length){const details=event.currentTarget.parentElement?.querySelector("details");if(details)details.open=true;}if(group.issues.some(issue=>issue.id==="unit"))controls.current?.querySelector<HTMLElement>('[aria-label="原文件单位"]')?.focus();}}>
+              <button type="button" className="drawing-review-task-view" onClick={event=>{const ids=group.shapeIds.filter(id=>shapes.some(shape=>shape.id===id));chooseSelection({layer:group.layer,shapeIds:ids});if(!ids.length){const details=event.currentTarget.parentElement?.querySelector("details");if(details)details.open=true;}if(group.issues.some(issue=>issue.id==="unit"))focusUnit();}}>
                 <FigureThumbnail shapes={shapes.filter(shape=>group.shapeIds.includes(shape.id))}/>
                 <span><strong>{group.message.includes("用途未确认") ? "请选择图形用途" : group.message}</strong><small>{group.layer || "文件信息"}{group.shapeIds.length ? ` · ${group.shapeIds.length} 个图形` : ""}</small><em>{group.shapeIds.length ? `查看这 ${group.shapeIds.length} 个图形 →` : "查看详情 →"}</em></span>
               </button>
@@ -356,7 +390,7 @@ export function DrawingReview({ document, space, setSpace, layerRules, shapeRule
         const rule=resolveDrawingRule(shape,layerRules,shapeRules),box=bounds(effectiveDrawingShape(shape,rule).points);
         const destination=accountability.find(record=>record.shapeId===shape.id)!.destination;
         return <div key={shape.id} className="drawing-review-object-row"><label><input type="checkbox" aria-label={`勾选图形 ${shape.id}`} checked={selectedIds.includes(shape.id)} onChange={()=>toggleShape(shape)}/><span>{shape.id} · {shape.layer} · {roles.find(role=>role.value===rule.role)?.label}</span></label>
-          <button type="button" onClick={()=>toggleShape(shape,false)}>在图中查看</button>
+          <button type="button" onClick={()=>toggleShape(shape,false,true)}>在图中查看</button>
           <small>{box.width.toFixed(3)} × {box.height.toFixed(3)} mm · {destination} · 源标识 {shape.sourceIds.join('、')}</small>
         </div>;
       })}</div>

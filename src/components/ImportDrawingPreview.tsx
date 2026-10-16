@@ -1,5 +1,6 @@
 import { transformPoints } from "../core/geometry";
 import type { Part, Point, Project } from "../core/types";
+import { DrawingCanvas } from "./DrawingCanvas";
 
 const path = (points: Point[]) => points.map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ") + " Z";
 function PartShape({ part, outline, holes, pockets }: { part: Part; outline: Point[]; holes: Point[][]; pockets: Point[][] }) {
@@ -35,18 +36,16 @@ export function ImportDrawingPreview({ draft, stockId, selectStock }: {
     })}</div>
   </details>;
   if (!stock) return <section className="import-visual" aria-label="零件图形预览">{gallery}{legend}</section>;
-  const padding = Math.max(stock.width, stock.height) * 0.04;
   const parts = new Map(draft.parts.map(p => [p.id, p]));
   const placements = draft.original.placements.filter(p => p.sheetId === stock.id);
   return <section className="import-visual" aria-label="板材图形预览">
     <div className="import-board-tabs" role="group" aria-label="选择预览板材">
       {draft.sheets.map(s => <button key={s.id} aria-pressed={s.id === stock.id} onClick={() => selectStock(s.id)}>{s.name}</button>)}
     </div>
-    <div className="import-board-stage">
-      <svg role="img" aria-label={`${stock.name} · ${placements.length} 个零件图形预览`}
-        viewBox={`${-padding} ${-padding} ${stock.width + padding * 2} ${stock.height + padding * 2}`}>
-        <rect className="import-stock-shape" width={stock.width} height={stock.height} />
-        <g transform={`translate(0 ${stock.height}) scale(1 -1)`}>
+    <DrawingCanvas key={stock.id} points={[{x:0,y:0},{x:stock.width,y:stock.height}]}
+      label={`${stock.name} · ${placements.length} 个零件图形预览`}>
+        <rect className="import-stock-shape" y={-stock.height} width={stock.width} height={stock.height} />
+        <g transform="scale(1 -1)">
           {placements.map(placement => {
             const part = parts.get(placement.partId);
             if (!part) return null;
@@ -55,8 +54,7 @@ export function ImportDrawingPreview({ draft, stockId, selectStock }: {
               pockets={part.pockets.map(p => transformPoints(p.outline, part, placement))} />;
           })}
         </g>
-      </svg>
-    </div>
+    </DrawingCanvas>
     <div className="import-board-caption"><span>{stock.width.toFixed(0)} × {stock.height.toFixed(0)} mm</span><span>{placements.length} 个零件</span></div>
     {gallery}
     {legend}

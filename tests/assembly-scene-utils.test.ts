@@ -14,6 +14,15 @@ import {
 } from "../src/core/assemblyGeometry";
 
 describe("assembly scene resources and visible targets", () => {
+  it("releases machining point resources when overlay groups are cleared", () => {
+    const geometry = new THREE.BufferGeometry(), material = new THREE.PointsMaterial();
+    const points = new THREE.Points(geometry, material), group = new THREE.Group();
+    group.add(points);
+    const geometryDisposed = vi.spyOn(geometry, "dispose"), materialDisposed = vi.spyOn(material, "dispose");
+    disposeObject(group);
+    expect(geometryDisposed).toHaveBeenCalledOnce();
+    expect(materialDisposed).toHaveBeenCalledOnce();
+  });
   it("disposes ordinary contour lines, segments and mesh resources", () => {
     const group = new THREE.Group();
     for (const Constructor of [THREE.Line, THREE.LineSegments, THREE.Mesh]) {

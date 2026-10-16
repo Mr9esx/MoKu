@@ -8,7 +8,6 @@ import {
   Square,
   Undo2,
   MoreHorizontal,
-  ChevronDown,
   LoaderCircle,
   LockKeyhole,
   Drill,
@@ -128,22 +127,13 @@ export default function App() {
             {s.project?.name ?? "未命名项目"}
           </span>
         </div>
+        {!!s.project?.parts.length && <nav className="workspace-mode-switch" aria-label="工作区切换">
+          <button aria-label="零件排版" aria-keyshortcuts="Alt+2" data-tooltip="在板材上安排零件，优化用料 · Alt 2" aria-pressed={workspaceMode === "drawing"} className={workspaceMode === "drawing" ? "active" : ""} onClick={() => switchWorkspace("drawing")}><DraftingCompass size={15}/><span className="workspace-mode-label">零件排版</span><span className="workspace-mode-short" aria-hidden="true">排版</span></button>
+          <button aria-label="成品组装" aria-keyshortcuts="Alt+3" data-tooltip="把零件拼成成品，检查配合 · Alt 3" aria-pressed={workspaceMode === "assembly"} className={workspaceMode === "assembly" ? "active" : ""} onClick={() => switchWorkspace("assembly")}><Box size={15}/><span className="workspace-mode-label">成品组装</span><span className="workspace-mode-short" aria-hidden="true">组装</span></button>
+        </nav>}
         <div className="top-actions">
-          {!!s.project?.parts.length && <nav className="workspace-mode-switch" aria-label="二维和三维工作区">
-            <button aria-label="二维图纸" aria-keyshortcuts="Alt+2" data-tooltip="二维图纸 · Alt 2" aria-pressed={workspaceMode === "drawing"} className={workspaceMode === "drawing" ? "active" : ""} onClick={() => switchWorkspace("drawing")}><DraftingCompass size={15}/><span>二维图纸</span></button>
-            <button aria-label="3D 组装" aria-keyshortcuts="Alt+3" data-tooltip="3D 组装 · Alt 3" aria-pressed={workspaceMode === "assembly"} className={workspaceMode === "assembly" ? "active" : ""} onClick={() => switchWorkspace("assembly")}><Box size={15}/><span>3D 组装</span></button>
-          </nav>}
           {project && (
             <>
-              {workspaceMode === "drawing" && hasStocks && <button
-                className="optimization-mode"
-                aria-label={`优化模式：${modeLabels[s.settings.mode]}`}
-                data-tooltip={`当前优化模式：${modeLabels[s.settings.mode]} · ${searching ? "点击查看，搜索中不可修改" : "点击调整"}`}
-                onClick={() => setDialog("settings")}
-              >
-                {modeLabels[s.settings.mode]}
-                <ChevronDown size={12} />
-              </button>}
               {workspaceMode === "drawing" && (hasStocks ? <button
                 aria-label={s.status === "searching" ? "取消搜索" : "自动排版"}
                 data-tooltip={
@@ -439,7 +429,7 @@ export default function App() {
           </div>
         </section>
       </div>
-      {assemblyVisited && s.project && <Suspense fallback={<div className="assembly-loading">正在打开 3D 组装…</div>}>
+      {assemblyVisited && s.project && <Suspense fallback={<div className="assembly-loading">正在打开组装工作区…</div>}>
         <AssemblyWorkspace project={s.project} active={workspaceMode === "assembly"} interactionBlocked={!!dialog || more} open={setDialog}/>
       </Suspense>}
       <footer className="statusbar" style={{ display: workspaceMode === "assembly" ? "none" : undefined }}>

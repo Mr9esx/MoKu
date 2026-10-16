@@ -278,6 +278,7 @@ export function createAssemblyScene(
       line.renderOrder = 7;
       overlays.add(line);
     }
+    addMachiningMarks();
     addReferenceMarks();
     const selectedPart = state.project.parts.find(
       (p) => p.id === state!.selected,
@@ -480,6 +481,28 @@ export function createAssemblyScene(
         line.renderOrder = 10;
         overlays.add(line);
       }
+    }
+  }
+  function addMachiningMarks() {
+    if (!state || state.exploded || state.installationPreview) return;
+    const points: THREE.Vector3[] = [];
+    for (const warning of state.analysis?.machiningWarnings ?? []) {
+      const partId = warning.partIds[0];
+      if (state.selected && state.selected !== partId) continue;
+      const entry = entries.get(partId);
+      if (!entry?.group.visible) continue;
+      entry.group.updateMatrixWorld(true);
+      for (const point of warning.localPositions)
+        points.push(entry.group.localToWorld(vector(point)));
+    }
+    if (!points.length) return;
+    for (const [color, size, order] of [["#77500a", 11, 15], ["#ffd64a", 7, 16]] as const) {
+      const marks = new THREE.Points(
+        new THREE.BufferGeometry().setFromPoints(points),
+        new THREE.PointsMaterial({ color, size, sizeAttenuation: false, depthTest: false, depthWrite: false }),
+      );
+      marks.renderOrder = order;
+      overlays.add(marks);
     }
   }
   function addReferenceMarks() {

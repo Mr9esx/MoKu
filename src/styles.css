@@ -2978,15 +2978,53 @@ input::placeholder {
 }
 
 
-.optimization-mode {
-  color: var(--muted);
-  font-size: 12px;
-  gap: 5px;
-}
 .analysis-mode {
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+/* Workspace navigation stays centered independently of contextual actions. */
+.topbar:has(> .workspace-mode-switch) {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  column-gap: 12px;
+}
+.topbar:has(> .workspace-mode-switch) > .brand { overflow:hidden; }
+.workspace-mode-switch {
+  display:flex;
+  align-items:center;
+  justify-self:center;
+  gap:2px;
+  padding:2px;
+  border:1px solid var(--line);
+  background:var(--paper-light);
+}
+.topbar .workspace-mode-switch button {
+  width:104px;
+  flex:none;
+  justify-content:center;
+  white-space:nowrap;
+  font-size:12px;
+  color:var(--muted);
+}
+.workspace-mode-switch button.active,
+.workspace-mode-switch button.active:hover {
+  color:var(--ink);
+  background:var(--ink-soft);
+}
+.workspace-mode-switch svg { flex-shrink:0; }
+.workspace-mode-short { display:none; }
+.topbar:has(> .workspace-mode-switch) > .top-actions {
+  justify-self:end;
+  min-width:max-content;
+}
+@media(max-width:600px) {
+  .topbar:has(> .workspace-mode-switch) { column-gap:4px; }
+  .topbar .workspace-mode-switch button { width:34px; min-width:34px; padding:4px; }
+  .workspace-mode-switch .workspace-mode-label { display:none; }
+  .workspace-mode-switch svg { display:none; }
+  .workspace-mode-short { display:inline; }
+  .topbar:has(> .workspace-mode-switch) .top-actions button { width:30px; min-width:30px; }
 }
 .candidate-bar,
 .candidate-bar button {

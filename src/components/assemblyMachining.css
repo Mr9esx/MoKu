@@ -1,0 +1,36 @@
+.assembly-machining-summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  margin: 8px 0 2px;
+  padding: 8px;
+  border: 1px solid #e0cc8a;
+  background: #fbf4dc;
+  color: #80601b;
+  font-size: 11px;
+  text-align: left;
+  white-space: normal;
+}
+.assembly-machining-summary > span {
+  flex: 1;
+}
+.assembly-machining-summary small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+}
+.assembly-machining-summary svg {
+  flex-shrink: 0;
+}
+.assembly-check-status.is-warning {
+  color: #80601b;
+  background: #fbf4dc;
+  border-color: #e0cc8a;
+}
+.assembly-issue.warning {
+  border-left: 3px solid #c28b17;
+}
+.assembly-issue.warning .assembly-issue-dot {
+  background: #c28b17;
+}

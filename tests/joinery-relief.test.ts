@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { previewRelief, reliefTargets } from "../src/core/joineryRelief";
+import { readFileSync } from "node:fs";
+import { parseDxf } from "../src/core/dxf";
+import { previewRelief, reliefTargets, reliefContours } from "../src/core/joineryRelief";
 import { bounds, pointInPolygon, polygonArea, validContour } from "../src/core/geometry";
 import { createWorkbenchStore } from "../src/store";
 import { exportPartSvg, exportSvg } from "../src/core/export";
@@ -17,6 +19,85 @@ const project = (): Project => {
     original: { sheets: [sheet], placements: [{ partId: "p", sheetId: "s", x: 10, y: 10, rotation: 0 }] } };
 };
 const input = { target: "hole:0", corners: [0, 1, 2, 3], diameter: 6, style: "dogbone" as const, direction: "long" as const };
+const roundedRect = (x: number, y: number, w: number, h: number, r: number): Point[] =>
+  [[x+w-r,y+r,-Math.PI/2], [x+w-r,y+h-r,0], [x+r,y+h-r,Math.PI/2], [x+r,y+r,Math.PI]]
+    .flatMap(([cx,cy,start]) => Array.from({length:9},(_,i) => ({x:cx+r*Math.cos(start+i*Math.PI/16),y:cy+r*Math.sin(start+i*Math.PI/16)})));
+
+describe("real drawing corner identification", () => {
+  it("offers P27's large normally rounded hole and excludes its open groove mouth and existing dogbones", () => {
+    const p = parseDxf(readFileSync("public/sample.dxf", "utf8")).parts.find(p => p.name === "P27")!;
+    const targets = reliefTargets(p);
+    expect(targets.map(t => [t.id, t.corners.length])).toEqual([["outline", 2], ["hole:4", 4]]);
+    const all = reliefContours(p);
+    expect(all.map(t => t.id)).toEqual(["outline", "hole:0", "hole:1", "hole:2", "hole:3", "hole:4", "hole:5", "pocket:0"]);
+    expect(all.find(t => t.id === "pocket:0")!.corners).toEqual([]);
+    const next = previewRelief(p, {...input,target:"hole:4",corners:targets.find(t=>t.id==="hole:4")!.corners.map(c=>c.index)}).part;
+    expect(bounds(next.holes[4]).minX).toBeCloseTo(979.12132, 4);
+    expect(polygonArea(next.holes[4])).toBeGreaterThan(86*300);
+    expect(next.pockets).toEqual(p.pockets);
+    expect(next.holes.filter((_,i)=>i!==4)).toEqual(p.holes.filter((_,i)=>i!==4));
+    expect(reliefTargets(next).map(t=>t.id)).toEqual(["outline"]);
+  });
+  it("recovers the virtual square corners of quarter-circle fillets without treating a circle as four corners", () => {
+    const p = part(); p.holes[0] = roundedRect(20,20,40,20,3);
+    const target = reliefTargets(p).find(t=>t.id==="hole:0")!;
+    expect(target.corners).toHaveLength(4);
+    expect(target.corners.map(c=>[Math.round(c.point.x),Math.round(c.point.y)])).toEqual([[60,20],[60,40],[20,40],[20,20]]);
+    const next = previewRelief(p,{...input,corners:target.corners.map(c=>c.index)}).part;
+    const ideal = previewRelief(part(),input).part;
+    expect(polygonArea(next.holes[0])).toBeCloseTo(polygonArea(ideal.holes[0]),4);
+    expect(bounds(next.holes[0])).toEqual(bounds(ideal.holes[0]));
+    p.holes[0] = Array.from({length:64},(_,i)=>({x:40+10*Math.cos(i*Math.PI/32),y:40+10*Math.sin(i*Math.PI/32)}));
+    expect(reliefContours(p).find(t=>t.id==="hole:0")!.corners).toEqual([]);
+  });
+  it("changes only the selected fillet, supports T-bones, and excludes exterior rounded corners", () => {
+    const p = part(); p.holes[0] = roundedRect(20,20,40,20,3);
+    const target = reliefTargets(p).find(t=>t.id==="hole:0")!;
+    const next = previewRelief(p,{...input,corners:[target.corners[0].index],style:"tbone"}).part;
+    expect(bounds(next.holes[0]).minY).toBeCloseTo(17,5);
+    expect(reliefTargets(next).find(t=>t.id==="hole:0")!.corners).toHaveLength(3);
+    p.outline = roundedRect(0,0,100,80,3);
+    expect(reliefContours(p).find(t=>t.id==="outline")!.corners).toEqual([]);
+  });
+  it("uses complete straight sides when CAD subdivides them near the corner", () => {
+    const p = part(); p.holes[0] = [{x:20,y:20},{x:21,y:20},{x:60,y:20},{x:60,y:21},{x:60,y:40},{x:59,y:40},{x:20,y:40},{x:20,y:39}];
+    const target = reliefTargets(p).find(t=>t.id==="hole:0")!;
+    expect(target.corners.map(c=>c.index)).toEqual([0,2,4,6]);
+    const next = previewRelief(p,{...input,corners:[0,2,4,6]}).part;
+    expect(polygonArea(next.holes[0])).toBeCloseTo(polygonArea(previewRelief(part(),input).part.holes[0]),4);
+  });
+  it("recovers rounded corners in both windings and across the closing seam", () => {
+    const p=part(); p.holes[0]=roundedRect(20,20,40,20,3);
+    const apply=(p:Part)=>{
+      const t=reliefTargets(p).find(t=>t.id==="hole:0")!;
+      expect(t.corners).toHaveLength(4);
+      return previewRelief(p,{...input,corners:t.corners.map(c=>c.index)}).part.holes[0];
+    };
+    const a=apply(p); p.holes[0].reverse();
+    p.holes[0]=[...p.holes[0].slice(4),...p.holes[0].slice(0,4)];
+    const b=apply(p);
+    expect(polygonArea(a)).toBeCloseTo(polygonArea(b),4);
+    expect(bounds(a)).toEqual(bounds(b));
+  });
+  it("handles ordinary fillets at open-slot inner corners while preserving exterior corners", () => {
+    const p=part();p.holes=[];p.pockets=[];
+    const arc=(cx:number,cy:number,start:number)=>Array.from({length:9},(_,i)=>({x:cx+3*Math.cos(start-i*Math.PI/16),y:cy+3*Math.sin(start-i*Math.PI/16)}));
+    p.outline=[{x:0,y:0},{x:100,y:0},{x:100,y:80},{x:60,y:80},...arc(57,53,0),...arc(43,53,-Math.PI/2),{x:40,y:80},{x:0,y:80}];
+    const t=reliefTargets(p).find(t=>t.id==="outline")!;
+    expect(t.corners).toHaveLength(2);
+    expect(t.corners.map(c=>[Math.round(c.point.x),Math.round(c.point.y)])).toEqual([[60,50],[40,50]]);
+    const next=previewRelief(p,{...input,target:"outline",corners:t.corners.map(c=>c.index)}).part;
+    expect(next.area).toBeLessThan(7400);
+    expect(validContour(next.outline)).toBe(true);
+  });
+  it("does not extrapolate elliptical arcs and still rejects relief breaking the part boundary", () => {
+    const p=part();p.holes[0]=roundedRect(20,20,40,20,3).map(v=>({x:v.x,y:20+(v.y-20)*1.1}));
+    expect(reliefContours(p).find(t=>t.id==="hole:0")!.corners).toEqual([]);
+    p.holes[0]=roundedRect(0.2,20,40,20,3);
+    const t=reliefTargets(p).find(t=>t.id==="hole:0")!;
+    expect(()=>previewRelief(p,{...input,corners:t.corners.map(c=>c.index)})).toThrow(/外轮廓|边/);
+  });
+});
 
 describe("joinery corner relief", () => {
   it("finds cut-area convex corners without offering the part's exterior corners", () => {
@@ -105,7 +186,8 @@ describe("joinery corner relief", () => {
     const next = previewRelief(p, { ...input, target: "pocket:0", corners: [2, 3] }).part;
     expect(bounds(next.pockets[0].outline).minY).toBe(0);
     expect(polygonArea(next.pockets[0].outline)).toBeGreaterThan(450);
-    expect(() => previewRelief(p, { ...input, target: "pocket:0", corners: [0] })).toThrow(/外轮廓|边/);
+    expect(reliefTargets(p).find(t=>t.id==="pocket:0")!.corners.map(c=>c.index)).toEqual([2,3]);
+    expect(() => previewRelief(p, { ...input, target: "pocket:0", corners: [0] })).toThrow(/角点/);
   });
   it("uses the same geometric result for both contour windings", () => {
     const p = part(); p.holes[0].reverse();

@@ -35,7 +35,7 @@ export function assemblyContextAnchor(bounds: THREE.Box3, camera: THREE.Perspect
 
 export function disposeObject(group: THREE.Object3D) {
   group.traverse((obj) => {
-    if (obj instanceof THREE.Mesh || obj instanceof THREE.Line) {
+    if (obj instanceof THREE.Mesh || obj instanceof THREE.Line || obj instanceof THREE.Points) {
       obj.geometry.dispose();
       (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(
         (m) => m.dispose(),
