@@ -89,10 +89,10 @@ export function placementCandidates(project:Project,assembly:Assembly,partId:str
   }
   return result;
 }
-export function weakSnap(pose:AssemblyItem,candidates:PlacementCandidate[],options:{enabled:boolean;suspended?:boolean;heldId?:string|null;axes?:string;project:(point:Vec3)=>{x:number;y:number}}):{pose:AssemblyItem;candidateId:string|null} {
+export function weakSnap(pose:AssemblyItem,candidates:PlacementCandidate[],options:{enabled:boolean;suspended?:boolean;heldId?:string|null;axes?:string;freePlacement?:boolean;project:(point:Vec3)=>{x:number;y:number}}):{pose:AssemblyItem;candidateId:string|null} {
   if(!options.enabled||options.suspended||pose.locked)return {pose,candidateId:null};
   const allowed=options.axes?.toLowerCase()??'xyz';
-  const screen=options.project(pose.position);let best:PlacementCandidate|undefined,bestPose:AssemblyItem|undefined,bestPixels=Infinity,bestRank=Infinity;
+  const screen=options.project(pose.position);let best:PlacementCandidate|undefined,bestPose:AssemblyItem|undefined,bestPixels=Infinity,bestRank=Infinity,bestHeld=false;
   for(const candidate of candidates){
     if(candidate.partId!==pose.partId || candidate.status==='invalid')continue;
     const insertion=!!candidate.insertion?.geometryChecked || !!candidate.contact;
@@ -104,16 +104,22 @@ export function weakSnap(pose:AssemblyItem,candidates:PlacementCandidate[],optio
     const a=quaternion(pose.rotation),b=quaternion(destination.rotation);
     if(insertion ? a.angleTo(b)>(held?12:8)*Math.PI/180 : Math.abs(a.dot(b))<1-1e-7)continue;
     const delta=subtract(destination.position,pose.position);
-    if((['x','y','z'] as const).some(k=>!allowed.includes(k)&&Math.abs(delta[k])>1e-6))continue;
+    const freeContact=!!options.freePlacement&&insertion;
+    if(!freeContact&&(['x','y','z'] as const).some(k=>!allowed.includes(k)&&Math.abs(delta[k])>1e-6))continue;
     const anchor=candidate.contact?.sourceAnchor??candidate.insertion?.sourceAnchor;
     const from=insertion?transformPoint(anchor!,pose):pose.position;
     const to=insertion?transformPoint(anchor!,destination):destination.position;
-    const origin=insertion?options.project(from):screen,projected=options.project(to),pixels=Math.hypot(projected.x-origin.x,projected.y-origin.y),world=length(subtract(to,from));
-    if(!Number.isFinite(pixels)||world>(insertion?(held?18:12):(held?8:5))||pixels>(insertion?(held?16:10):(held?12:8)))continue;
+    // Body dragging follows the work plane; seating depth is supplied by the joint.
+    // Measure its lateral screen distance so zoom does not block that depth correction.
+    const normal=freeContact?normalize(candidate.contact?.normal??candidate.insertion!.direction):null;
+    const lateralFrom=normal?subtract(from,scale(normal,dot(subtract(from,to),normal))):from;
+    const origin=insertion?options.project(lateralFrom):screen,projected=options.project(to),pixels=Math.hypot(projected.x-origin.x,projected.y-origin.y),world=length(subtract(to,from));
+    const worldLimit=freeContact?(held?26:18):insertion?(held?18:12):(held?8:5);
+    const pixelLimit=freeContact?(held?52:36):insertion?(held?16:10):(held?12:8);
+    if(!Number.isFinite(pixels)||world>worldLimit||pixels>pixelLimit)continue;
     if(candidate.contact&&!contactPoseClear(candidate.contact.geometry,destination))continue;
-    if(held){best=candidate;bestPose=destination;break;}
     const rank=candidate.contact?.kind==='surface'?1:0;
-    if(rank<bestRank || rank===bestRank&&pixels<bestPixels){best=candidate;bestPose=destination;bestPixels=pixels;bestRank=rank;}
+    if(rank<bestRank || rank===bestRank&&(held&&!bestHeld || held===bestHeld&&pixels<bestPixels)){best=candidate;bestPose=destination;bestPixels=pixels;bestRank=rank;bestHeld=held;}
   }
   return best?{pose:{...pose,position:{...bestPose!.position},rotation:best.insertion||best.contact?{...bestPose!.rotation}:pose.rotation},candidateId:best.id}:{pose,candidateId:null};
 }

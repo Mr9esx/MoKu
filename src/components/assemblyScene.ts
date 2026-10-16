@@ -824,7 +824,7 @@ export function createAssemblyScene(
     }
     render();
   }
-  function snapPose(raw: AssemblyItem, axes = "XYZ", move = true) {
+  function snapPose(raw: AssemblyItem, axes = "XYZ", move = true, freePlacement = false) {
     if (!state) return raw;
     scene.updateMatrixWorld(true);
     camera.updateMatrixWorld(true);
@@ -870,6 +870,7 @@ export function createAssemblyScene(
       heldId: held,
       heldOriginAxes,
       axes,
+      freePlacement,
       project: projectPoint,
     };
     const snapped = move ? weakMoveSnap(raw, eligible, options)
@@ -1021,7 +1022,7 @@ export function createAssemblyScene(
           z: direct.original.position.z,
         },
       };
-    const pose = snapPose(raw, "XY"),
+    const pose = snapPose(raw, "XY", true, true),
       entry = entries.get(direct.id);
     if (entry) {
       entry.group.position.copy(vector(pose.position));
@@ -1057,16 +1058,19 @@ export function createAssemblyScene(
       direct = null;
       orbit.enabled = true;
       renderer.domElement.style.cursor = "grab";
-      held = null;
-      setOriginSnap([]);
       if (renderer.domElement.hasPointerCapture(event.pointerId))
         renderer.domElement.releasePointerCapture(event.pointerId);
       const entry = entries.get(drag.id);
       if (drag.moved && entry) {
+        const pose = snapPose(poseOf(entry.group, drag.id), "XY", true, true);
+        entry.group.position.copy(vector(pose.position));
+        entry.group.quaternion.set(pose.rotation.x,pose.rotation.y,pose.rotation.z,pose.rotation.w);
         callbacks.preview(null);
         callbacks.snap(null);
-        callbacks.commit(poseOf(entry.group, drag.id));
+        callbacks.commit(pose);
       } else callbacks.select(drag.id);
+      held = null;
+      setOriginSnap([]);
       render();
       return;
     }
