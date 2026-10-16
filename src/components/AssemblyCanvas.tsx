@@ -10,6 +10,7 @@ import {
   Layers3,
   Undo2,
   Trash2,
+  CircleHelp,
 } from "lucide-react";
 import {
   createAssemblyScene,
@@ -95,32 +96,29 @@ export function AssemblyCanvas(props: Props) {
         : props.state.referenceMarkers?.length && props.state.preview
           ? "参考对齐预览 · 未修改装配"
           : zeroAxes.length
-            ? `${zeroAxes.map(axis => axis.toUpperCase()).join(" / ")} 已吸附到 0 · 继续拖动可脱离`
+            ? `${zeroAxes.map(axis => axis.toUpperCase()).join(" / ")} 已吸附到 0`
           : props.snapped
-            ? "已吸附 · 松手放置 · 继续拖动可脱离"
+            ? "已吸附"
             : props.guidancePending
-              ? "正在核对可放置位置…"
+              ? "匹配中…"
               : (props.pending
                   ? "检测中…"
-                  : selected && !selectedItem
-                    ? "此零件尚未放入场景 · 点击“放入场景”继续"
-                    : selected
-                      ? props.state.candidates.some(c => (c.insertion?.geometryChecked || c.contact) && c.status !== "invalid") ? "绿色区域可配合 · 旋转对准后拖近吸附 · Alt 暂停磁吸" : "拖动零件或箭头移动 · 拖动圆环旋转"
-                      : props.state.assembly.items.length
-                        ? "点击场景中的零件即可选择，也可以直接拖动"
-                        : "点击左侧零件，放入场景开始组装"));
+                  : null));
   return (
     <section className="assembly-canvas workbench-preview" aria-label="组装预览">
+      <div className="preview-main">
       <div className="assembly-scene-host" ref={container} />
       <div className="assembly-scene-heading">
-        <span className="assembly-eyebrow">ASSEMBLY / MM</span>
-        <strong>{selected?.name ?? "组装预览"}</strong>
-        <span>
-          {props.state.assembly.items.length} 个已加入 · X 宽 / Y 深 / Z 高
-        </span>
+        <div className="assembly-scene-title">
+          <strong>{selected?.name ?? "组装预览"}</strong>
+          <button type="button" className="assembly-camera-help" aria-label="视角操作说明"
+            data-tooltip="滚轮缩放；左键拖动空白处或中键拖动平移；右键、Shift + 左键或拖动视角立方体旋转。">
+            <CircleHelp size={12} />
+          </button>
+        </div>
         {selectedPose && (
           <div className="assembly-position-readout" role="group" aria-label="当前零件 XYZ 坐标，单位毫米">
-            <span>装配坐标 · mm</span>
+            <span>坐标 · mm</span>
             <dl className="assembly-position-values">
               {(["x", "y", "z"] as const).map(axis => (
                 <div key={axis} data-axis={axis} className={selectedPose.position[axis] === 0 ? "is-zero" : ""}>
@@ -131,12 +129,6 @@ export function AssemblyCanvas(props: Props) {
             </dl>
           </div>
         )}
-        <p className="assembly-camera-guide" aria-label="三维视角操作说明">
-          <span>左键拖空白：旋转视角</span>
-          <span>右键拖动：平移画面</span>
-          <span>滚轮：缩放</span>
-          <span>中键 / Shift＋左键也可平移</span>
-        </p>
       </div>
       <div className="assembly-scene-legend" aria-label="场景颜色说明">
         <span>
@@ -148,9 +140,9 @@ export function AssemblyCanvas(props: Props) {
           匹配接触区
         </span>
       </div>
-      <div className="assembly-scene-feedback" role="status" aria-live="polite">
+      {feedback && <div className="assembly-scene-feedback" role="status" aria-live="polite">
         {feedback}
-      </div>
+      </div>}
       <div className="assembly-view-buttons floating" aria-label="三维视图">
         {(["all", "selected"] as const).map((view, index) => (
           <button
@@ -253,15 +245,10 @@ export function AssemblyCanvas(props: Props) {
       )}
       {!props.state.assembly.items.length && !webglError && (
         <div className="assembly-scene-empty">
-          <span>01</span>
-          <h2>从一块板件开始</h2>
-          <p>
-            在左侧选择零件，点击“加入组装”。
-            <br />
-            绿色标出匹配的槽口与接触面，旋转对准后拖近即可吸附。
-          </p>
+          <p>点击左侧零件开始组装</p>
         </div>
       )}
+      </div>
       <div className="preview-information">{props.children}</div>
     </section>
   );

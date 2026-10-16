@@ -205,10 +205,7 @@ export function AssemblyViewCube({
       </svg>
       <div className="cube-caption">
         <span>
-          {dragging
-            ? "拖动旋转视角"
-            : visibleZones.find((z) => z.zone.id === hover)?.zone.label ??
-              "拖动旋转 · 点击切换"}
+          {visibleZones.find((z) => z.zone.id === hover)?.zone.label}
         </span>
         <button
           aria-label="等轴视图"

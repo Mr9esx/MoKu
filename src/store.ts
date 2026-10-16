@@ -96,6 +96,7 @@ type State = {
   apply: () => void;
   undo: () => void;
   reset: () => void;
+  closeProject: () => void;
 };
 let worker: Worker | null = null;
 let workerDeadline: ReturnType<typeof setTimeout> | null = null;
@@ -898,6 +899,24 @@ export function createWorkbenchStore() {
               : "已恢复导入零件原始位置，保留新增零件",
           });
         }
+      },
+      closeProject: () => {
+        const s = get();
+        if (s.status === "searching" || s.importing) return;
+        set({
+          ...invalidate(),
+          project: null,
+          source: null,
+          current: null,
+          candidate: null,
+          history: [],
+          selected: null,
+          view: "current",
+          message: "",
+          draft: null,
+          drawingDraft: null,
+          importMessage: "",
+        });
       },
     };
   });

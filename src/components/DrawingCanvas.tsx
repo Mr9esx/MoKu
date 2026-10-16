@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import { zoomCanvasViewport, type CanvasViewport } from "../core/canvasViewport";
+import { useWheelZoomFactor } from "./useWheelZoomFactor";
 import { fitDrawingCanvas } from "../core/drawingCanvas";
 import type { Point } from "../core/types";
 
@@ -11,6 +12,7 @@ export function DrawingCanvas({ points, focus, resetKey, label, children, action
   children: ReactNode; actions?: ReactNode; clearSelection?: () => boolean;
 }) {
   const svg = useRef<SVGSVGElement>(null);
+  const wheelFactor = useWheelZoomFactor();
   const [size, setSize] = useState({ width: 600, height: 400 });
   const [camera, setCamera] = useState<{ x: number; y: number; zoom: number } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -56,22 +58,14 @@ export function DrawingCanvas({ points, focus, resetKey, label, children, action
     if (!node) return;
     const wheel = (event: WheelEvent) => {
       event.preventDefault(); event.stopPropagation();
-      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? size.height : 1;
-      if (event.ctrlKey || event.metaKey) {
-        const matrix = node.getScreenCTM();
-        if (!matrix) return;
-        const anchor = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
-        zoomAt(anchor, Math.exp(-Math.max(-80, Math.min(80, event.deltaY * unit)) * 0.008));
-      } else {
-        const current = viewRef.current, pixel = current.width / size.width;
-        applyView({ ...current,
-          x: current.x + (event.shiftKey ? event.deltaY : event.deltaX) * unit * pixel,
-          y: current.y + (event.shiftKey ? 0 : event.deltaY) * unit * pixel });
-      }
+      const matrix = node.getScreenCTM();
+      if (!matrix) return;
+      const anchor = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+      zoomAt(anchor, wheelFactor(event));
     };
     node.addEventListener("wheel", wheel, { passive: false });
     return () => node.removeEventListener("wheel", wheel);
-  }, [fitted.width, size]);
+  }, [fitted.width, size, wheelFactor]);
   const endDrag = () => { drag.current = null; setDragging(false); };
   return <div className="drawing-review-stage drawing-canvas" onKeyDown={event => {
     if (event.key === "+" || event.key === "=") { event.preventDefault(); event.stopPropagation(); zoomCenter(1.3); }

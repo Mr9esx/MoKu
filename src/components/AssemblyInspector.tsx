@@ -198,28 +198,25 @@ export function AssemblyInspector(p: Props) {
         className="assembly-inspector is-compact floating"
         aria-label="装配信息"
       >
-        <div className="assembly-compact-heading">
-          <span>{part ? "当前零件" : "开始组装"}</span>
+        <div className="assembly-compact-title">
+          <h2>{part?.name ?? "组装概览"}</h2>
           {item?.locked && <LockKeyhole size={14} aria-label="零件已锁定" />}
         </div>
-        <h2>{part?.name ?? "点选，再搭建"}</h2>
         {part ? (
           <p className="assembly-compact-size">
             {round(part.width)} × {round(part.height)} × {part.thickness} mm
           </p>
         ) : (
           <p className="assembly-compact-hint">
-            点击左侧零件放入场景。
-            <br />
-            点选零件后，直接拖动摆放。
+            已放入 {p.assembly.items.length} / {p.project.parts.length} 个零件
           </p>
         )}
         {part && !item && (
-          <p className="assembly-compact-hint">尚未加入 · 在左侧点击零件放入场景</p>
+          <p className="assembly-compact-hint">未放入场景</p>
         )}
         {p.guidancePending && item && (
           <p className="assembly-compact-hint" role="status">
-            正在寻找可放置位置…
+            匹配中…
           </p>
         )}
         {(needsFace || relevant.length > 0) && (
@@ -232,18 +229,18 @@ export function AssemblyInspector(p: Props) {
             }
             role="status"
           >
-            {needsFace ? "槽加工面待确认，干涉检查尚未完成。" : relevant[0].message}
+            {needsFace ? "槽加工面待确认" : relevant[0].id === "basis:missing" ? "未设置检测规则" : relevant[0].message}
           </p>
         )}
         {machiningWarnings.length > 0 && (
           <button className="assembly-machining-summary" onClick={() => openDetails("check")}>
             <AlertTriangle size={14} />
-            <span>刀口待确认 · {machiningCorners} 处内直角<small>查看缺少清角/T 骨的位置</small></span>
+            <span>刀口待确认 · {machiningCorners} 处内直角</span>
             <ChevronRight size={13} />
           </button>
         )}
         <div className="assembly-compact-footer">
-          <button onClick={() => openDetails(part ? "part" : "rules", needsFace ? "machining" : "position")}>查看详情 <ChevronRight size={12} /></button>
+          <button onClick={() => openDetails(part ? "part" : "rules", needsFace ? "machining" : "position")}>{part ? "查看详情" : "检查与规则"} <ChevronRight size={12} /></button>
         </div>
       </aside>
     );
@@ -604,7 +601,6 @@ export function AssemblyInspector(p: Props) {
                   </strong>
                   <span>零件已加入</span>
                 </div>
-                <p>点击左侧零件查看参数。黄色帮助找位置，红色直接指出冲突。</p>
                 <button className="wide" onClick={() => setTab("rules")}>
                   设置成品尺寸与配合关系
                 </button>

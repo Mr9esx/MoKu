@@ -9,8 +9,7 @@ export function DrawingOverview({ project, onStock }: { project: Project; onStoc
         <div><dt>铣槽</dt><dd>{project.parts.reduce((n, p) => n + p.pockets.length, 0)} 个</dd></div>
         <div><dt>图纸单位</dt><dd>mm</dd></div>
       </dl>
-      <p className="hint">选择一个零件，查看轮廓、编辑榫槽或导出图纸。</p>
-      <div className="drawing-stock-entry"><h3>安排用料</h3><p className="hint">需要排版时，先添加板材。</p>
+      <div className="drawing-stock-entry">
         <button onClick={onStock}>新增板材</button></div>
     </div>
   </aside>;

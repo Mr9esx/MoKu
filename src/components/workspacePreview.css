@@ -1,4 +1,4 @@
-/* Both workspaces keep context inside the same preview frame. */
+/* Canvas and information share a frame, with independent layout regions. */
 .workspace {
   --workspace-rail-width: 248px;
   --preview-information-width: 304px;
@@ -21,18 +21,35 @@
   inset: 68px 14px 36px calc(var(--workspace-rail-width) + 28px);
   overflow: hidden;
   border: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--preview-information-width);
+  grid-template-rows: minmax(0, 1fr);
   container-type: inline-size;
 }
-.preview-information {
+.preview-main {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  container: preview-canvas / inline-size;
+}
+.canvas-region:not(.workbench-preview) > .preview-main {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  bottom: 156px;
-  width: var(--preview-information-width);
-  max-width: calc(100% - 32px);
+  inset: 0;
+}
+.preview-information {
+  position: relative;
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--line);
+  background: var(--paper-light);
   z-index: 3;
 }
 .workbench-preview .preview-information > :is(.inspector, .analysis-panel, .assembly-inspector) {
@@ -44,11 +61,12 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
-.preview-information:has(> .assembly-inspector.is-compact) {
-  width: 224px;
-  bottom: auto;
-  max-height: calc(100% - 172px);
+.workbench-preview .preview-information > .assembly-inspector.is-compact {
+  overflow: auto;
 }
 .preview-information:empty {
   display: none;
@@ -62,12 +80,7 @@
   gap: 3px;
   z-index: 1;
   pointer-events: none;
-  max-width: calc(100% - var(--preview-information-width) - 60px);
-}
-.preview-heading > span:first-child {
-  font-family: var(--latin-font);
-  font-size: 11px;
-  letter-spacing: 0.15em;
+  max-width: calc(100% - 40px);
 }
 .preview-heading strong {
   font-family: var(--display-font);
@@ -82,7 +95,7 @@
   font-size: 11px;
 }
 .workbench-preview .parts-drawing-stage {
-  padding: 20px calc(var(--preview-information-width) + 48px) 140px 20px;
+  padding: 20px 20px 140px;
 }
 .workspace .workbench-preview .canvas-tools {
   bottom: 16px;
@@ -130,7 +143,7 @@
 .workbench-preview .candidate-bar {
   top: 94px;
   left: 16px;
-  right: calc(var(--preview-information-width) + 48px);
+  right: 16px;
   width: auto;
   max-width: none;
   transform: none;
@@ -139,10 +152,19 @@
   --canvas-fit-top: 154px;
 }
 .workbench-preview .assembly-scene-legend {
-  right: calc(var(--preview-information-width) + 40px);
+  right: 16px;
 }
-.workbench-preview:has(.assembly-inspector.is-compact) .assembly-scene-legend {
-  right: 258px;
+.workbench-preview .assembly-scene-heading {
+  max-width: calc(100% - 154px);
+}
+.assembly-camera-help {
+  pointer-events: auto;
+  flex-shrink: 0;
+  min-height: 24px;
+  padding: 3px;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
 }
 .workspace .workbench-preview .assembly-view-cube {
   top: auto;
@@ -155,20 +177,37 @@
     display: none;
   }
 }
+@container preview-canvas (max-width: 560px) {
+  .workspace .workbench-preview .zoom-controls {
+    bottom: 114px;
+    right: 12px;
+  }
+  .workspace .workbench-preview .assembly-view-cube {
+    bottom: 112px;
+    right: 10px;
+    width: 84px;
+  }
+  .workbench-preview .assembly-scene-feedback { bottom: 224px; }
+  .workbench-preview .assembly-scene-heading { max-width: calc(100% - 136px); }
+  .workbench-preview .assembly-scene-legend { font-size: 10px; right: 12px; }
+  .workbench-preview .candidate-bar { flex-wrap: wrap; gap: 8px; }
+}
+@media (min-width: 901px) and (max-width: 1200px) {
+  .workspace { --preview-information-width: 260px; }
+}
 @media (max-width: 900px) {
   .workspace .workbench-preview {
     inset: 134px 14px 36px;
+    grid-template-columns: minmax(0, 1fr);
   }
   .workspace-surface {
     --canvas-fit-top: 96px;
     --canvas-fit-bottom: 164px;
   }
-  .workbench-preview .preview-information,
-  .workbench-preview .preview-information:has(> .assembly-inspector.is-compact) {
-    inset: 0;
-    width: auto;
-    max-width: none;
-    max-height: none;
+  .workbench-preview .preview-information {
+    grid-column: 1;
+    grid-row: 1;
+    border: 0;
     display: none;
   }
   .workspace-surface.mobile-info .preview-information,
@@ -212,14 +251,13 @@
     left: 12px;
     right: 12px;
   }
-  .workbench-preview .assembly-scene-legend,
-  .workbench-preview:has(.assembly-inspector.is-compact) .assembly-scene-legend {
+  .workbench-preview .assembly-scene-legend {
     right: 10px;
   }
   .workspace .workbench-preview .assembly-view-cube {
-    top: 75px;
-    bottom: auto;
-    right: 7px;
-    width: 96px;
+    top: auto;
+    bottom: 112px;
+    right: 10px;
+    width: 84px;
   }
 }

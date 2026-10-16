@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { keyboardShortcut } from "../core/keyboardShortcuts";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { createAssemblyCameraControls } from "./assemblyCameraControls";
 import { createAssemblyTransformControls } from "./assemblyTransformControls";
 import {
   buildAssemblyModel,
@@ -116,14 +116,8 @@ export function createAssemblyScene(
   const light = new THREE.DirectionalLight("#ffffff", 2.8);
   light.position.set(120, -150, 300);
   scene.add(light);
-  const orbit = new OrbitControls(camera, renderer.domElement);
+  const orbit = createAssemblyCameraControls(camera, renderer.domElement);
   orbit.target.set(60, 60, 25);
-  orbit.enableDamping = false;
-  orbit.mouseButtons = {
-    LEFT: THREE.MOUSE.ROTATE,
-    MIDDLE: THREE.MOUSE.PAN,
-    RIGHT: THREE.MOUSE.PAN,
-  };
   const transform = createAssemblyTransformControls(camera, renderer.domElement);
   scene.add(transform.helper);
   const grid = new THREE.GridHelper(2000, 80, "#bac1cf", "#e3e4e4");

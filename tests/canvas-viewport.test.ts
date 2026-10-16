@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitCanvasViewport, zoomCanvasViewport } from "../src/core/canvasViewport";
+import { fitCanvasViewport, wheelZoomFactor, zoomCanvasViewport } from "../src/core/canvasViewport";
 
 describe("full canvas fitting", () => {
   it("keeps the viewport full size while fitting content between floating panels", () => {
@@ -48,5 +48,40 @@ describe("pointer-anchored preview zoom", () => {
   it("keeps a recoverable overview when zooming out repeatedly", () => {
     expect(zoomCanvasViewport(view, { x: 100, y: 150 }, 0.001, limits))
       .toEqual({ x: -300, y: -50, width: 1600, height: 800 });
+  });
+});
+
+describe("canvas wheel navigation", () => {
+  it("zooms with an unmodified wheel and keeps the point under the cursor fixed", () => {
+    const view = { x: -100, y: 50, width: 800, height: 400 };
+    const anchor = { x: 100, y: 150 };
+    const limits = { minWidth: 10, maxWidth: 10000 };
+    const zoomed = zoomCanvasViewport(view, anchor,
+      wheelZoomFactor({ deltaY: -100, deltaMode: 0 }), limits);
+    expect(zoomed.width).toBeLessThan(view.width);
+    expect((anchor.x - zoomed.x) / zoomed.width).toBeCloseTo(0.25);
+    expect((anchor.y - zoomed.y) / zoomed.height).toBeCloseTo(0.25);
+    const restored = zoomCanvasViewport(zoomed, anchor,
+      wheelZoomFactor({ deltaY: 100, deltaMode: 0 }), limits);
+    for (const key of ["x", "y", "width", "height"] as const)
+      expect(restored[key]).toBeCloseTo(view[key]);
+  });
+
+  it("handles line and page wheel events like the 3D camera", () => {
+    expect(wheelZoomFactor({ deltaY: 1, deltaMode: 1 }))
+      .toBeCloseTo(wheelZoomFactor({ deltaY: 16, deltaMode: 0 }));
+    expect(wheelZoomFactor({ deltaY: 1, deltaMode: 2 }))
+      .toBeCloseTo(wheelZoomFactor({ deltaY: 100, deltaMode: 0 }));
+  });
+
+  it("supports small trackpad pinch deltas without zooming on horizontal-only scroll", () => {
+    expect(wheelZoomFactor({ deltaY: -1, deltaMode: 0, ctrlKey: true }))
+      .toBeCloseTo(wheelZoomFactor({ deltaY: -10, deltaMode: 0 }));
+    expect(wheelZoomFactor({ deltaY: 0, deltaMode: 0 })).toBe(1);
+  });
+
+  it("keeps physical Ctrl + wheel at the regular speed instead of treating it as a pinch", () => {
+    expect(wheelZoomFactor({ deltaY: -100, deltaMode: 0, ctrlKey: true }, true))
+      .toBeCloseTo(wheelZoomFactor({ deltaY: -100, deltaMode: 0 }));
   });
 });

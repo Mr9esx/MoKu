@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Plus, Search, Package, ChevronRight } from "lucide-react";
+import { Upload, Plus, Search, ChevronRight } from "lucide-react";
 import { useWorkbench } from "../store";
 import { emptyAssembly } from "../core/assemblyTypes";
 import { assemblyShortcut } from "../core/assemblyEditing";
@@ -353,15 +353,13 @@ export default function AssemblyWorkspace({
                       {Math.round(part.height * 100) / 100} · {part.thickness}{" "}
                       mm
                     </small>
-                    <em>
+                    {(placed || spare) && <em>
                       {placed
                         ? hiddenPartIds.includes(part.id)
-                          ? "已隐藏 · 点击显示"
+                          ? "已隐藏"
                           : "已在场景"
-                        : spare
-                          ? "备用 · 点击放入场景"
-                          : "点击放入场景"}
-                    </em>
+                        : "备用"}
+                    </em>}
                   </span>
                   {placed ? <ChevronRight size={14} /> : <Plus size={15} />}
                 </button>
@@ -405,14 +403,6 @@ export default function AssemblyWorkspace({
               </article>
             );
           })}
-        </div>
-        <div className="assembly-resource-footer">
-          <Package size={14} />
-          <span>
-            每个零件可加入一次
-            <br />
-            更多数量请使用二维零件复制
-          </span>
         </div>
       </aside>
       <AssemblyCanvas
@@ -493,7 +483,7 @@ export default function AssemblyWorkspace({
         <span>
           {blocked
             ? "当前装配只读"
-            : error || "方向键微调 · R 旋转 · Delete 移出 · ? 查看快捷键"}
+            : error}
         </span>
       </div>
     </div>

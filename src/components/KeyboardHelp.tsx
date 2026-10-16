@@ -40,8 +40,8 @@ export function KeyboardHelp() {
       </div>)}</dl>
     </section>)}</div>
     <div className="shortcut-mouse">
-      <p><strong>二维鼠标：</strong>拖动零件摆放；普通滚轮平移，Shift 滚轮横移，Ctrl / ⌘ 滚轮围绕指针缩放。</p>
-      <p><strong>三维鼠标：</strong>拖动零件或箭头移动，拖动圆环旋转；左键拖空白旋转视角，右键 / 中键 / Shift 左键平移，滚轮缩放。Alt 暂停磁吸与旋转角度吸附。</p>
+      <p><strong>画布通用：</strong>滚轮围绕指针缩放，左键拖动空白处平移；拖动零件摆放。</p>
+      <p><strong>三维补充：</strong>右键或 Shift + 左键拖动旋转视角，也可拖动右下角的视角立方体；中键拖动平移。拖动箭头移动零件，拖动圆环旋转零件；Alt 暂停磁吸与旋转角度吸附。</p>
     </div>
   </div>;
 }

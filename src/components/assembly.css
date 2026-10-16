@@ -57,12 +57,6 @@
   pointer-events: none;
   max-width: 60%;
 }
-.assembly-eyebrow {
-  font-family: var(--latin-font);
-  font-size: 11px;
-  letter-spacing: 0.15em;
-  color: var(--muted);
-}
 .assembly-scene-heading strong {
   font-family: var(--display-font);
   font-size: 22px;
@@ -71,9 +65,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.assembly-scene-heading > span:not(.assembly-eyebrow) {
-  font-size: 11px;
-  color: var(--muted);
+.assembly-scene-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.assembly-scene-title strong {
+  min-width: 0;
 }
 .assembly-position-readout {
   margin-top: 8px;
@@ -114,15 +113,6 @@
 .assembly-position-values .is-zero {
   background: #fcf4d8;
   border-color: #e6d28c;
-}
-.assembly-camera-guide {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1px 12px;
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.8;
 }
 .assembly-scene-legend {
   position: absolute;
@@ -220,16 +210,6 @@
   max-width: 90%;
   width: 380px;
 }
-.assembly-scene-empty > span {
-  font-family: var(--latin-font);
-  font-size: 60px;
-  color: #2146b529;
-}
-.assembly-scene-empty h2 {
-  font-family: var(--display-font);
-  font-size: 27px;
-  margin: 4px 0 12px;
-}
 .assembly-scene-empty p {
   line-height: 1.9;
   color: var(--muted);
@@ -319,15 +299,6 @@
 }
 .assembly-resource-item-actions button:first-child {
   border: 1px solid var(--line);
-}
-.assembly-resource-footer {
-  padding: 12px;
-  display: flex;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--muted);
-  border-top: 1px solid var(--line);
-  line-height: 1.8;
 }
 .assembly-inspector-tabs {
   display: flex;
@@ -898,18 +869,21 @@
   padding: 17px;
   overflow: auto;
 }
-.assembly-compact-heading {
+.assembly-compact-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+.assembly-compact-title > svg {
+  flex-shrink: 0;
   color: var(--muted);
-  font-size: 11px;
 }
 .assembly-inspector.is-compact h2 {
   font-family: var(--display-font);
   font-size: 22px;
   line-height: 1.4;
-  margin: 9px 0 3px;
+  margin: 0 0 3px;
   overflow-wrap: anywhere;
 }
 .assembly-compact-size {

@@ -6,6 +6,7 @@ import { keyboardShortcut, type ViewShortcut } from "../core/keyboardShortcuts";
 import { points, displayPoints } from "../core/export";
 import { settlePlacement, snapPlacement, type Guide } from "../core/editing";
 import { fitCanvasViewport } from "../core/canvasViewport";
+import { useWheelZoomFactor } from "./useWheelZoomFactor";
 import { placementMotion } from "../core/layoutMotion";
 import type { Layout, LayoutMetrics, Placement, Project } from "../core/types";
 const startAnimation = (node: SVGAnimateTransformElement | null) => node?.beginElement();
@@ -28,6 +29,7 @@ export function StockCanvas({
 }) {
   const s = useWorkbench(),
     project = provided ?? s.project!;
+  const wheelFactor = useWheelZoomFactor();
   const candidateVisible = !!s.candidate || s.status === "searching";
   const searching = s.status === "searching";
   const live = searching && s.view === "current" && !!s.searchPreview;
@@ -266,24 +268,8 @@ export function StockCanvas({
           if (placement) s.movePart(placement);
         }}
         onWheel={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const scale = Math.max(
-            fitted.width / zoom / rect.width,
-            fitted.height / zoom / rect.height,
-          );
-          if (e.ctrlKey || e.metaKey) {
-            const cursor = local(e.clientX, e.clientY),
-              next = Math.max(
-                0.4,
-                Math.min(12, zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)),
-              );
-            zoomAround(next, cursor);
-          } else {
-            setPan({
-              x: pan.x + (e.shiftKey ? e.deltaY : e.deltaX) * scale,
-              y: pan.y + (e.shiftKey ? 0 : e.deltaY) * scale,
-            });
-          }
+          const cursor = local(e.clientX, e.clientY);
+          zoomAround(Math.max(0.4, Math.min(12, zoom * wheelFactor(e))), cursor);
         }}
         onPointerDown={(e) => {
           if (searching || interactionBlocked) return;

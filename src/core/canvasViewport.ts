@@ -2,6 +2,16 @@ type Size = { width: number; height: number };
 type Insets = { left: number; right: number; top: number; bottom: number };
 export type CanvasViewport = Size & { x: number; y: number };
 
+/** Match OrbitControls wheel sensitivity, including trackpad pinch events. */
+export function wheelZoomFactor(
+  event: { deltaY: number; deltaMode: number; ctrlKey?: boolean },
+  controlKeyDown = false,
+) {
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
+  const delta = event.deltaY * unit * (event.ctrlKey && !controlKeyDown ? 10 : 1);
+  return Math.pow(0.95, Math.max(-1000, Math.min(1000, delta)) * 0.01);
+}
+
 /** Scale around a drawing point while keeping its screen position fixed. */
 export function zoomCanvasViewport(
   view: CanvasViewport,

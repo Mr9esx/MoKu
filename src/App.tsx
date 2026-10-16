@@ -120,8 +120,7 @@ export default function App() {
         <div className="brand">
           <img className="brand-mark" src="/woodwork-logo.webp" alt="" />
           <div className="brand-name">
-            <strong>木作</strong>
-            <small>WOODWORK</small>
+            <strong>MoKu</strong>
           </div>
           <span className="project-title" data-tooltip-overflow={s.project?.name} tabIndex={0}>
             {s.project?.name ?? "未命名项目"}
@@ -176,31 +175,25 @@ export default function App() {
             </button>
             {more && (
               <div className="more-menu floating">
-                <button
+                {s.project && workspaceMode === "drawing" && <button
                   disabled={!s.project || searching}
-                  data-tooltip={searching ? searchEditingReason : "恢复导入位置"}
+                  data-tooltip={searching ? searchEditingReason : "将二维零件的位置和角度还原到导入时的状态，可撤销"}
                   onClick={() => {
                     setDialog("restore");
                     setMore(false);
                   }}
                 >
-                  恢复原图位置
-                </button>
+                  还原导入时的排版…
+                </button>}
                 <button
-                  disabled={searching}
-                  data-tooltip={searching ? searchEditingReason : "打开示例图纸"}
+                  disabled={searching || s.importing || !s.project}
                   onClick={() => {
-                    setDialog("sample");
+                    setDialog("close-project");
                     setMore(false);
                   }}
                 >
-                  打开示例图纸…
+                  关闭项目并返回首页
                 </button>
-                <button disabled={searching} onClick={async () => {
-                  const { createAssemblyDemo } = await import("./core/assemblyDemo");
-                  s.confirmImport(createAssemblyDemo(), "append");
-                  setMore(false); switchWorkspace("assembly");
-                }}>添加组装示例…</button>
                 <button
                   onClick={() => {
                     setDialog("help");
@@ -250,9 +243,9 @@ export default function App() {
           />
         )}
         <section className={"canvas-region" + (project ? " workbench-preview" : "")} aria-label="二维预览">
+          <div className="preview-main">
           {project && hasStocks && (
             <div className="preview-heading">
-              <span>DRAWING / MM</span>
               <strong>{part?.name ?? "用料排版"}</strong>
               <span>{project.parts.length} 个零件 · {project.sheets.length} 张板材</span>
             </div>
@@ -380,6 +373,7 @@ export default function App() {
               )}
             </div>
           )}
+          </div>
           <div className="preview-information">
             {part && project ? (
               <ContextInspector
@@ -447,19 +441,20 @@ export default function App() {
               : "排版检查：通过 · 详情 ↗"}
         </button>
         <span role="status" data-tooltip-overflow="">
-          {s.message ||
-            (!project
-              ? ""
-              : !hasStocks ? "选择零件，编辑榫槽或导出图纸"
-              : s.view !== "current"
-                ? "只读视图 · 切换当前排版后编辑"
-                : "方向键微调 · R 旋转 · ? 查看快捷键")}
+          {s.message || (project && s.view !== "current" ? "只读视图" : "")}
         </span>
       </footer>
       <WorkspaceDialogs
         dialog={dialog}
         stockId={stockId}
         close={() => setDialog(null)}
+        onProjectClosed={() => {
+          setWorkspaceMode("drawing");
+          setAssemblyVisited(false);
+          setMobile("canvas");
+          setStockId(undefined);
+          setTool("select");
+        }}
       />
     </main>
   );

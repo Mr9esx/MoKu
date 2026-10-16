@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { Focus, Maximize, Minus, Plus } from "lucide-react";
 import { bounds } from "../core/geometry";
 import { fitCanvasViewport, zoomCanvasViewport, type CanvasViewport } from "../core/canvasViewport";
+import { useWheelZoomFactor } from "./useWheelZoomFactor";
 import type { ReliefTarget } from "../core/joineryRelief";
 import type { Part, Point } from "../core/types";
 
@@ -16,6 +17,7 @@ export function JoineryCanvas({ part, drawing, targets, targetId, corners, hasRe
   selectTarget: (id: string) => void; toggleCorner: (index: number) => void; hoverCorner: (index: number | null) => void;
 }) {
   const svg = useRef<SVGSVGElement>(null);
+  const wheelFactor = useWheelZoomFactor();
   const [size, setSize] = useState({ width: 600, height: 400 });
   const [camera, setCamera] = useState<{ x: number; y: number; zoom: number } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -80,12 +82,11 @@ export function JoineryCanvas({ part, drawing, targets, targetId, corners, hasRe
     if (!node) return;
     const wheel = (e: WheelEvent) => {
       e.preventDefault(); e.stopPropagation();
-      const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? size.height : 1);
-      zoomAt(local(e.clientX, e.clientY), Math.exp(-Math.max(-80, Math.min(80, delta)) * 0.008));
+      zoomAt(local(e.clientX, e.clientY), wheelFactor(e));
     };
     node.addEventListener("wheel", wheel, { passive: false });
     return () => node.removeEventListener("wheel", wheel);
-  }, [fitted.width, size]);
+  }, [fitted.width, size, wheelFactor]);
 
   const contour = (id: string, points: Point[], className: string) => <g key={id}
     className={`joinery-contour${hoveredTarget === id ? " is-hovered" : ""}${targetId === id ? " is-active" : ""}`}>

@@ -105,7 +105,7 @@ export function EmptyWorkbench({
     <div className="empty-canvas" onClick={onClear}>
       <div className="welcome-sheet">
         <div className="welcome-edition">
-          <span>木作工作台 / WOODWORK STUDIO</span>
+          <span>WOODWORK TOOLBOX</span>
         </div>
         <div className="welcome-composition">
           <div className="welcome-copy">
@@ -116,16 +116,10 @@ export function EmptyWorkbench({
                   <br />
                   让零件各就其位。
                 </>
-              ) : (
-                <>
-                  好木作，
-                  <br />
-                  从图纸开始。
-                </>
-              )}
+              ) : "MoKu"}
             </h1>
             {project && <p>{project.parts.length} 个零件待放置</p>}
-            {!project && <p>导入图纸，在图上调整细节，安排用料。</p>}
+            {!project && <p>木工工具箱，支持木材自动排版、榫卯清角、3D 组装预览和拼装问题检查。</p>}
             <div className="welcome-actions">
               <button
                 className="primary"
@@ -158,9 +152,9 @@ export function EmptyWorkbench({
         </div>
         <div className="welcome-steps">
           {[
-            ["01", "导入图纸", "DXF / 毫米尺寸"],
-            ["02", "在图上编辑", "细节调整 / 用料安排"],
-            ["03", "导出方案", "毫米尺寸 / SVG 图纸"],
+            ["01", "自动排版", "按板厚、材质安排用料"],
+            ["02", "榫卯清角", "支持狗骨 / T 骨"],
+            ["03", "3D 组装", "预览效果，检查拼装问题"],
           ].map(([n, title, text]) => (
             <div key={n}>
               <span>{n}</span>

@@ -15,6 +15,7 @@ export type Dialog =
   | "import"
   | "sample"
   | "restore"
+  | "close-project"
   | "part"
   | "stock"
   | "stock-edit"
@@ -28,10 +29,12 @@ export function WorkspaceDialogs({
   dialog,
   stockId,
   close,
+  onProjectClosed,
 }: {
   dialog: Dialog;
   stockId?: string;
   close: () => void;
+  onProjectClosed: () => void;
 }) {
   const s = useWorkbench(),
     ref = useRef<HTMLDivElement>(null);
@@ -44,7 +47,7 @@ export function WorkspaceDialogs({
     [quantity, setQuantity] = useState(1),
     [place, setPlace] = useState(false),
     [error, setError] = useState(""),
-    [filename, setFilename] = useState("木作-排版"),
+    [filename, setFilename] = useState("MoKu-排版"),
     [exportPartId, setExportPartId] = useState("");
   useEffect(() => {
     if (!dialog) return;
@@ -59,8 +62,8 @@ export function WorkspaceDialogs({
     setHeight(100);
     if (dialog === "part-export") {
       const part = s.project?.parts.find(p => p.id === s.selected) ?? s.project?.parts[0];
-      setExportPartId(part?.id ?? ""); setFilename(part?.name ?? "木作-零件");
-    } else if (dialog === "export") setFilename("木作-排版");
+      setExportPartId(part?.id ?? ""); setFilename(part?.name ?? "MoKu-零件");
+    } else if (dialog === "export") setFilename("MoKu-排版");
     const previous = document.activeElement as HTMLElement;
     const focusFrame = requestAnimationFrame(() => {
       const target =
@@ -104,7 +107,8 @@ export function WorkspaceDialogs({
     settings: "排版设置",
     import: "导入 DXF",
     sample: "预览示例图纸",
-    restore: "恢复原图位置",
+    restore: "还原导入时的排版",
+    "close-project": "关闭项目并返回首页",
     part: "新增零件",
     stock: "新增板材",
     "stock-edit":
@@ -208,8 +212,9 @@ export function WorkspaceDialogs({
     content = (
       <>
         <p>
-          恢复仍在库存中的原板位置。原板已删除的零件保留当前位置；新增板材和零件保留。本次操作可撤销。
+          把导入零件恢复到导入时的板材、位置和角度。导入时未排入板材的零件会回到待放置。
         </p>
+        <p className="hint">新增零件和板材保留；原板已删除的零件保持当前位置。仅影响二维排版，组装状态不变，可撤销。</p>
         <button
           className="primary wide"
           onClick={() => {
@@ -217,7 +222,23 @@ export function WorkspaceDialogs({
             close();
           }}
         >
-          确认恢复原图位置
+          确认还原排版
+        </button>
+      </>
+    );
+  else if (dialog === "close-project")
+    content = (
+      <>
+        <p>关闭后会清空当前工作区，尚未导出的修改也会丢失。</p>
+        <button
+          className="primary wide"
+          onClick={() => {
+            s.closeProject();
+            close();
+            onProjectClosed();
+          }}
+        >
+          关闭项目并返回首页
         </button>
       </>
     );
@@ -231,7 +252,7 @@ export function WorkspaceDialogs({
       <>
         {dialog === "part-export" && <label>零件<Select aria-label="导出零件" value={exportPartId}
           options={s.project?.parts.map(p => ({ value: p.id, label: p.name })) ?? []} onChange={id => {
-            setExportPartId(id); setFilename(s.project?.parts.find(p => p.id === id)?.name ?? "木作-零件");
+            setExportPartId(id); setFilename(s.project?.parts.find(p => p.id === id)?.name ?? "MoKu-零件");
           }} /></label>}
         <label>
           导出格式
@@ -263,7 +284,7 @@ export function WorkspaceDialogs({
               const a = document.createElement("a");
               a.href = url;
               a.download =
-                (filename.trim().replace(/[\\/:*?"<>|]/g, "-") || "木作-排版") +
+                (filename.trim().replace(/[\\/:*?"<>|]/g, "-") || "MoKu-排版") +
                 ".svg";
               document.body.append(a);
               a.click();
